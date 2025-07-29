@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Black">
+    <option name="sdkName" value="Python 3.13 (.venv)" />
+  </component>
+  <component name="GithubDefaultAccount">
+    <option name="defaultAccountId" value="1af2f25a-3bd0-4fd8-88ae-3ce40c30e6c3" />
+  </component>
+</project>
