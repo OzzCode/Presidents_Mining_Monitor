@@ -23,7 +23,6 @@ class MinerClient:
             # CGMiner expects commands terminated by newline
             sock.sendall((cmd.strip() + "").encode('utf-8'))
             data = b''
-
             # Read until the socket closes
             while True:
                 chunk = sock.recv(4096)

@@ -1,13 +1,56 @@
 <!DOCTYPE html>
-<html lang='en'>
+<html lang="en">
 <head>
-    <meta charset='UTF-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Antminer Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-<h1>Antminer Monitor Dashboard</h1>
-<!-- Add your dashboard here -->
+<div class="container">
+    <h1>Antminer Monitor Dashboard</h1>
+    <div class="metrics">
+        <div class="card">
+            <h2>Total Power Draw</h2>
+            <p id="total-power">-- W</p>
+        </div>
+        <div class="card">
+            <h2>Total Hashrate</h2>
+            <p id="total-hashrate">-- TH/s</p>
+        </div>
+        <div class="card">
+            <h2>Miner Uptime</h2>
+            <p id="total-uptime">--</p>
+        </div>
+        <div class="card">
+            <h2>Avg Temperature</h2>
+            <p id="avg-temp">-- °C</p>
+        </div>
+        <div class="card">
+            <h2>Avg Fan Speed</h2>
+            <p id="avg-fan-speed">-- RPM</p>
+        </div>
+        <div class="card">
+            <h2>Number of Workers</h2>
+            <p id="total-workers">--</p>
+        </div>
+    </div>
+    <div class="log">
+        <h2>Statistics Log</h2>
+        <table>
+            <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Statistic</th>
+                <th>Value</th>
+            </tr>
+            </thead>
+            <tbody id="stats-log">
+            <!-- Log entries will populate here -->
+            </tbody>
+        </table>
+    </div>
+</div>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>
-
