@@ -3,3 +3,5 @@ python-dotenv~=1.1.1
 pycgminer
 zeroconf
 pytest~=8.4.1
+sqlalchemy
+APScheduler

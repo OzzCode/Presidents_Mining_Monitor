@@ -1,6 +1,6 @@
 import ipaddress
+import socket
 from concurrent.futures import ThreadPoolExecutor
-from socket import socket
 
 from flask import Blueprint, jsonify
 from core.miner import MinerClient
