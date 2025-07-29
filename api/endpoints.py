@@ -1,4 +1,6 @@
 import ipaddress
+from concurrent.futures import ThreadPoolExecutor
+from socket import socket
 
 from flask import Blueprint, jsonify
 from core.miner import MinerClient
@@ -7,11 +9,46 @@ from config import MINER_IP_RANGE
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
-def discover_miners():
-    """Discover miners on the network using the configured IP range."""
+def discover_miners(timeout=1, workers=50):
+    """Discover miners by scanning the configured IP range for open CGMiner port (4028)."""
     network = ipaddress.ip_network(MINER_IP_RANGE)
-    # naive scan: return all host IPs in the network
-    return [str(ip) for ip in network.hosts()]
+
+    def scan_ip(ip):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        try:
+            s.connect((str(ip), 4028))
+            s.close()
+            return str(ip)
+        except:
+            return None
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        results = executor.map(scan_ip, network.hosts())
+
+    scanned = [ip for ip, result in zip(network.hosts(), results) if result]
+
+    # mDNS discovery
+    from zeroconf import Zeroconf, ServiceBrowser
+    import time
+
+    zeroconf = Zeroconf()
+    services = []
+
+    def on_service(zeroconf_obj, service_type, name):
+        info = zeroconf_obj.get_service_info(service_type, name)
+        if info and info.addresses:
+            for addr in info.addresses:
+                services.append(socket.inet_ntoa(addr))
+
+    ServiceBrowser(zeroconf, "_cgminer._tcp.local.", handlers=[on_service])
+    # Allow time for discovery
+    time.sleep(2)
+    zeroconf.close()
+    mdns_hosts = set(services)
+
+    # Combine and return unique hosts
+    return sorted(set(scanned + list(mdns_hosts)))
 
 
 @api_bp.route('/summary')

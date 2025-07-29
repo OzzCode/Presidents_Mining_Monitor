@@ -1,3 +1,5 @@
-flask
-python-dotenv
+flask~=3.1.1
+python-dotenv~=1.1.1
 pycgminer
+zeroconf
+pytest~=8.4.1
