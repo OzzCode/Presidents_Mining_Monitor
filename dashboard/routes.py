@@ -1,11 +1,12 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request
 
-dash_bp = Blueprint('dashboard', __name__)
+dash_bp = Blueprint('dashboard', __name__, url_prefix='/dashboard')
 
 
 @dash_bp.route('/')
 def index():
-    return render_template('index.html')
+    ip = request.args.get('ip')
+    return render_template('dashboard.html', ip=ip)
 
 
 @dash_bp.route('/miners')

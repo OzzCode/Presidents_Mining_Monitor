@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
     <title>Discovered Miners</title>
-    <link rel="stylesheet" href="{{ url_for('static',filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 <nav>
@@ -13,8 +13,17 @@
 </nav>
 <div class="container">
     <h1>Discovered Miners</h1>
-    <ul id="miner-list"></ul>
+    <table class="miners-table">
+        <thead>
+        <tr>
+            <th>Model</th>
+            <th>IP</th>
+            <th>Status</th>
+        </tr>
+        </thead>
+        <tbody id="miner-table"></tbody>
+    </table>
 </div>
-<script src="{{ url_for('static',filename='js/miners.js') }}"></script>
+<script src="{{ url_for('static', filename='js/miners.js') }}"></script>
 </body>
 </html>
