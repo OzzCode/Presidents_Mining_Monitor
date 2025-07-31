@@ -36,4 +36,4 @@ window.onload = () => {
 
 ```javascript
 // Placeholder for dashboard JS: fetch metrics and update DOM elements
-// e.g. use fetch('/api/summary') to populate the fields and log
+// e.g. use fetch('/api/summary') to populate the fields and log```

@@ -10,9 +10,11 @@ api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
 def discover_miners(timeout=1, workers=50):
-    """Discover miners by scanning the configured IP range for open CGMiner port (4028)."""
+    """Discover miners by scanning the configured IP range for open CGMiner port (4028)
+    and via mDNS (_cgminer._tcp.local.) discovery."""
     network = ipaddress.ip_network(MINER_IP_RANGE)
 
+    # Port scan
     def scan_ip(ip):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(timeout)
@@ -25,8 +27,7 @@ def discover_miners(timeout=1, workers=50):
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         results = executor.map(scan_ip, network.hosts())
-
-    scanned = [ip for ip, result in zip(network.hosts(), results) if result]
+    scanned = [ip for ip in results if ip]
 
     # mDNS discovery
     from zeroconf import Zeroconf, ServiceBrowser

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discovered Miners</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<nav class="navbar">
+    <a href="{{ url_for('dashboard.index') }}">Dashboard</a> |
+    <a href="{{ url_for('dashboard.show_miners') }}">Miners</a>
+</nav>
+<div class="container">
+    <h1>Discovered Miners</h1>
+    <ul id="miner-list"></ul>
+</div>
+<script src="{{ url_for('static', filename='js/miners.js') }}"></script>
+</body>
+</html>
