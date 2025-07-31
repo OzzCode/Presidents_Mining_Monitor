@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>Antminer Monitor Home</title>
+    <link rel="stylesheet" href="{{ url_for('static',filename='css/style.css') }}">
+</head>
+<body>
+<nav>
+    <a href="{{ url_for('home') }}">Home</a>
+</nav>
+<div class="container">
+    <h1>Antminer Monitor</h1>
+    <ul class="nav-list">
+        <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
+    </ul>
+</div>
+</body>
+</html>

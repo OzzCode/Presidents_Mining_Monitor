@@ -1,14 +1,19 @@
-from flask import Flask
+from flask import Flask, render_template
 from dashboard.routes import dash_bp
 from api.endpoints import api_bp
 from scheduler import start_scheduler
 
-# Initialize Flask app and register blueprints
 app = Flask(__name__)
+
+
+@app.route('/')
+def home():
+    return render_template('home.html')
+
+
 app.register_blueprint(dash_bp)
 app.register_blueprint(api_bp)
 
-# Start a background polling scheduler before handling requests
 start_scheduler()
 
 if __name__ == '__main__':
