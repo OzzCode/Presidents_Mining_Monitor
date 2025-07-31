@@ -91,3 +91,8 @@ def summary():
         'total_workers': len(miners),
         'log': log
     })
+
+
+@api_bp.route('/miners')
+def miners():
+    return jsonify({'miners': discover_miners()})
