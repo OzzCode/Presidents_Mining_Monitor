@@ -3,7 +3,7 @@ from dashboard.routes import dash_bp
 from api.endpoints import api_bp
 from scheduler import start_scheduler
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static', static_folder='static')
 
 
 @app.route('/')

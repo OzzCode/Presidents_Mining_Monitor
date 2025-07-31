@@ -39,6 +39,26 @@
         <tbody id="stats-log"></tbody>
     </table>
 </div>
+
+<!-- just inside the <body> after your Overview section -->
+<ul class="tabs">
+    <li class="tab active" data-tab="overview">Overview</li>
+    <li class="tab" data-tab="history">History</li>
+</ul>
+
+<div id="history" class="tab-content hidden">
+    <h2>Historical Metrics</h2>
+    <div class="controls">
+        <label>Since:
+            <input type="datetime-local" id="since-input"/>
+        </label>
+        <button id="load-history">Load</button>
+    </div>
+    <canvas id="history-chart"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static','js/history.js') }}"></script>
 <script>const MINER_IP = {{ '"' + ip + '"' if ip else 'null' }};</script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 <footer style="text-align:center; margin:20px;">

@@ -19,13 +19,32 @@ nav a {
     padding: 20px;
 }
 
-.nav-list {
+.nav-list, .tabs {
     list-style: none;
     padding: 0;
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
 }
 
-.nav-list li {
-    margin: 10px 0;
+.nav-list li, .tabs li {
+    margin: 0;
+    padding: 5px 10px;
+    background: #f0f0f0;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.tabs .active {
+    background: #ddd;
+}
+
+.tab-content {
+    display: block;
+}
+
+.tab-content.hidden {
+    display: none;
 }
 
 .metrics {
@@ -52,6 +71,7 @@ nav a {
 table {
     width: 100%;
     border-collapse: collapse;
+    margin-bottom: 20px;
 }
 
 th, td {
@@ -61,4 +81,12 @@ th, td {
 
 th {
     background: #eee;
+}
+
+.controls {
+    margin-bottom: 20px;
+}
+
+.controls label {
+    margin-right: 10px;
 }

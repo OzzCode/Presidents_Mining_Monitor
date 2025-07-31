@@ -1,7 +1,8 @@
 flask~=3.1.1
 python-dotenv~=1.1.1
 pycgminer
-zeroconf
+zeroconf~=0.147.0
 pytest~=8.4.1
-sqlalchemy
-APScheduler
+sqlalchemy~=2.0.42
+APScheduler~=3.11.0
+python-dateutil~=2.9.0.post0
