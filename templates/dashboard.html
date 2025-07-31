@@ -41,5 +41,8 @@
 </div>
 <script>const MINER_IP = {{ '"' + ip + '"' if ip else 'null' }};</script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<footer style="text-align:center; margin:20px;">
+    <a href="{{ url_for('home') }}">Back to Home</a>
+</footer>
 </body>
 </html>
