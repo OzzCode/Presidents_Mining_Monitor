@@ -37,6 +37,7 @@ def discover_miners(timeout=1, workers=50):
     ServiceBrowser(zeroconf, "_cgminer._tcp.local.", handlers=[on_service])
     time.sleep(2)
     zeroconf.close()
+
     return sorted(set(hosts + services))
 
 
@@ -49,6 +50,7 @@ def summary():
     temps = []
     fans = []
     log = []
+
     for ip in miners:
         data = MinerClient(ip).get_summary()
         total_power += data.get('power', 0)
@@ -57,6 +59,7 @@ def summary():
         temps.extend(data.get('temp', []))
         fans.extend(data.get('fan', []))
         log.append({'timestamp': data.get('When'), 'ip': ip, 'hash': data.get('MHS 5s', 0)})
+
     return jsonify({
         'total_power': total_power,
         'total_hashrate': round(total_hash, 3),
@@ -80,6 +83,7 @@ def miners():
             model = 'Unknown'
             status = 'Offline'
         info.append({'model': model, 'ip': ip, 'status': status})
+
     return jsonify({'miners': info})
 
 

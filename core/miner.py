@@ -33,7 +33,9 @@ class MinerClient:
             text = data.decode('utf-8').strip()
             # CGMiner responses may include multiple JSON objects; take the first
             first_line = text.splitlines()[0]
+
             return json.loads(first_line)
+
         finally:
             sock.close()
 

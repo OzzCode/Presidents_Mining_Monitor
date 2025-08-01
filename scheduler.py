@@ -3,15 +3,17 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from core.db import Base, engine, SessionLocal, Metric
 from api.endpoints import discover_miners
 from core.miner import MinerClient
-from config import POLL_INTERVAL
+from config import POLL_INTERVAL, TEMP_THRESHOLD, HASHRATE_DROP_THRESHOLD
+from notifications import send_email_alert
 
-
-# create tables
-def setup_db():
-    Base.metadata.create_all(bind=engine)
+# Ensure database tables are created
+Base.metadata.create_all(bind=engine)
 
 
 def poll_metrics():
+    """
+    Poll all discovered miners, store metrics, and send alerts on thresholds.
+    """
     session = SessionLocal()
     for ip in discover_miners():
         data = MinerClient(ip).get_summary()
@@ -26,22 +28,41 @@ def poll_metrics():
             avg_fan_rpm=(sum(fans) / len(fans) if fans else 0)
         )
         session.add(metric)
+
+        # Alert on a temperature threshold
+        if metric.avg_temp_c > TEMP_THRESHOLD:
+            send_email_alert(
+                subject=f"High Temperature Alert - {ip}",
+                message=f"Miner {ip} reached {metric.avg_temp_c}°C (threshold: {TEMP_THRESHOLD}°C)."
+            )
+
+        # TODO: compare hashrate against previous sample for drop alerts
+        # Alert on hashrate drop threshold
+        if metric.hashrate_ths < HASHRATE_DROP_THRESHOLD:
+            send_email_alert(
+                subject=f"Low Hashrate Alert - {ip}",
+                message=f"Miner {ip} dropped below {metric.hashrate_ths} TH/s (threshold: {HASHRATE_DROP_THRESHOLD} TH/s)."
+            )
+
     session.commit()
     session.close()
 
 
 def start_scheduler():
-    setup_db()
+    """
+    Initialize and start the background scheduler for polling.
+    """
     scheduler = BackgroundScheduler()
     scheduler.add_job(poll_metrics, 'interval', seconds=POLL_INTERVAL, id='poll_metrics')
     scheduler.start()
-    print(f"Polling every {POLL_INTERVAL}s...")
+    print(f"Scheduler started: polling every {POLL_INTERVAL} seconds.")
 
 
 if __name__ == '__main__':
     start_scheduler()
     try:
+        # Keep the main thread alive to let the scheduler run
         while True:
             time.sleep(1)
-    except KeyboardInterrupt:
-        pass
+    except (KeyboardInterrupt, SystemExit):
+        print("Scheduler stopped.")
