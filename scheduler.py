@@ -38,7 +38,7 @@ def poll_metrics():
 
         # TODO: compare hashrate against previous sample for drop alerts
         # Alert on hashrate drop threshold
-        if metric.hashrate_ths < HASHRATE_DROP_THRESHOLD:
+        if metric.hashrate_ths > HASHRATE_DROP_THRESHOLD:
             send_email_alert(
                 subject=f"Low Hashrate Alert - {ip}",
                 message=f"Miner {ip} dropped below {metric.hashrate_ths} TH/s (threshold: {HASHRATE_DROP_THRESHOLD} TH/s)."

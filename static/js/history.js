@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function loadHistory() {
+    console.log('Loading history…', MINER_IP, sinceEl.value);
     let url = `/api/metrics?limit=500`;
     if (MINER_IP) url += `&ip=${MINER_IP}`;
     if (sinceEl.value) url += `&since=${new Date(sinceEl.value).toISOString()}`;

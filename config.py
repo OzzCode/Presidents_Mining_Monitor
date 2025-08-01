@@ -10,5 +10,4 @@ SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
 ALERT_EMAIL = os.getenv('ALERT_EMAIL')
 
 TEMP_THRESHOLD = float(os.getenv('TEMP_THRESHOLD', 80))
-
 HASHRATE_DROP_THRESHOLD = float(os.getenv('HASHRATE_DROP_THRESHOLD', 0.9))  # e.g. 10% drop
