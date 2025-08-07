@@ -15,29 +15,61 @@ class MinerClient:
     def _send_command(self, cmd: str) -> dict:
         """
         Send a command to the CGMiner API and return the parsed JSON response.
+        The command is newline-terminated and we read until we detect a newline
+        (or null) or the peer closes the socket.
         """
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(self.timeout)
         try:
+            # Connect
             sock.connect((self.ip, self.port))
             # CGMiner expects commands terminated by newline
-            sock.sendall((cmd.strip() + "").encode('utf-8'))
-            data = b''
-            # Read until the socket closes
+            outgoing = (cmd.strip() + "\n").encode("utf-8")
+            sock.sendall(outgoing)
+
+            data = bytearray()
             while True:
-                chunk = sock.recv(4096)
-                if not chunk:
+                try:
+                    chunk = sock.recv(4096)
+                except socket.timeout:
+                    # If we've received nothing yet, propagate timeout so callers
+                    # can handle it (and tests expecting socket.timeout still pass).
+                    if not data:
+                        raise
+                    # If we have partial data, break and attempt to parse it.
                     break
+
+                if not chunk:
+                    # Peer closed connection
+                    break
+
                 data += chunk
 
-            text = data.decode('utf-8').strip()
-            # CGMiner responses may include multiple JSON objects; take the first
-            first_line = text.splitlines()[0]
+                # Break on common terminators for CGMiner responses
+                if b"\n" in chunk or b"\x00" in chunk:
+                    break
 
+            if not data:
+                # No response data at all; raise timeout-like behavior
+                raise socket.timeout("No data received from miner before timeout/close")
+
+            # Extract first message line (before newline or null)
+            raw = bytes(data)
+            if b"\x00" in raw:
+                raw = raw.split(b"\x00", 1)[0]
+            if b"\n" in raw:
+                first_line = raw.split(b"\n", 1)[0].decode("utf-8", errors="strict").strip()
+            else:
+                first_line = raw.decode("utf-8", errors="strict").strip()
+
+            # Parse JSON; ValueError will propagate as desired by tests
             return json.loads(first_line)
 
         finally:
-            sock.close()
+            try:
+                sock.close()
+            except Exception:
+                pass
 
     def get_summary(self) -> dict:
         """Get overall summary (hashrate, temperatures, uptime, etc.)"""

@@ -52,7 +52,12 @@ def summary():
     log = []
 
     for ip in miners:
-        data = MinerClient(ip).get_summary()
+        try:
+            data = MinerClient(ip).get_summary()
+        except (socket.timeout, OSError, ValueError):
+            # Skip miners that are offline, slow, or return invalid data
+            continue
+
         total_power += data.get('power', 0)
         total_hash += data.get('MHS 5s', 0) / 1e6
         total_uptime = max(total_uptime, data.get('Elapsed', 0))
