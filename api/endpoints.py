@@ -2,6 +2,7 @@ import ipaddress
 import socket
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timezone
 from flask import Blueprint, jsonify, request
 from zeroconf import Zeroconf, ServiceBrowser
 from dateutil import parser
@@ -92,6 +93,22 @@ def miners():
     return jsonify({'miners': info})
 
 
+def _normalize_since(since: str):
+    """Return a *naive UTC* datetime for filtering metrics.
+
+    Accepts ISO8601 with/without a timezone. If timezone-aware, converts to UTC and
+    drops tzinfo to match naive UTC storage in the DB.
+
+    Examples:
+      naive: 2025-07-31T12:00:00
+      aware: 2025-07-31T12:00:00Z or 2025-07-31T08:00:00-04:00
+    """
+    dt = parser.isoparse(since)
+    if dt.tzinfo:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 @api_bp.route('/metrics')
 def metrics():
     """
@@ -109,10 +126,9 @@ def metrics():
     if ip_filter:
         q = q.filter(Metric.miner_ip == ip_filter)
     if since:
-        dt = parser.isoparse(since)
+        dt = _normalize_since(since)
         q = q.filter(Metric.timestamp >= dt)
-    rows = (q.order_by(Metric.timestamp.asc())
-            .limit(limit).all())
+    rows = q.order_by(Metric.timestamp.asc()).limit(limit).all()
     session.close()
 
     return jsonify([

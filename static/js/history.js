@@ -23,6 +23,7 @@ async function loadHistory() {
     let url = `/api/metrics?limit=500`;
     if (MINER_IP) url += `&ip=${MINER_IP}`;
     if (sinceEl.value) url += `&since=${new Date(sinceEl.value).toISOString()}`;
+    console.log('Fetching history with URL:', url);
     const r = await fetch(url), d = await r.json();
     historyChart.data.labels = d.map(x => x.timestamp);
     historyChart.data.datasets[0].data = d.map(x => x.hashrate_ths);

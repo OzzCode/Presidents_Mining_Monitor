@@ -15,7 +15,7 @@ class MinerClient:
     def _send_command(self, cmd: str) -> dict:
         """
         Send a command to the CGMiner API and return the parsed JSON response.
-        The command is newline-terminated and we read until we detect a newline
+        The command is newline-terminated, and we read until we detect a newline
         (or null) or the peer closes the socket.
         """
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -23,7 +23,7 @@ class MinerClient:
         try:
             # Connect
             sock.connect((self.ip, self.port))
-            # CGMiner expects commands terminated by newline
+            # TODO: CGMiner accepts simple commands like "summary" and also JSON {"command":"summary"}
             outgoing = (cmd.strip() + "\n").encode("utf-8")
             sock.sendall(outgoing)
 
@@ -33,10 +33,9 @@ class MinerClient:
                     chunk = sock.recv(4096)
                 except socket.timeout:
                     # If we've received nothing yet, propagate timeout so callers
-                    # can handle it (and tests expecting socket.timeout still pass).
+                    # can handle it. If we have partial data, break and attempt to parse it.
                     if not data:
                         raise
-                    # If we have partial data, break and attempt to parse it.
                     break
 
                 if not chunk:
@@ -62,7 +61,7 @@ class MinerClient:
             else:
                 first_line = raw.decode("utf-8", errors="strict").strip()
 
-            # Parse JSON; ValueError will propagate as desired by tests
+            # Parse JSON
             return json.loads(first_line)
 
         finally:

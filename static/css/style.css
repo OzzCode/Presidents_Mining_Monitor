@@ -2,7 +2,7 @@
 :root {
     --color-bg: #f0f2f5;
     --color-primary: #567ace;
-    --color-secondary: #4a4e69;
+    --color-secondary: #ffffff;
     --color-accent: #f08a5d;
     --color-card: #ffffff;
     --color-text: #2e3440;
@@ -13,7 +13,7 @@
     :root {
         --color-bg: #1e1e2f;
         --color-primary: #8aa6f0;
-        --color-secondary: #2e2e3f;
+        --color-secondary: #c3c3d5;
         --color-accent: #f08a5d;
         --color-card: #2a2a3a;
         --color-text: #e0e0e8;
