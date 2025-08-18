@@ -218,3 +218,7 @@ footer a {
 footer a:hover {
     opacity: 0.7;
 }
+
+/*#chart-10m, #chart-1h, #chart-1d {*/
+/*    max-height: 160px;*/
+/*}*/

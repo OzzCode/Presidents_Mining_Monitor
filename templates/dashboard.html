@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
     <title>Antminer Monitor Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 </head>
 <body>
 <nav>
@@ -27,6 +28,22 @@
         <div class="card"><h2>Workers</h2>
             <p id="total-workers">--</p></div>
     </div>
+    <h2>Hashrate (recent)</h2>
+    <div class="metrics">
+        <div class="card">
+            <h3>Last 10 min</h3>
+            <canvas id="chart-10m"></canvas>
+        </div>
+        <div class="card">
+            <h3>Last 1 hour</h3>
+            <canvas id="chart-1h"></canvas>
+        </div>
+        <div class="card">
+            <h3>Last 1 day</h3>
+            <canvas id="chart-1d"></canvas>
+        </div>
+    </div>
+
     <h2>Statistics Log</h2>
     <table>
         <thead>
@@ -57,11 +74,28 @@
     <canvas id="history-chart"></canvas>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- In the History tab controls area -->
+<div class="controls">
+    <label>Since: <input type="datetime-local" id="since-input"></label>
+    <button id="load-history">Load</button>
+    <label style="margin-left:1rem;">
+        <input type="checkbox" id="auto-refresh-history"> Auto refresh
+    </label>
+    <select id="quick-range" aria-label="Quick range">
+        <option value="">Quick range…</option>
+        <option value="3600">Last 1h</option>
+        <option value="21600">Last 6h</option>
+        <option value="86400">Last 24h</option>
+    </select>
+</div>
+<canvas id="history-chart"></canvas>
+
+<script>const MINER_IP = {{ '\"'+ip+'\"' if ip else 'null' }};</script>
 <script src="{{ url_for('static', filename='js/tabs.js') }}"></script>
-<script src="{{ url_for('static', filename='js/history.js') }}"></script>
-<script>const MINER_IP = {{ '"' + ip + '"' if ip else 'null' }};</script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/history.js') }}"></script>
+<script src="{{ url_for('static', filename='js/overview_history.js') }}"></script>
+
 
 <footer style="text-align:center; margin:20px;">
     <a href="{{ url_for('home') }}">Back to Home</a>

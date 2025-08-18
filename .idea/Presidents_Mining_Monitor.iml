@@ -7,6 +7,7 @@
     <orderEntry type="jdk" jdkName="Python 3.13 (.venv)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" name="chart.js" level="application" />
+    <orderEntry type="library" name="chartjs-adapter-date-fns" level="application" />
   </component>
   <component name="TemplatesService">
     <option name="TEMPLATE_CONFIGURATION" value="Jinja2" />

@@ -44,43 +44,27 @@ def discover_miners(timeout=1, workers=50):
 
 @api_bp.route('/summary')
 def summary():
+    """Current metrics (power, hashrate, temp, fans). Optionally filter by ?ip=.
+
+    Example:
+      curl "http://localhost:5000/api/summary?ip=192.168.1.100"
+    """
     ipf = request.args.get('ip')
     miners = [ipf] if ipf else discover_miners()
-    data = []
+    data = [];
     totals = {'power': 0, 'hash': 0, 'uptime': 0, 'temps': [], 'fans': []}
-
-    session = SessionLocal()
     for ip in miners:
-        payload = None
-        # noinspection PyBroadException
         try:
-            payload = MinerClient(ip).get_summary()
+            s = MinerClient(ip).get_summary()
         except Exception:
-            # Fallback: use the last DB metric for this IP (demo/offline mode)
-            last = (session.query(Metric)
-                    .filter(Metric.miner_ip == ip)
-                    .order_by(Metric.timestamp.desc())
-                    .first())
-            if last:
-                payload = {
-                    'power': last.power_w,
-                    'MHS 5s': last.hashrate_ths * 1e6,
-                    'Elapsed': last.elapsed_s,
-                    'temp': [last.avg_temp_c],
-                    'fan': [last.avg_fan_rpm],
-                    'When': last.timestamp.isoformat()
-                }
-        if not payload:
+            # unreachable or non-cgminer host; skip
             continue
-
-        totals['power'] += payload.get('power', 0)
-        totals['hash'] += payload.get('MHS 5s', 0) / 1e6
-        totals['uptime'] = max(totals['uptime'], payload.get('Elapsed', 0))
-        totals['temps'] += payload.get('temp', [])
-        totals['fans'] += payload.get('fan', [])
-        data.append({'timestamp': payload.get('When'), 'ip': ip, 'hash': payload.get('MHS 5s', 0)})
-
-    session.close()
+        totals['power'] += s.get('power', 0)
+        totals['hash'] += s.get('MHS 5s', 0) / 1e6
+        totals['uptime'] = max(totals['uptime'], s.get('Elapsed', 0))
+        totals['temps'] += s.get('temp', [])
+        totals['fans'] += s.get('fan', [])
+        data.append({'timestamp': s.get('When'), 'ip': ip, 'hash': s.get('MHS 5s', 0)})
     return jsonify({
         'total_power': totals['power'],
         'total_hashrate': round(totals['hash'], 3),
@@ -89,23 +73,6 @@ def summary():
         'avg_fan_speed': round(sum(totals['fans']) / len(totals['fans']), 0) if totals['fans'] else 0,
         'total_workers': len(miners), 'log': data
     })
-
-
-@api_bp.route('/miners')
-def miners():
-    info = []
-    for ip in discover_miners():
-        # noinspection PyBroadException
-        try:
-            d = MinerClient(ip).get_summary()
-            model = d.get('Model', 'Unknown')
-            status = 'Online'
-        except:
-            model = 'Unknown'
-            status = 'Offline'
-        info.append({'model': model, 'ip': ip, 'status': status})
-
-    return jsonify({'miners': info})
 
 
 def _normalize_since(since: str):
@@ -126,20 +93,25 @@ def _normalize_since(since: str):
 
 @api_bp.route('/metrics')
 def metrics():
+    """Historical data with optional filters.
+
+    Query params:
+      ip     — miner IP address
+      since  — ISO8601 timestamp (naive or tz-aware)
+      limit  — max samples (default 500)
+
+    Examples:
+      curl "http://localhost:5000/api/metrics?limit=50"
+      curl "http://localhost:5000/api/metrics?ip=192.168.1.100&since=2025-07-31T12:00:00Z"
     """
-    Return historical metrics, optionally filtered by:
-      - ip:    miner IP address
-      - since: ISO8601 timestamp
-      - limit: number of samples
-    """
-    ip_filter = request.args.get('ip')
+    ipf = request.args.get('ip')
     since = request.args.get('since')
     limit = int(request.args.get('limit', 500))
 
     session = SessionLocal()
     q = session.query(Metric)
-    if ip_filter:
-        q = q.filter(Metric.miner_ip == ip_filter)
+    if ipf:
+        q = q.filter(Metric.miner_ip == ipf)
     if since:
         dt = _normalize_since(since)
         q = q.filter(Metric.timestamp >= dt)
@@ -148,11 +120,11 @@ def metrics():
 
     return jsonify([
         {
-            'timestamp': m.timestamp.isoformat(),
-            'power_w': m.power_w,
-            'hashrate_ths': m.hashrate_ths,
-            'avg_temp_c': m.avg_temp_c,
-            'avg_fan_rpm': m.avg_fan_rpm
+            'timestamp': r.timestamp.isoformat(),
+            'power_w': r.power_w,
+            'hashrate_ths': r.hashrate_ths,
+            'avg_temp_c': r.avg_temp_c,
+            'avg_fan_rpm': r.avg_fan_rpm
         }
-        for m in rows
+        for r in rows
     ])

@@ -14,7 +14,7 @@ Base.metadata.create_all(bind=engine)
 NUM_ENTRIES = 240  # 2 hours @ 30 s intervals
 INTERVAL_SEC = 30
 START_TIME = datetime.datetime.utcnow() - datetime.timedelta(hours=2)
-MINER_IP = '192.168.1.100'  # the fake miner IP you can pass to /dashboard/?ip=<IP>
+MINER_IP = '192.168.72.100'  # the fake miner IP you can pass to /dashboard/?ip=<IP>
 
 session = SessionLocal()
 current = START_TIME
@@ -25,7 +25,7 @@ for _ in range(NUM_ENTRIES):
         timestamp=current,
         power_w=random.uniform(3200, 3500),
         hashrate_ths=random.uniform(80, 100),  # in TH/s
-        elapsed_s=int((current - datetime.datetime(1970, 1, 1)).total_seconds()),
+        elapsed_s=int((current - datetime.datetime(2025, 8, 18)).total_seconds()),
         avg_temp_c=random.uniform(60, 75),
         avg_fan_rpm=random.uniform(5000, 7000)
     )

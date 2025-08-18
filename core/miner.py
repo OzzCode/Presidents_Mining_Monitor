@@ -1,83 +1,52 @@
 import socket
 import json
+from config import CGMINER_TIMEOUT
+
+
+class MinerError(Exception):
+    pass
 
 
 class MinerClient:
-    """
-    Client for communicating with an Antminer via the CGMiner API.
-    """
+    """CGMiner API client for Antminer devices."""
 
-    def __init__(self, ip, port=4028, timeout=5):
+    def __init__(self, ip, port=4028, timeout: float = None):
         self.ip = ip
         self.port = port
-        self.timeout = timeout
+        self.timeout = timeout if timeout is not None else CGMINER_TIMEOUT
 
     def _send_command(self, cmd: str) -> dict:
-        """
-        Send a command to the CGMiner API and return the parsed JSON response.
-        The command is newline-terminated, and we read until we detect a newline
-        (or null) or the peer closes the socket.
-        """
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(self.timeout)
         try:
-            # Connect
-            sock.connect((self.ip, self.port))
-            # TODO: CGMiner accepts simple commands like "summary" and also JSON {"command":"summary"}
-            outgoing = (cmd.strip() + "\n").encode("utf-8")
-            sock.sendall(outgoing)
+            # Create connection with overall timeout
+            with socket.create_connection((self.ip, self.port), self.timeout) as sock:
+                sock.settimeout(self.timeout)
+                sock.sendall((cmd + " ").encode())
+                chunks = []
+                while True:
+                    try:
+                        chunk = sock.recv(4096)
+                    except (socket.timeout, TimeoutError):
+                        # stop reading on timeout; use what we have
+                        break
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+            if not chunks:
+                raise MinerError("No response from miner")
+            raw = b''.join(chunks).decode(errors='ignore')
+            # cgminer can send a single-line JSON, sometimes null-terminated
+            line = raw.splitlines()[0] if " " in raw else raw.strip("�")
 
-            data = bytearray()
-            while True:
-                try:
-                    chunk = sock.recv(4096)
-                except socket.timeout:
-                    # If we've received nothing yet, propagate timeout so callers
-                    # can handle it. If we have partial data, break and attempt to parse it.
-                    if not data:
-                        raise
-                    break
+            return json.loads(line)
 
-                if not chunk:
-                    # Peer closed connection
-                    break
-
-                data += chunk
-
-                # Break on common terminators for CGMiner responses
-                if b"\n" in chunk or b"\x00" in chunk:
-                    break
-
-            if not data:
-                # No response data at all; raise timeout-like behavior
-                raise socket.timeout("No data received from miner before timeout/close")
-
-            # Extract first message line (before newline or null)
-            raw = bytes(data)
-            if b"\x00" in raw:
-                raw = raw.split(b"\x00", 1)[0]
-            if b"\n" in raw:
-                first_line = raw.split(b"\n", 1)[0].decode("utf-8", errors="strict").strip()
-            else:
-                first_line = raw.decode("utf-8", errors="strict").strip()
-
-            # Parse JSON
-            return json.loads(first_line)
-
-        finally:
-            try:
-                sock.close()
-            except Exception:
-                pass
+        except (socket.timeout, TimeoutError, ConnectionRefusedError, OSError, json.JSONDecodeError) as e:
+            raise MinerError(f"CGMiner request failed: {e}")
 
     def get_summary(self) -> dict:
-        """Get overall summary (hashrate, temperatures, uptime, etc.)"""
         return self._send_command('summary')
 
     def get_stats(self) -> dict:
-        """Get detailed stats for each chain."""
         return self._send_command('stats')
 
     def get_pools(self) -> dict:
-        """Get mining pool information."""
         return self._send_command('pools')

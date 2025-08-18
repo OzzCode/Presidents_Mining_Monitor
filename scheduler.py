@@ -1,17 +1,17 @@
 import time
-import json
-import socket
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from core.db import Base, engine, SessionLocal, Metric
 from api.endpoints import discover_miners
 from core.miner import MinerClient
-from notifications import send_email_alert
 from config import (
-    POLL_INTERVAL, TEMP_THRESHOLD,
+    POLL_INTERVAL,
+    TEMP_THRESHOLD,
     HASHRATE_DROP_THRESHOLD,
-    ALERT_COOLDOWN_MINUTES, ROLLING_WINDOW_SAMPLES,
+    ALERT_COOLDOWN_MINUTES,
+    ROLLING_WINDOW_SAMPLES,
 )
+from notifications import send_email_alert
 
 # Ensure database tables are created
 Base.metadata.create_all(bind=engine)
@@ -30,47 +30,6 @@ def _cooldown_ok(ip: str, alert_type: str) -> bool:
 
 def _mark_alert(ip: str, alert_type: str):
     LAST_ALERTS[(ip, alert_type)] = datetime.utcnow()
-
-
-def _extract_metrics(ip: str, data: dict) -> dict:
-    """
-    Normalize CGMiner-like responses to the fields used by Metric.
-    CGMiner typically returns: {"STATUS": [...], "SUMMARY": [{...}], ...}
-    Gracefully fall back to zeros when fields are missing.
-    """
-    # Try to read from SUMMARY[0] if present
-    summary = data
-    if isinstance(data, dict) and "SUMMARY" in data and isinstance(data["SUMMARY"], list) and data["SUMMARY"]:
-        summary = data["SUMMARY"][0] or {}
-
-    temps = summary.get('temp') or data.get('temp') or []  # some firmwares embed arrays elsewhere
-    fans = summary.get('fan') or data.get('fan') or []
-
-    power = summary.get('power') or summary.get('Power') or 0
-    # CGMiner exposes "MHS 5s" in MH/s; convert to TH/s
-    mhs_5s = summary.get('MHS 5s') or summary.get('GHS 5s')  # some variants use GHS 5s
-    if mhs_5s is None:
-        # If only GHS 5s present, convert to TH/s; if MHS 5s present, convert to TH/s
-        ghs_5s = summary.get('GHS 5s')
-        if ghs_5s is not None:
-            hashrate_ths = float(ghs_5s) / 1000.0
-        else:
-            hashrate_ths = 0.0
-    else:
-        hashrate_ths = float(mhs_5s) / 1e6
-
-    elapsed_s = int(summary.get('Elapsed') or 0)
-    avg_temp_c = float(sum(temps) / len(temps)) if temps else 0.0
-    avg_fan_rpm = float(sum(fans) / len(fans)) if fans else 0.0
-
-    return {
-        "miner_ip": ip,
-        "power_w": power or 0,
-        "hashrate_ths": hashrate_ths,
-        "elapsed_s": elapsed_s,
-        "avg_temp_c": avg_temp_c,
-        "avg_fan_rpm": avg_fan_rpm,
-    }
 
 
 def poll_metrics():
