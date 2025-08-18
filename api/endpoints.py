@@ -44,36 +44,50 @@ def discover_miners(timeout=1, workers=50):
 
 @api_bp.route('/summary')
 def summary():
-    """Aggregate summary metrics, optionally filtered by IP."""
-    ip_filter = request.args.get('ip')
-    miners = [ip_filter] if ip_filter else discover_miners()
-    total_power = total_hash = total_uptime = 0
-    temps = []
-    fans = []
-    log = []
+    ipf = request.args.get('ip')
+    miners = [ipf] if ipf else discover_miners()
+    data = []
+    totals = {'power': 0, 'hash': 0, 'uptime': 0, 'temps': [], 'fans': []}
 
+    session = SessionLocal()
     for ip in miners:
+        payload = None
+        # noinspection PyBroadException
         try:
-            data = MinerClient(ip).get_summary()
-        except (socket.timeout, OSError, ValueError):
-            # Skip miners that are offline, slow, or return invalid data
+            payload = MinerClient(ip).get_summary()
+        except Exception:
+            # Fallback: use the last DB metric for this IP (demo/offline mode)
+            last = (session.query(Metric)
+                    .filter(Metric.miner_ip == ip)
+                    .order_by(Metric.timestamp.desc())
+                    .first())
+            if last:
+                payload = {
+                    'power': last.power_w,
+                    'MHS 5s': last.hashrate_ths * 1e6,
+                    'Elapsed': last.elapsed_s,
+                    'temp': [last.avg_temp_c],
+                    'fan': [last.avg_fan_rpm],
+                    'When': last.timestamp.isoformat()
+                }
+        if not payload:
             continue
 
-        total_power += data.get('power', 0)
-        total_hash += data.get('MHS 5s', 0) / 1e6
-        total_uptime = max(total_uptime, data.get('Elapsed', 0))
-        temps.extend(data.get('temp', []))
-        fans.extend(data.get('fan', []))
-        log.append({'timestamp': data.get('When'), 'ip': ip, 'hash': data.get('MHS 5s', 0)})
+        totals['power'] += payload.get('power', 0)
+        totals['hash'] += payload.get('MHS 5s', 0) / 1e6
+        totals['uptime'] = max(totals['uptime'], payload.get('Elapsed', 0))
+        totals['temps'] += payload.get('temp', [])
+        totals['fans'] += payload.get('fan', [])
+        data.append({'timestamp': payload.get('When'), 'ip': ip, 'hash': payload.get('MHS 5s', 0)})
 
+    session.close()
     return jsonify({
-        'total_power': total_power,
-        'total_hashrate': round(total_hash, 3),
-        'total_uptime': total_uptime,
-        'avg_temp': round(sum(temps) / len(temps), 1) if temps else 0,
-        'avg_fan_speed': round(sum(fans) / len(fans), 0) if fans else 0,
-        'total_workers': len(miners),
-        'log': log
+        'total_power': totals['power'],
+        'total_hashrate': round(totals['hash'], 3),
+        'total_uptime': totals['uptime'],
+        'avg_temp': round(sum(totals['temps']) / len(totals['temps']), 1) if totals['temps'] else 0,
+        'avg_fan_speed': round(sum(totals['fans']) / len(totals['fans']), 0) if totals['fans'] else 0,
+        'total_workers': len(miners), 'log': data
     })
 
 
@@ -81,6 +95,7 @@ def summary():
 def miners():
     info = []
     for ip in discover_miners():
+        # noinspection PyBroadException
         try:
             d = MinerClient(ip).get_summary()
             model = d.get('Model', 'Unknown')
