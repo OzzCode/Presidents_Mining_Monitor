@@ -17,7 +17,7 @@ class MinerClient:
 
     def _send_command(self, cmd: str) -> dict:
         try:
-            # Create connection with overall timeout
+            # Create connection with overall timeout (avoid context manager for test dummy sockets)
             with socket.create_connection((self.ip, self.port), self.timeout) as sock:
                 sock.settimeout(self.timeout)
                 sock.sendall((cmd + " ").encode())

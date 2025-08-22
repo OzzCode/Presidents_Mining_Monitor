@@ -1,7 +1,6 @@
 from datetime import datetime
 import pytest
 from flask import Flask
-
 import api.endpoints as endpoints
 from api.endpoints import api_bp, _normalize_since
 
