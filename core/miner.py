@@ -1,10 +1,23 @@
 import socket
 import json
+import datetime as _dt
 from config import CGMINER_TIMEOUT
 
 
 class MinerError(Exception):
     pass
+
+
+def _to_float(x):
+    try:
+        return float(x)
+    except ValueError:
+        return None
+
+
+def _avg(seq):
+    vals = [v for v in (_to_float(s) for s in seq) if v is not None]
+    return sum(vals) / len(vals) if vals else 0.0
 
 
 class MinerClient:
@@ -33,9 +46,9 @@ class MinerClient:
                     chunks.append(chunk)
             if not chunks:
                 raise MinerError("No response from miner")
-            raw = b''.join(chunks).decode(errors='ignore')
+            raw = b"".join(chunks).decode(errors='ignore').strip("\x00\r\n ")
             # cgminer can send a single-line JSON, sometimes null-terminated
-            line = raw.splitlines()[0] if " " in raw else raw.strip("�")
+            line = raw.splitlines()[0] if "\n" in raw else raw
 
             return json.loads(line)
 
@@ -50,3 +63,57 @@ class MinerClient:
 
     def get_pools(self) -> dict:
         return self._send_command('pools')
+
+    # ---- Normalized view across SUMMARY/STATS ----
+    def fetch_normalized(self) -> dict:
+        """Return a normalized dict for dashboard & storage.
+
+        Keys:
+          hashrate_ths (float), elapsed_s (int), avg_temp_c (float),
+          avg_fan_rpm (float), power_w (float), when (ISO8601 string)
+        """
+        summ = self.get_summary()  # {"SUMMARY":[{...}], "STATUS":[{...}]}
+        try:
+            stats = self.get_stats()  # {"STATS":[{...}, ...]}
+        except MinerError:
+            stats = {}
+
+        s0 = (summ.get("SUMMARY") or [{}])[0]
+
+        # Hashrate: prefer GHS, fallback to MHS
+        ths = 0.0
+        for k in ("GHS 5s", "GHS av", "GHS 1s", "MHS 5s", "MHS av", "MHS 1s"):
+            if k in s0:
+                val = _to_float(s0.get(k)) or 0.0
+                ths = (val / 1000.0) if k.startswith("GHS") else (val / 1_000_000.0)
+                break
+
+        elapsed = int(_to_float(s0.get("Elapsed")) or 0)
+        when_val = (summ.get("STATUS") or [{}])[0].get("When")
+        if isinstance(when_val, (int, float)):
+            when_iso = _dt.datetime.utcfromtimestamp(int(when_val)).isoformat() + "Z"
+        else:
+            when_iso = _dt.datetime.utcnow().isoformat() + "Z"
+
+        temps, fans, powers = [], [], []
+        for entry in (stats.get("STATS") or []):
+            for key, val in entry.items():
+                fv = _to_float(val)
+                if fv is None:
+                    continue
+                lk = str(key).lower()
+                if lk.startswith("temp"):
+                    temps.append(fv)
+                elif lk.startswith("fan"):
+                    fans.append(fv)
+                elif lk in ("power", "device power", "power_draw", "chain_power"):
+                    powers.append(fv)
+
+        return {
+            "hashrate_ths": ths,
+            "elapsed_s": elapsed,
+            "avg_temp_c": _avg(temps),
+            "avg_fan_rpm": _avg(fans),
+            "power_w": sum(powers) if powers else 0.0,
+            "when": when_iso,
+        }

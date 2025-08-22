@@ -11,6 +11,8 @@ POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', 30))
 SMTP_SERVER = os.getenv('SMTP_SERVER')
 SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
 ALERT_EMAIL = os.getenv('ALERT_EMAIL')
+# SMTP_USER = os.getenv('SMTP_USER')
+# SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
 
 # Alert thresholds & behavior
 TEMP_THRESHOLD = float(os.getenv('TEMP_THRESHOLD', 80))

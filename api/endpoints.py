@@ -7,7 +7,7 @@ from flask import Blueprint, jsonify, request
 from zeroconf import Zeroconf, ServiceBrowser
 from dateutil import parser
 from core.db import SessionLocal, Metric
-from core.miner import MinerClient
+from core.miner import MinerClient, MinerError
 from config import MINER_IP_RANGE
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -22,22 +22,24 @@ def discover_miners(timeout=1, workers=50):
             try:
                 s.connect((str(ip), 4028))
                 return str(ip)
-            except:
+            except Exception:
                 return None
 
-    hosts = [ip for ip in ThreadPoolExecutor(workers).map(scan, network.hosts()) if ip]
-    zeroconf = Zeroconf()
+    hosts = [i for i in ThreadPoolExecutor(workers).map(scan, network.hosts()) if i]
+
+    # mDNS discovery
+    zc = Zeroconf()
     services = []
 
-    def on_service(zc, type_, name):
-        info = zc.get_service_info(type_, name)
+    def on_srv(zc_, type_, name):
+        info = zc_.get_service_info(type_, name)
         if info:
-            for addr in info.addresses:
-                services.append(socket.inet_ntoa(addr))
+            for a in info.addresses:
+                services.append(socket.inet_ntoa(a))
 
-    ServiceBrowser(zeroconf, "_cgminer._tcp.local.", handlers=[on_service])
+    ServiceBrowser(zc, "_cgminer._tcp.local.", handlers=[on_srv])
     time.sleep(2)
-    zeroconf.close()
+    zc.close()
 
     return sorted(set(hosts + services))
 
@@ -51,27 +53,54 @@ def summary():
     """
     ipf = request.args.get('ip')
     miners = [ipf] if ipf else discover_miners()
-    data = [];
-    totals = {'power': 0, 'hash': 0, 'uptime': 0, 'temps': [], 'fans': []}
+
+    data = []
+    totals = {'power': 0.0, 'hash': 0.0, 'uptime': 0, 'temps': [], 'fans': []}
+
+    session = SessionLocal()
     for ip in miners:
+        payload = None
         try:
-            s = MinerClient(ip).get_summary()
-        except Exception:
-            # unreachable or non-cgminer host; skip
+            payload = MinerClient(ip).fetch_normalized()
+        except MinerError:
+            # Fallback: use the last DB metric for this IP (offline/demo mode)
+            last = (
+                session.query(Metric)
+                .filter(Metric.miner_ip == ip)
+                .order_by(Metric.timestamp.desc())
+                .first()
+            )
+            if last:
+                payload = {
+                    'hashrate_ths': last.hashrate_ths,
+                    'elapsed_s': last.elapsed_s,
+                    'avg_temp_c': last.avg_temp_c,
+                    'avg_fan_rpm': last.avg_fan_rpm,
+                    'power_w': last.power_w,
+                    'when': last.timestamp.isoformat() + 'Z',
+                }
+        if not payload:
             continue
-        totals['power'] += s.get('power', 0)
-        totals['hash'] += s.get('MHS 5s', 0) / 1e6
-        totals['uptime'] = max(totals['uptime'], s.get('Elapsed', 0))
-        totals['temps'] += s.get('temp', [])
-        totals['fans'] += s.get('fan', [])
-        data.append({'timestamp': s.get('When'), 'ip': ip, 'hash': s.get('MHS 5s', 0)})
+
+        totals['power'] += float(payload['power_w'])
+        totals['hash'] += float(payload['hashrate_ths'])
+        totals['uptime'] = max(totals['uptime'], int(payload['elapsed_s']))
+        if payload['avg_temp_c']:
+            totals['temps'].append(float(payload['avg_temp_c']))
+        if payload['avg_fan_rpm']:
+            totals['fans'].append(float(payload['avg_fan_rpm']))
+
+        data.append({'timestamp': payload['when'], 'ip': ip, 'hash': payload['hashrate_ths']})
+
+    session.close()
     return jsonify({
-        'total_power': totals['power'],
+        'total_power': round(totals['power'], 1),
         'total_hashrate': round(totals['hash'], 3),
         'total_uptime': totals['uptime'],
         'avg_temp': round(sum(totals['temps']) / len(totals['temps']), 1) if totals['temps'] else 0,
         'avg_fan_speed': round(sum(totals['fans']) / len(totals['fans']), 0) if totals['fans'] else 0,
-        'total_workers': len(miners), 'log': data
+        'total_workers': len(miners),
+        'log': data,
     })
 
 
@@ -124,7 +153,7 @@ def metrics():
             'power_w': r.power_w,
             'hashrate_ths': r.hashrate_ths,
             'avg_temp_c': r.avg_temp_c,
-            'avg_fan_rpm': r.avg_fan_rpm
+            'avg_fan_rpm': r.avg_fan_rpm,
         }
         for r in rows
     ])

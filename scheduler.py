@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from core.db import Base, engine, SessionLocal, Metric
 from api.endpoints import discover_miners
-from core.miner import MinerClient
+from core.miner import MinerClient, MinerError
 from config import (
     POLL_INTERVAL,
     TEMP_THRESHOLD,
@@ -42,20 +42,17 @@ def poll_metrics():
 
     for ip in discover_miners():
         try:
-            data = MinerClient(ip).get_summary()
-        except Exception:
-            # Miner offline/unreachable; skip this cycle for this IP
-            continue
+            p = MinerClient(ip).fetch_normalized()
+        except MinerError:
+            continue  # miner unreachable; skip
 
-        temps = data.get('temp', [])
-        fans = data.get('fan', [])
         metric = Metric(
             miner_ip=ip,
-            power_w=data.get('power', 0),
-            hashrate_ths=data.get('MHS 5s', 0) / 1e6,
-            elapsed_s=data.get('Elapsed', 0),
-            avg_temp_c=(sum(temps) / len(temps) if temps else 0),
-            avg_fan_rpm=(sum(fans) / len(fans) if fans else 0),
+            power_w=p['power_w'],
+            hashrate_ths=p['hashrate_ths'],
+            elapsed_s=p['elapsed_s'],
+            avg_temp_c=p['avg_temp_c'],
+            avg_fan_rpm=p['avg_fan_rpm'],
         )
         session.add(metric)
         session.flush()  # get ID/timestamp if needed
@@ -66,22 +63,20 @@ def poll_metrics():
                 subject=f"High Temperature Alert - {ip}",
                 message=(
                     f"Miner {ip} temperature {metric.avg_temp_c:.1f}°C exceeds"
-                    f" threshold {TEMP_THRESHOLD:.1f}°C."
+                    f" threshold {HASHRATE_DROP_THRESHOLD:.1f}°C."
                 ),
             )
             _mark_alert(ip, 'temp')
 
-        # ---- Alerts: Hashrate drop vs. rolling baseline
-        # Fetch last N samples BEFORE this one to compute baseline
+        # ---- Alerts: Hashrate drop vs rolling baseline
         recent = (
             session.query(Metric)
             .filter(Metric.miner_ip == ip)
             .order_by(Metric.timestamp.desc())
-            .limit(ROLLING_WINDOW_SAMPLES + 1)  # including this new one
+            .limit(ROLLING_WINDOW_SAMPLES + 1)
             .all()
         )
-        if len(recent) >= 2:  # need at least one prior sample
-            # Exclude the newest sample (index 0) when computing baseline
+        if len(recent) >= 2:
             baseline_samples = [m.hashrate_ths for m in recent[1:] if m.hashrate_ths]
             if baseline_samples:
                 baseline = sum(baseline_samples) / len(baseline_samples)
