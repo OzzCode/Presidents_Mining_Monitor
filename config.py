@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Discovery & polling
-MINER_IP_RANGE = os.getenv('MINER_IP_RANGE', '192.168.1.0/24')
+MINER_IP_RANGE = os.getenv('MINER_IP_RANGE', '192.168.86.0/24')
 POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', 30))
 
 # Email notifications

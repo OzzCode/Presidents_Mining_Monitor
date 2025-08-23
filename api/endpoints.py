@@ -104,6 +104,46 @@ def summary():
     })
 
 
+@api_bp.route('/miners')
+def miners():
+    """List discovered miners with basic status and (if known) model."""
+    ips = discover_miners()
+    session = SessionLocal()
+
+    out = []
+    for ip in ips:
+        model = '{}'
+        status = 'online'
+        try:
+            # Try to grab a model from STATS (Antminer/BMminer often puts it here)
+            stats = MinerClient(ip).get_stats()
+            st0 = (stats.get('STATS') or [{}])[0]
+            model = (
+                    st0.get('Type') or
+                    st0.get('Model') or
+                    st0.get('Miner Type') or 'Unknown'
+            )
+        except Exception:
+            status = 'offline'
+
+        last = (
+            session.query(Metric)
+            .filter(Metric.miner_ip == ip)
+            .order_by(Metric.timestamp.desc())
+            .first()
+        )
+
+        out.append({
+            'ip': ip,
+            'model': model,
+            'status': status,
+            'last_seen': (last.timestamp.isoformat() if last else None)
+        })
+
+    session.close()
+    return jsonify({'miners': out})
+
+
 def _normalize_since(since: str):
     """Return a *naive UTC* datetime for filtering metrics.
 
