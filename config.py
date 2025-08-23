@@ -1,10 +1,11 @@
 import os
 from dotenv import load_dotenv
+from core.get_network_ip import get_auto_cidr
 
 load_dotenv()
 
 # Discovery & polling
-MINER_IP_RANGE = os.getenv('MINER_IP_RANGE', '192.168.86.0/24')
+MINER_IP_RANGE = os.getenv('MINER_IP_RANGE', get_auto_cidr())
 POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', 30))
 
 # Email notifications

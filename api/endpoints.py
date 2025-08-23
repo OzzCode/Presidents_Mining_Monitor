@@ -112,7 +112,7 @@ def miners():
 
     out = []
     for ip in ips:
-        model = '{}'
+        model = ''
         status = 'online'
         try:
             # Try to grab a model from STATS (Antminer/BMminer often puts it here)
