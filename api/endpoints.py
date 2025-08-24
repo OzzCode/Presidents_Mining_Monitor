@@ -6,8 +6,10 @@ from flask import Blueprint, jsonify, request
 from zeroconf import Zeroconf, ServiceBrowser
 from dateutil import parser
 from core.db import SessionLocal, Metric
-from core.miner import MinerClient
+from core.miner import MinerClient, MinerError
 from config import MINER_IP_RANGE
+from datetime import datetime, timezone
+from config import POLL_INTERVAL
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -18,6 +20,7 @@ def discover_miners(timeout=1, workers=50):
     """
     network = ipaddress.ip_network(MINER_IP_RANGE)
 
+    # noinspection PyBroadException
     def scan(ip):
         with socket.socket() as s:
             s.settimeout(timeout)
@@ -44,9 +47,29 @@ def discover_miners(timeout=1, workers=50):
     return sorted(set(hosts + services))
 
 
+def _last_seen_for_ip(ip: str):
+    session = SessionLocal()
+    try:
+        m = (session.query(Metric)
+             .filter(Metric.miner_ip == ip)
+             .order_by(Metric.timestamp.desc())
+             .first())
+        if not m:
+            return None, None
+        ts = m.timestamp
+        # ensure aware -> UTC
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        age_sec = (datetime.now(timezone.utc) - ts).total_seconds()
+        return ts.isoformat(), int(age_sec)
+    finally:
+        session.close()
+
+
 # --------------------------
 # Normalization helper
 # --------------------------
+# noinspection PyBroadException
 def _read_summary_fields(ip: str):
     """
     Query a miner and normalize cgminer/BMminer SUMMARY/STATS into a consistent
@@ -54,21 +77,17 @@ def _read_summary_fields(ip: str):
     """
     client = MinerClient(ip)
 
-    # --- SUMMARY: has MHS 5s (hashrate) and Elapsed (uptime) ---
+    # --- SUMMARY (hashrate & uptime) ---
     s = {}
     try:
         summary = client.get_summary()
-        # Typical shape: {"STATUS":[...], "SUMMARY":[{...}]}
         if isinstance(summary, dict) and "SUMMARY" in summary and summary["SUMMARY"]:
             s = summary["SUMMARY"][0]
         else:
-            # Some firmwares flatten fields at the top level
             s = summary if isinstance(summary, dict) else {}
     except Exception:
-        # Miner unreachable or parse failure
         return {"power": 0.0, "hash_ths": 0.0, "elapsed": 0, "temps": [], "fans": [], "when": ""}
 
-    # Hashrate (MHS 5s -> TH/s), Uptime
     try:
         mhs_5s = float(s.get("MHS 5s", 0.0))
     except Exception:
@@ -78,13 +97,12 @@ def _read_summary_fields(ip: str):
     except Exception:
         elapsed = 0
 
-    # --- STATS: temps and fan speeds are typically here ---
+    # --- STATS (temps/fans) ---
     temps, fans = [], []
     try:
         stats = client.get_stats()
         if isinstance(stats, dict) and "STATS" in stats and stats["STATS"]:
             st0 = stats["STATS"][0]
-            # Collect any numeric keys that look like temp/fan readings
             for k, v in st0.items():
                 if isinstance(v, (int, float)):
                     lk = str(k).lower()
@@ -93,13 +111,10 @@ def _read_summary_fields(ip: str):
                     if lk.startswith("fan"):
                         fans.append(float(v))
     except Exception:
-        # Ignore STATS failures; we still have hashrate/uptime
         pass
 
-    # Some firmwares provide a timestamp-like field in SUMMARY
     when = s.get("When") or s.get("STIME") or ""
 
-    # Power may be 0/absent on stock fw; keep it best-effort
     try:
         power = float(s.get("Power", 0.0) or 0.0)
     except Exception:
@@ -117,59 +132,134 @@ def _read_summary_fields(ip: str):
 
 @api_bp.route('/summary')
 def summary():
-    """Aggregate summary metrics, optionally filtered by IP."""
-    ip_filter = request.args.get('ip')
-    miners = [ip_filter] if ip_filter else discover_miners()
+    """Summarize current metrics and indicate a data source (live vs. DB fallback)."""
+    ipf = request.args.get('ip')
+    miners = [ipf] if ipf else discover_miners()
 
-    total_power = 0.0
-    total_hash = 0.0
-    total_uptime = 0
-    temps, fans, log = [], [], []
+    data = []
+    totals = {'power': 0.0, 'hash': 0.0, 'uptime': 0, 'temps': [], 'fans': [], 'log': []}
+    overall_srcs = set()
 
-    # Use normalized fields so the frontend gets real numbers.
+    session = SessionLocal()
     for ip in miners:
-        norm = _read_summary_fields(ip)
-        total_power += float(norm.get("power", 0.0))
-        total_hash += float(norm.get("hash_ths", 0.0))
-        total_uptime = max(total_uptime, int(norm.get("elapsed", 0)))
-        temps.extend(norm.get("temps", []) or [])
-        fans.extend(norm.get("fans", []) or [])
-        log.append({
-            "timestamp": norm.get("when", ""),
-            "ip": ip,
-            "hash": norm.get("hash_ths", 0.0)
-        })
+        payload = None
+        src = 'live'
+        try:
+            payload = MinerClient(ip).fetch_normalized()
+        except MinerError:
+            # Fallback: use last DB metric for this IP (offline/demo mode)
+            last = (
+                session.query(Metric)
+                .filter(Metric.miner_ip == ip)
+                .order_by(Metric.timestamp.desc())
+                .first()
+            )
+            if last:
+                payload = {
+                    'hashrate_ths': last.hashrate_ths,
+                    'elapsed_s': last.elapsed_s,
+                    'avg_temp_c': last.avg_temp_c,
+                    'avg_fan_rpm': last.avg_fan_rpm,
+                    'power_w': last.power_w,
+                    'when': last.timestamp.isoformat() + 'Z',
+                }
+                src = 'db_fallback'
+        if not payload:
+            continue
 
-    avg_temp = round(sum(temps) / len(temps), 1) if temps else 0
-    avg_fan = round(sum(fans) / len(fans), 0) if fans else 0
+        overall_srcs.add(src)
+        totals['power'] += float(payload['power_w'])
+        totals['hash'] += float(payload['hashrate_ths'])
+        totals['uptime'] = max(totals['uptime'], int(payload['elapsed_s']))
+        if payload['avg_temp_c']:
+            totals['temps'].append(float(payload['avg_temp_c']))
+        if payload['avg_fan_rpm']:
+            totals['fans'].append(float(payload['avg_fan_rpm']))
+
+        data.append({'timestamp': payload['when'], 'ip': ip, 'hash': payload['hashrate_ths'], 'source': src})
+
+    session.close()
+
+    overall_source = (
+        'live' if overall_srcs == {'live'} else
+        ('db_fallback' if overall_srcs == {'db_fallback'} else 'mixed')
+    )
 
     return jsonify({
-        "total_power": total_power,
-        "total_hashrate": round(total_hash, 3),
-        "total_uptime": total_uptime,
-        "avg_temp": avg_temp,
-        "avg_fan_speed": avg_fan,
-        "total_workers": len(miners),
-        "log": log
+        'source': overall_source,
+        'total_power': round(totals['power'], 1),
+        'total_hashrate': round(totals['hash'], 3),
+        'total_uptime': totals['uptime'],
+        'avg_temp': round(sum(totals['temps']) / len(totals['temps']), 1) if totals['temps'] else 0,
+        'avg_fan_speed': round(sum(totals['fans']) / len(totals['fans']), 0) if totals['fans'] else 0,
+        'total_workers': len(miners),
+        'log': data,
+        'last_updated': datetime.now(timezone.utc).isoformat()
     })
 
 
+# @api_bp.route('/summary')
+# def summary():
+#     """Aggregate summary metrics, optionally filtered by IP."""
+#     ip_filter = request.args.get('ip')
+#     miners = [ip_filter] if ip_filter else discover_miners()
+#
+#     total_power = 0.0
+#     total_hash = 0.0
+#     total_uptime = 0
+#     temps, fans, log = [], [], []
+#
+#     # Use normalized fields so the frontend gets real numbers.
+#     for ip in miners:
+#         norm = _read_summary_fields(ip)
+#         total_power += float(norm.get("power", 0.0))
+#         total_hash += float(norm.get("hash_ths", 0.0))
+#         total_uptime = max(total_uptime, int(norm.get("elapsed", 0)))
+#         temps.extend(norm.get("temps", []) or [])
+#         fans.extend(norm.get("fans", []) or [])
+#         log.append({
+#             "timestamp": norm.get("when", ""),
+#             "ip": ip,
+#             "hash": norm.get("hash_ths", 0.0)
+#         })
+#
+#     avg_temp = round(sum(temps) / len(temps), 1) if temps else 0
+#     avg_fan = round(sum(fans) / len(fans), 0) if fans else 0
+#
+#     return jsonify({
+#         "total_power": total_power,
+#         "total_hashrate": round(total_hash, 3),
+#         "total_uptime": total_uptime,
+#         "avg_temp": avg_temp,
+#         "avg_fan_speed": avg_fan,
+#         "total_workers": len(miners),
+#         "log": log
+#     })
+
+
+# noinspection PyBroadException
 @api_bp.route('/miners')
 def miners():
-    """
-    Basic online/offline & model probe for the miners table.
-    """
     info = []
     for ip in discover_miners():
         try:
             d = MinerClient(ip).get_summary()
-            model = d.get("Model", "Unknown") if isinstance(d, dict) else "Unknown"
-            status = "Online"
+            model = d.get('Model', 'Unknown') if isinstance(d, dict) else 'Unknown'
+            status = 'Online'
         except Exception:
-            model = "Unknown"
-            status = "Offline"
-        info.append({"model": model, "ip": ip, "status": status})
-    return jsonify({"miners": info})
+            model = 'Unknown'
+            status = 'Offline'
+        last_seen_iso, age_sec = _last_seen_for_ip(ip)
+        is_stale = (age_sec is None) or (age_sec > 2 * POLL_INTERVAL)
+        info.append({
+            'model': model,
+            'ip': ip,
+            'status': status,
+            'last_seen': last_seen_iso,
+            'age_sec': age_sec,
+            'is_stale': is_stale
+        })
+    return jsonify({'poll_interval': POLL_INTERVAL, 'miners': info})
 
 
 @api_bp.route('/metrics')
