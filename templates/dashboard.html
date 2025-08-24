@@ -13,6 +13,30 @@
     <a href="{{ url_for('home') }}">Home</a> |
     <a href="{{ url_for('dashboard.show_miners') }}">Miners</a>
 </nav>
+
+<!-- At the top of dashboard.html content -->
+<div class="controls" style="display:flex; gap:12px; align-items:center; margin-bottom:16px;">
+    <strong>Miner:</strong>
+    <code>{{ ip }}</code>
+    {% if ip %}
+        <a class="btn" href="http://{{ ip }}/" target="_blank" rel="noopener">
+            Open Miner Web UI
+        </a>
+    {% endif %}
+    <style>
+        .btn {
+            padding: 6px 10px;
+            background: #333;
+            color: #fff;
+            border-radius: 6px;
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+        }
+    </style>
+</div>
 <div class="container">
     <h1>Dashboard{% if ip %} — {{ ip }}{% endif %}</h1>
     <div class="metrics">

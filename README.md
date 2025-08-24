@@ -7,3 +7,9 @@ A simple Python-based monitoring dashboard for Bitmain Antminer ASIC miners.
 1. Copy `.env.example` to `.env` and fill in your values.
 2. Install dependencies: `pip install -r requirements.txt`
 3. Run: `python main.py`
+
+
+
+## License
+
+MIT — simple and permissive. See LICENSE for details.
