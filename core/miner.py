@@ -30,26 +30,40 @@ class MinerClient:
         self.timeout = timeout if timeout is not None else CGMINER_TIMEOUT
 
     def _send_command(self, cmd: str) -> dict:
+        """
+        Send a JSON command (with newline terminator) and parse a robust response.
+        """
+        import json, socket
+        payload = cmd.strip()
+        if not payload.startswith("{"):
+            payload = json.dumps({"command": payload})
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(self.timeout)
         try:
-            with socket.create_connection((self.ip, self.port), self.timeout) as sock:
-                sock.settimeout(self.timeout)
-                sock.sendall((cmd + "\n").encode())
-                chunks = []
-                while True:
-                    try:
-                        chunk = sock.recv(4096)
-                    except (socket.timeout, TimeoutError):
-                        break  # stop reading on timeout; use what we have
-                    if not chunk:
-                        break
-                    chunks.append(chunk)
-            if not chunks:
-                raise MinerError("No response from miner")
-            raw = b"".join(chunks).decode(errors="ignore").strip("\x00\r\n ")
-            line = raw.splitlines()[0] if "\n" in raw else raw
-            return json.loads(line)
-        except (socket.timeout, TimeoutError, ConnectionRefusedError, OSError, json.JSONDecodeError) as e:
-            raise MinerError(f"CGMiner request failed: {e}")
+            s.connect((self.ip, self.port))
+            s.sendall((payload + "\n").encode("utf-8"))  # <-- newline is critical
+
+            chunks = []
+            while True:
+                buf = s.recv(4096)
+                if not buf:
+                    break
+                chunks.append(buf)
+
+            text = b"".join(chunks).decode("utf-8", errors="ignore").strip()
+            # bmminer sometimes adds NULs; split by newlines/NULs and parse first valid JSON
+            for line in [p for p in text.replace("\x00", "\n").splitlines() if p.strip()]:
+                try:
+                    return json.loads(line)
+                except Exception:
+                    continue
+            raise ValueError(f"Unable to parse miner response: {text[:200]}")
+        finally:
+            try:
+                s.close()
+            except Exception:
+                pass
 
     def get_summary(self) -> dict:
         return self._send_command("summary")

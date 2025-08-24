@@ -10,11 +10,11 @@
 </head>
 <body>
 <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
-    <div><strong>Miner:</strong> <code>{{ ip }}</code></div>
-    <div id="last-update" style="font-size:0.9rem;color:#555;">Last update: —</div>
-    {% if ip %}
-        <a class="btn" href="http://{{ ip }}/" target="_blank" rel="noopener">Open Miner Web UI</a>
-    {% endif %}
+  <div><strong>Miner:</strong> <code>{{ ip }}</code></div>
+  <div id="last-update" style="font-size:0.9rem;color:#555;">Last update: —</div>
+  {% if ip %}
+    <a class="btn" href="http://{{ ip }}/" target="_blank" rel="noopener">Open Miner Web UI</a>
+  {% endif %}
 </div>
 <nav>
     <a href="{{ url_for('home') }}">Home</a> |

@@ -1,222 +1,224 @@
 /* Light & Dark Mode Variables */
 :root {
-    --color-bg: #f0f2f5;
-    --color-primary: #567ace;
-    --color-secondary: #ffffff;
-    --color-accent: #f08a5d;
-    --color-card: #ffffff;
-    --color-text: #2e3440;
-    --font-sans: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  --color-bg: #f0f2f5;
+  --color-primary: #567ace;
+  --color-secondary: #ffffff;
+  --color-accent: #f08a5d;
+  --color-card: #ffffff;
+  --color-text: #2e3440;
+  --font-sans: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
-    :root {
-        --color-bg: #1e1e2f;
-        --color-primary: #8aa6f0;
-        --color-secondary: #c3c3d5;
-        --color-accent: #f08a5d;
-        --color-card: #2a2a3a;
-        --color-text: #e0e0e8;
-    }
+  :root {
+    --color-bg: #1e1e2f;
+    --color-primary: #8aa6f0;
+    --color-secondary: #c3c3d5;
+    --color-accent: #f08a5d;
+    --color-card: #2a2a3a;
+    --color-text: #e0e0e8;
+  }
 }
 
 /* Global Reset */
 * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-body, html {
-    height: 100%;
-    font-family: var(--font-sans), sans-serif;
-    background: var(--color-bg);
-    color: var(--color-text);
+body,
+html {
+  height: 100%;
+  font-family: var(--font-sans), sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 /* Navigation Bar */
 nav {
-    background: var(--color-secondary);
-    padding: 1rem 2rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  background: var(--color-secondary);
+  padding: 1rem 2rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 nav a {
-    color: #fff;
-    margin-right: 1.5rem;
-    text-decoration: none;
-    font-weight: 500;
-    transition: opacity 0.2s;
+  color: #fff;
+  margin-right: 1.5rem;
+  text-decoration: none;
+  font-weight: 500;
+  transition: opacity 0.2s;
 }
 
 nav a:hover {
-    opacity: 0.8;
+  opacity: 0.8;
 }
 
 /* Container */
 .container {
-    max-width: 1200px;
-    margin: 2rem auto;
-    padding: 0 1rem;
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 0 1rem;
 }
 
 /* Navigation List */
 .nav-list {
-    list-style: none;
-    display: flex;
-    gap: 1rem;
-    margin: 1rem 0;
+  list-style: none;
+  display: flex;
+  gap: 1rem;
+  margin: 1rem 0;
 }
 
 .nav-list li a {
-    display: inline-block;
-    padding: 0.5rem 1rem;
-    background: var(--color-card);
-    border-radius: 4px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-    transition: transform 0.2s;
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background: var(--color-card);
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s;
 }
 
 .nav-list li a:hover {
-    transform: translateY(-2px);
+  transform: translateY(-2px);
 }
 
 /* Tabs */
 .tabs {
-    list-style: none;
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
+  list-style: none;
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .tabs li {
-    padding: 0.5rem 1rem;
-    cursor: pointer;
-    background: var(--color-card);
-    border-radius: 4px 4px 0 0;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-    transition: background 0.2s;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  background: var(--color-card);
+  border-radius: 4px 4px 0 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: background 0.2s;
 }
 
 .tabs li.active {
-    background: var(--color-primary);
-    color: #fff;
+  background: var(--color-primary);
+  color: #fff;
 }
 
 /* Tab Content */
 .tab-content {
-    background: var(--color-card);
-    border-radius: 0 4px 4px 4px;
-    padding: 1.5rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  background: var(--color-card);
+  border-radius: 0 4px 4px 4px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .tab-content.hidden {
-    display: none;
+  display: none;
 }
 
 /* Metrics Grid */
 .metrics {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 2rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .card {
-    background: var(--color-card);
-    padding: 1.5rem;
-    border-radius: 8px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    text-align: center;
-    transition: transform 0.2s;
+  background: var(--color-card);
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  text-align: center;
+  transition: transform 0.2s;
 }
 
 .card:hover {
-    transform: translateY(-3px);
+  transform: translateY(-3px);
 }
 
 .card h2 {
-    margin-bottom: 0.75rem;
-    font-size: 1.1rem;
-    color: var(--color-secondary);
+  margin-bottom: 0.75rem;
+  font-size: 1.1rem;
+  color: var(--color-secondary);
 }
 
 .card p {
-    font-size: 1.5rem;
-    font-weight: 600;
+  font-size: 1.5rem;
+  font-weight: 600;
 }
 
 /* Tables */
 table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 2rem;
-    overflow: hidden;
-    border-radius: 8px;
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 2rem;
+  overflow: hidden;
+  border-radius: 8px;
 }
 
-th, td {
-    padding: 0.75rem 1rem;
+th,
+td {
+  padding: 0.75rem 1rem;
 }
 
 th {
-    background: var(--color-secondary);
-    color: #fff;
-    text-align: left;
+  background: var(--color-secondary);
+  color: #fff;
+  text-align: left;
 }
 
 tbody tr:nth-child(even) {
-    background: rgba(0, 0, 0, 0.05);
+  background: rgba(0, 0, 0, 0.05);
 }
 
 tbody tr:hover {
-    background: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 /* Controls */
 .controls {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .controls input,
 .controls button {
-    padding: 0.5rem 1rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+  padding: 0.5rem 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
 }
 
 .controls button {
-    background: var(--color-accent);
-    color: #fff;
-    border: none;
-    cursor: pointer;
-    transition: background 0.2s;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
 }
 
 .controls button:hover {
-    background: #e07b3e;
+  background: #e07b3e;
 }
 
 /* Footer */
 footer {
-    padding: 1.5rem;
-    text-align: center;
-    font-size: 0.9rem;
-    color: var(--color-secondary);
+  padding: 1.5rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--color-secondary);
 }
 
 footer a {
-    color: var(--color-accent);
-    text-decoration: none;
-    transition: opacity 0.2s;
+  color: var(--color-accent);
+  text-decoration: none;
+  transition: opacity 0.2s;
 }
 
 footer a:hover {
-    opacity: 0.7;
+  opacity: 0.7;
 }
 
 /*#chart-10m, #chart-1h, #chart-1d {*/
@@ -225,36 +227,63 @@ footer a:hover {
 
 /* Freshness dots */
 .dot {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    margin-right: 6px;
-    vertical-align: middle;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
 .dot-green {
-    background: #16a34a;
+  background: #16a34a;
 }
 
 /* fresh */
 .dot-yellow {
-    background: #ca8a04;
+  background: #ca8a04;
 }
 
 /* lagging */
 .dot-red {
-    background: #dc2626;
+  background: #dc2626;
 }
 
 /* stale */
 .dot-gray {
-    background: #9ca3af;
+  background: #9ca3af;
 }
 
 /* no data */
 
 /* Grey out stale rows */
 tr.stale {
-    opacity: 0.5;
+  opacity: 0.5;
+}
+
+/* Freshness dots */
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.dot-green {
+  background: #16a34a;
+} /* fresh */
+.dot-yellow {
+  background: #ca8a04;
+} /* lagging */
+.dot-red {
+  background: #dc2626;
+} /* stale */
+.dot-gray {
+  background: #9ca3af;
+} /* no data */
+
+/* Grey out stale rows */
+tr.stale {
+  opacity: 0.5;
 }

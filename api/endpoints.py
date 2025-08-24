@@ -11,6 +11,40 @@ from config import MINER_IP_RANGE
 from datetime import datetime, timezone
 from config import POLL_INTERVAL
 
+
+def _read_summary_fields(ip: str):
+    from core.miner import MinerClient
+    client = MinerClient(ip)
+
+    # --- SUMMARY ---
+    try:
+        summary = client.get_summary()
+        s = summary["SUMMARY"][0] if isinstance(summary, dict) and summary.get("SUMMARY") else (summary if isinstance(summary, dict) else {})
+    except Exception:
+        return {"power": 0.0, "hash_ths": 0.0, "elapsed": 0, "temps": [], "fans": [], "when": ""}
+
+    mhs_5s = float(s.get("MHS 5s", 0.0)) if isinstance(s.get("MHS 5s", 0.0), (int, float, str)) else 0.0
+    elapsed = int(float(s.get("Elapsed", 0) or 0))
+
+    # --- STATS (temps/fans) ---
+    temps, fans = [], []
+    try:
+        stats = client.get_stats()
+        if isinstance(stats, dict) and stats.get("STATS"):
+            st0 = stats["STATS"][0]
+            for k, v in st0.items():
+                if isinstance(v, (int, float)):
+                    lk = str(k).lower()
+                    if lk.startswith("temp"): temps.append(float(v))
+                    if lk.startswith("fan"):  fans.append(float(v))
+    except Exception:
+        pass
+
+    power = float(s.get("Power", 0.0) or 0.0)
+    when  = s.get("When") or s.get("STIME") or ""
+
+    return {"power": power, "hash_ths": round(mhs_5s / 1e6, 3), "elapsed": elapsed, "temps": temps, "fans": fans, "when": when}
+
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
