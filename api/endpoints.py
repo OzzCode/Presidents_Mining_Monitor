@@ -2,62 +2,20 @@ import ipaddress
 import socket
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timezone
 from flask import Blueprint, jsonify, request
 from zeroconf import Zeroconf, ServiceBrowser
 from dateutil import parser
 from core.db import SessionLocal, Metric
-from core.miner import MinerClient, MinerError
+from core.miner import MinerClient
 from config import MINER_IP_RANGE
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
-def _read_summary_fields(ip: str):
-    """
-    Query a miner and normalize cgminer/BMminer SUMMARY/STATS
-    into consistent fields our API expects.
-    """
-    from core.miner import MinerClient
-    client = MinerClient(ip)
-    s = {}
-    try:
-        summary = client.get_summary()
-        if "SUMMARY" in summary and summary["SUMMARY"]:
-            s = summary["SUMMARY"][0]
-        else:
-            s = summary
-    except Exception:
-        return {"power": 0, "hash_ths": 0, "elapsed": 0, "temps": [], "fans": [], "when": ""}
-
-    mhs_5s = float(s.get("MHS 5s", 0.0))
-    elapsed = int(s.get("Elapsed", 0))
-
-    temps, fans = [], []
-    try:
-        stats = client.get_stats()
-        if "STATS" in stats and stats["STATS"]:
-            st0 = stats["STATS"][0]
-            for k, v in st0.items():
-                if isinstance(v, (int, float)):
-                    if k.lower().startswith("temp"):
-                        temps.append(float(v))
-                    if k.lower().startswith("fan"):
-                        fans.append(float(v))
-    except Exception:
-        pass
-
-    return {
-        "power": float(s.get("Power", 0.0) or 0.0),
-        "hash_ths": round(mhs_5s / 1e6, 3),  # MHS → THS
-        "elapsed": elapsed,
-        "temps": temps,
-        "fans": fans,
-        "when": s.get("When") or s.get("STIME") or ""
-    }
-
-
 def discover_miners(timeout=1, workers=50):
+    """
+    Scan the configured CIDR for TCP/4028 and also browse mDNS _cgminer._tcp.
+    """
     network = ipaddress.ip_network(MINER_IP_RANGE)
 
     def scan(ip):
@@ -69,23 +27,92 @@ def discover_miners(timeout=1, workers=50):
             except Exception:
                 return None
 
-    hosts = [i for i in ThreadPoolExecutor(workers).map(scan, network.hosts()) if i]
-
-    # mDNS discovery
-    zc = Zeroconf()
+    hosts = [ip for ip in ThreadPoolExecutor(workers).map(scan, network.hosts()) if ip]
+    zeroconf = Zeroconf()
     services = []
 
-    def on_srv(zc_, type_, name):
-        info = zc_.get_service_info(type_, name)
+    def on_service(zc, type_, name):
+        info = zc.get_service_info(type_, name)
         if info:
-            for a in info.addresses:
-                services.append(socket.inet_ntoa(a))
+            for addr in info.addresses:
+                services.append(socket.inet_ntoa(addr))
 
-    ServiceBrowser(zc, "_cgminer._tcp.local.", handlers=[on_srv])
+    ServiceBrowser(zeroconf, "_cgminer._tcp.local.", handlers=[on_service])
     time.sleep(2)
-    zc.close()
+    zeroconf.close()
 
     return sorted(set(hosts + services))
+
+
+# --------------------------
+# Normalization helper
+# --------------------------
+def _read_summary_fields(ip: str):
+    """
+    Query a miner and normalize cgminer/BMminer SUMMARY/STATS into a consistent
+    shape for our API: power, hash_ths, elapsed, temps[], fans[], when.
+    """
+    client = MinerClient(ip)
+
+    # --- SUMMARY: has MHS 5s (hashrate) and Elapsed (uptime) ---
+    s = {}
+    try:
+        summary = client.get_summary()
+        # Typical shape: {"STATUS":[...], "SUMMARY":[{...}]}
+        if isinstance(summary, dict) and "SUMMARY" in summary and summary["SUMMARY"]:
+            s = summary["SUMMARY"][0]
+        else:
+            # Some firmwares flatten fields at the top level
+            s = summary if isinstance(summary, dict) else {}
+    except Exception:
+        # Miner unreachable or parse failure
+        return {"power": 0.0, "hash_ths": 0.0, "elapsed": 0, "temps": [], "fans": [], "when": ""}
+
+    # Hashrate (MHS 5s -> TH/s), Uptime
+    try:
+        mhs_5s = float(s.get("MHS 5s", 0.0))
+    except Exception:
+        mhs_5s = 0.0
+    try:
+        elapsed = int(s.get("Elapsed", 0))
+    except Exception:
+        elapsed = 0
+
+    # --- STATS: temps and fan speeds are typically here ---
+    temps, fans = [], []
+    try:
+        stats = client.get_stats()
+        if isinstance(stats, dict) and "STATS" in stats and stats["STATS"]:
+            st0 = stats["STATS"][0]
+            # Collect any numeric keys that look like temp/fan readings
+            for k, v in st0.items():
+                if isinstance(v, (int, float)):
+                    lk = str(k).lower()
+                    if lk.startswith("temp"):
+                        temps.append(float(v))
+                    if lk.startswith("fan"):
+                        fans.append(float(v))
+    except Exception:
+        # Ignore STATS failures; we still have hashrate/uptime
+        pass
+
+    # Some firmwares provide a timestamp-like field in SUMMARY
+    when = s.get("When") or s.get("STIME") or ""
+
+    # Power may be 0/absent on stock fw; keep it best-effort
+    try:
+        power = float(s.get("Power", 0.0) or 0.0)
+    except Exception:
+        power = 0.0
+
+    return {
+        "power": power,
+        "hash_ths": round(mhs_5s / 1e6, 3),  # MHS -> TH/s
+        "elapsed": elapsed,
+        "temps": temps,
+        "fans": fans,
+        "when": when
+    }
 
 
 @api_bp.route('/summary')
@@ -99,7 +126,7 @@ def summary():
     total_uptime = 0
     temps, fans, log = [], [], []
 
-    # --- replace ONLY this loop body ---
+    # Use normalized fields so the frontend gets real numbers.
     for ip in miners:
         norm = _read_summary_fields(ip)
         total_power += float(norm.get("power", 0.0))
@@ -112,7 +139,6 @@ def summary():
             "ip": ip,
             "hash": norm.get("hash_ths", 0.0)
         })
-    # --- end replacement ---
 
     avg_temp = round(sum(temps) / len(temps), 1) if temps else 0
     avg_fan = round(sum(fans) / len(fans), 0) if fans else 0
@@ -130,96 +156,51 @@ def summary():
 
 @api_bp.route('/miners')
 def miners():
-    """List discovered miners with basic status and (if known) model."""
-    ips = discover_miners()
-    session = SessionLocal()
-
-    out = []
-    for ip in ips:
-        model = ''
-        status = 'online'
-        try:
-            # Try to grab a model from STATS (Antminer/BMminer often puts it here)
-            stats = MinerClient(ip).get_stats()
-            st0 = (stats.get('STATS') or [{}])[0]
-            model = (
-                    st0.get('Type') or
-                    st0.get('Model') or
-                    st0.get('Miner Type') or 'Unknown'
-            )
-        except Exception:
-            status = 'offline'
-
-        last = (
-            session.query(Metric)
-            .filter(Metric.miner_ip == ip)
-            .order_by(Metric.timestamp.desc())
-            .first()
-        )
-
-        out.append({
-            'ip': ip,
-            'model': model,
-            'status': status,
-            'last_seen': (last.timestamp.isoformat() if last else None)
-        })
-
-    session.close()
-    return jsonify({'miners': out})
-
-
-def _normalize_since(since: str):
-    """Return a *naive UTC* datetime for filtering metrics.
-
-    Accepts ISO8601 with/without a timezone. If timezone-aware, converts to UTC and
-    drops tzinfo to match naive UTC storage in the DB.
-
-    Examples:
-      naive: 2025-07-31T12:00:00
-      aware: 2025-07-31T12:00:00Z or 2025-07-31T08:00:00-04:00
     """
-    dt = parser.isoparse(since)
-    if dt.tzinfo:
-        return dt.astimezone(timezone.utc).replace(tzinfo=None)
-    return dt
+    Basic online/offline & model probe for the miners table.
+    """
+    info = []
+    for ip in discover_miners():
+        try:
+            d = MinerClient(ip).get_summary()
+            model = d.get("Model", "Unknown") if isinstance(d, dict) else "Unknown"
+            status = "Online"
+        except Exception:
+            model = "Unknown"
+            status = "Offline"
+        info.append({"model": model, "ip": ip, "status": status})
+    return jsonify({"miners": info})
 
 
 @api_bp.route('/metrics')
-@api_bp.get("/api/miner/<ip>/metrics")
-@api_bp.get("/api/miners/<ip>/metrics")
 def metrics():
-    """Historical data with optional filters.
-
-    Query params:
-      ip     — miner IP address
-      since  — ISO8601 timestamp (naive or tz-aware)
-      limit  — max samples (default 500)
-
-    Examples:
-      curl "http://localhost:5000/api/metrics?limit=50"
-      curl "http://localhost:5000/api/metrics?ip=192.168.1.100&since=2025-07-31T12:00:00Z"
     """
-    ipf = request.args.get('ip')
-    since = request.args.get('since')
-    limit = int(request.args.get('limit', 500))
+    Return historical metrics, optionally filtered by:
+      - ip:    miner IP address
+      - since: ISO8601 timestamp
+      - limit: number of samples
+    """
+    ip_filter = request.args.get("ip")
+    since = request.args.get("since")
+    limit = int(request.args.get("limit", 500))
 
     session = SessionLocal()
     q = session.query(Metric)
-    if ipf:
-        q = q.filter(Metric.miner_ip == ipf)
+    if ip_filter:
+        q = q.filter(Metric.miner_ip == ip_filter)
     if since:
-        dt = _normalize_since(since)
+        dt = parser.isoparse(since)
         q = q.filter(Metric.timestamp >= dt)
     rows = q.order_by(Metric.timestamp.asc()).limit(limit).all()
     session.close()
 
     return jsonify([
         {
-            'timestamp': r.timestamp.isoformat(),
-            'power_w': r.power_w,
-            'hashrate_ths': r.hashrate_ths,
-            'avg_temp_c': r.avg_temp_c,
-            'avg_fan_rpm': r.avg_fan_rpm,
+            "timestamp": m.timestamp.isoformat(),
+            "power_w": m.power_w,
+            "hashrate_ths": m.hashrate_ths,
+            "avg_temp_c": m.avg_temp_c,
+            "avg_fan_rpm": m.avg_fan_rpm
         }
-        for r in rows
+        for m in rows
     ])
