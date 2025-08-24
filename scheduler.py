@@ -12,6 +12,7 @@ from config import (
     ROLLING_WINDOW_SAMPLES,
 )
 from notifications import send_email_alert
+from api.endpoints import _read_summary_fields
 
 # Ensure database tables are created
 Base.metadata.create_all(bind=engine)
@@ -91,6 +92,16 @@ def poll_metrics():
                             ),
                         )
                         _mark_alert(ip, 'hashrate_drop')
+        norm = _read_summary_fields(ip)
+        metric = Metric(
+            miner_ip=ip,
+            power_w=norm["power"],
+            hashrate_ths=norm["hash_ths"],
+            elapsed_s=norm["elapsed"],
+            avg_temp_c=(sum(norm["temps"]) / len(norm["temps"]) if norm["temps"] else 0),
+            avg_fan_rpm=(sum(norm["fans"]) / len(norm["fans"]) if norm["fans"] else 0),
+        )
+        session.add(metric)
 
     session.commit()
     session.close()

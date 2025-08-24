@@ -13,6 +13,50 @@ from config import MINER_IP_RANGE
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
+def _read_summary_fields(ip: str):
+    """
+    Query a miner and normalize cgminer/BMminer SUMMARY/STATS
+    into consistent fields our API expects.
+    """
+    from core.miner import MinerClient
+    client = MinerClient(ip)
+    s = {}
+    try:
+        summary = client.get_summary()
+        if "SUMMARY" in summary and summary["SUMMARY"]:
+            s = summary["SUMMARY"][0]
+        else:
+            s = summary
+    except Exception:
+        return {"power": 0, "hash_ths": 0, "elapsed": 0, "temps": [], "fans": [], "when": ""}
+
+    mhs_5s = float(s.get("MHS 5s", 0.0))
+    elapsed = int(s.get("Elapsed", 0))
+
+    temps, fans = [], []
+    try:
+        stats = client.get_stats()
+        if "STATS" in stats and stats["STATS"]:
+            st0 = stats["STATS"][0]
+            for k, v in st0.items():
+                if isinstance(v, (int, float)):
+                    if k.lower().startswith("temp"):
+                        temps.append(float(v))
+                    if k.lower().startswith("fan"):
+                        fans.append(float(v))
+    except Exception:
+        pass
+
+    return {
+        "power": float(s.get("Power", 0.0) or 0.0),
+        "hash_ths": round(mhs_5s / 1e6, 3),  # MHS → THS
+        "elapsed": elapsed,
+        "temps": temps,
+        "fans": fans,
+        "when": s.get("When") or s.get("STIME") or ""
+    }
+
+
 def discover_miners(timeout=1, workers=50):
     network = ipaddress.ip_network(MINER_IP_RANGE)
 
@@ -46,61 +90,41 @@ def discover_miners(timeout=1, workers=50):
 
 @api_bp.route('/summary')
 def summary():
-    """Current metrics (power, hashrate, temp, fans). Optionally filter by ?ip=.
+    """Aggregate summary metrics, optionally filtered by IP."""
+    ip_filter = request.args.get('ip')
+    miners = [ip_filter] if ip_filter else discover_miners()
 
-    Example:
-      curl "http://localhost:5000/api/summary?ip=192.168.1.100"
-    """
-    ipf = request.args.get('ip')
-    miners = [ipf] if ipf else discover_miners()
+    total_power = 0.0
+    total_hash = 0.0
+    total_uptime = 0
+    temps, fans, log = [], [], []
 
-    data = []
-    totals = {'power': 0.0, 'hash': 0.0, 'uptime': 0, 'temps': [], 'fans': []}
-
-    session = SessionLocal()
+    # --- replace ONLY this loop body ---
     for ip in miners:
-        payload = None
-        try:
-            payload = MinerClient(ip).fetch_normalized()
-        except MinerError:
-            # Fallback: use the last DB metric for this IP (offline/demo mode)
-            last = (
-                session.query(Metric)
-                .filter(Metric.miner_ip == ip)
-                .order_by(Metric.timestamp.desc())
-                .first()
-            )
-            if last:
-                payload = {
-                    'hashrate_ths': last.hashrate_ths,
-                    'elapsed_s': last.elapsed_s,
-                    'avg_temp_c': last.avg_temp_c,
-                    'avg_fan_rpm': last.avg_fan_rpm,
-                    'power_w': last.power_w,
-                    'when': last.timestamp.isoformat() + 'Z',
-                }
-        if not payload:
-            continue
+        norm = _read_summary_fields(ip)
+        total_power += float(norm.get("power", 0.0))
+        total_hash += float(norm.get("hash_ths", 0.0))
+        total_uptime = max(total_uptime, int(norm.get("elapsed", 0)))
+        temps.extend(norm.get("temps", []) or [])
+        fans.extend(norm.get("fans", []) or [])
+        log.append({
+            "timestamp": norm.get("when", ""),
+            "ip": ip,
+            "hash": norm.get("hash_ths", 0.0)
+        })
+    # --- end replacement ---
 
-        totals['power'] += float(payload['power_w'])
-        totals['hash'] += float(payload['hashrate_ths'])
-        totals['uptime'] = max(totals['uptime'], int(payload['elapsed_s']))
-        if payload['avg_temp_c']:
-            totals['temps'].append(float(payload['avg_temp_c']))
-        if payload['avg_fan_rpm']:
-            totals['fans'].append(float(payload['avg_fan_rpm']))
+    avg_temp = round(sum(temps) / len(temps), 1) if temps else 0
+    avg_fan = round(sum(fans) / len(fans), 0) if fans else 0
 
-        data.append({'timestamp': payload['when'], 'ip': ip, 'hash': payload['hashrate_ths']})
-
-    session.close()
     return jsonify({
-        'total_power': round(totals['power'], 1),
-        'total_hashrate': round(totals['hash'], 3),
-        'total_uptime': totals['uptime'],
-        'avg_temp': round(sum(totals['temps']) / len(totals['temps']), 1) if totals['temps'] else 0,
-        'avg_fan_speed': round(sum(totals['fans']) / len(totals['fans']), 0) if totals['fans'] else 0,
-        'total_workers': len(miners),
-        'log': data,
+        "total_power": total_power,
+        "total_hashrate": round(total_hash, 3),
+        "total_uptime": total_uptime,
+        "avg_temp": avg_temp,
+        "avg_fan_speed": avg_fan,
+        "total_workers": len(miners),
+        "log": log
     })
 
 
@@ -161,6 +185,8 @@ def _normalize_since(since: str):
 
 
 @api_bp.route('/metrics')
+@api_bp.get("/api/miner/<ip>/metrics")
+@api_bp.get("/api/miners/<ip>/metrics")
 def metrics():
     """Historical data with optional filters.
 
