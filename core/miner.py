@@ -31,7 +31,7 @@ class MinerClient:
 
     def _send_command(self, cmd: str) -> dict:
         """
-        Send a JSON command (with newline terminator) and parse a robust response.
+        Send a JSON command (with a newline terminator) and parse a robust response.
         """
         import json, socket
         payload = cmd.strip()
