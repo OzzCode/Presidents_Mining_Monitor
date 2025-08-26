@@ -12,21 +12,23 @@ def setup_db():
 
 def poll_metrics():
     session = SessionLocal()
-    for ip in discover_miners():
-        norm = _read_summary_fields(ip)
-        temps = norm["temps"]
-        fans = norm["fans"]
-        metric = Metric(
-            miner_ip=ip,
-            power_w=norm["power"],
-            hashrate_ths=norm["hash_ths"],
-            elapsed_s=norm["elapsed"],
-            avg_temp_c=(sum(temps) / len(temps) if temps else 0),
-            avg_fan_rpm=(sum(fans) / len(fans) if fans else 0)
-        )
-        session.add(metric)
-    session.commit()
-    session.close()
+    try:
+        for ip in discover_miners():
+            norm = _read_summary_fields(ip)
+            temps = norm["temps"]
+            fans = norm["fans"]
+            metric = Metric(
+                miner_ip=ip,
+                power_w=norm["power"],
+                hashrate_ths=norm["hash_ths"],
+                elapsed_s=norm["elapsed"],
+                avg_temp_c=(sum(temps) / len(temps) if temps else 0),
+                avg_fan_rpm=(sum(fans) / len(fans) if fans else 0)
+            )
+            session.add(metric)
+        session.commit()
+    finally:
+        session.close()
 
 
 def start_scheduler():

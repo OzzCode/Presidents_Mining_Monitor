@@ -7,43 +7,8 @@ from zeroconf import Zeroconf, ServiceBrowser
 from dateutil import parser
 from core.db import SessionLocal, Metric
 from core.miner import MinerClient, MinerError
-from config import MINER_IP_RANGE
+from config import MINER_IP_RANGE, POLL_INTERVAL, EFFICIENCY_J_PER_TH
 from datetime import datetime, timezone
-from config import POLL_INTERVAL
-
-
-def _read_summary_fields(ip: str):
-    from core.miner import MinerClient
-    client = MinerClient(ip)
-
-    # --- SUMMARY ---
-    try:
-        summary = client.get_summary()
-        s = summary["SUMMARY"][0] if isinstance(summary, dict) and summary.get("SUMMARY") else (summary if isinstance(summary, dict) else {})
-    except Exception:
-        return {"power": 0.0, "hash_ths": 0.0, "elapsed": 0, "temps": [], "fans": [], "when": ""}
-
-    mhs_5s = float(s.get("MHS 5s", 0.0)) if isinstance(s.get("MHS 5s", 0.0), (int, float, str)) else 0.0
-    elapsed = int(float(s.get("Elapsed", 0) or 0))
-
-    # --- STATS (temps/fans) ---
-    temps, fans = [], []
-    try:
-        stats = client.get_stats()
-        if isinstance(stats, dict) and stats.get("STATS"):
-            st0 = stats["STATS"][0]
-            for k, v in st0.items():
-                if isinstance(v, (int, float)):
-                    lk = str(k).lower()
-                    if lk.startswith("temp"): temps.append(float(v))
-                    if lk.startswith("fan"):  fans.append(float(v))
-    except Exception:
-        pass
-
-    power = float(s.get("Power", 0.0) or 0.0)
-    when  = s.get("When") or s.get("STIME") or ""
-
-    return {"power": power, "hash_ths": round(mhs_5s / 1e6, 3), "elapsed": elapsed, "temps": temps, "fans": fans, "when": when}
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -126,6 +91,7 @@ def _read_summary_fields(ip: str):
         mhs_5s = float(s.get("MHS 5s", 0.0))
     except Exception:
         mhs_5s = 0.0
+    hash_ths = round(mhs_5s / 1e6, 3)
     try:
         elapsed = int(s.get("Elapsed", 0))
     except Exception:
@@ -149,10 +115,12 @@ def _read_summary_fields(ip: str):
 
     when = s.get("When") or s.get("STIME") or ""
 
+    # Power: reported or fallback estimate
     try:
-        power = float(s.get("Power", 0.0) or 0.0)
+        reported_w = float(s.get("Power", 0.0) or 0.0)
     except Exception:
-        power = 0.0
+        reported_w = 0.0
+    power = reported_w if reported_w > 0 else hash_ths * EFFICIENCY_J_PER_TH
 
     return {
         "power": power,
@@ -172,45 +140,29 @@ def summary():
 
     data = []
     totals = {'power': 0.0, 'hash': 0.0, 'uptime': 0, 'temps': [], 'fans': [], 'log': []}
+    total_power = 0.0
+    total_hash = 0.0
+    total_uptime = 0
+    temps, fans, log = [], [], []
+
     overall_srcs = set()
-
     session = SessionLocal()
+
     for ip in miners:
-        payload = None
-        src = 'live'
-        try:
-            payload = MinerClient(ip).fetch_normalized()
-        except MinerError:
-            # Fallback: use last DB metric for this IP (offline/demo mode)
-            last = (
-                session.query(Metric)
-                .filter(Metric.miner_ip == ip)
-                .order_by(Metric.timestamp.desc())
-                .first()
-            )
-            if last:
-                payload = {
-                    'hashrate_ths': last.hashrate_ths,
-                    'elapsed_s': last.elapsed_s,
-                    'avg_temp_c': last.avg_temp_c,
-                    'avg_fan_rpm': last.avg_fan_rpm,
-                    'power_w': last.power_w,
-                    'when': last.timestamp.isoformat() + 'Z',
-                }
-                src = 'db_fallback'
-        if not payload:
-            continue
+        norm = _read_summary_fields(ip)
+        total_power += float(norm.get("power", 0.0))
+        total_hash += float(norm.get("hash_ths", 0.0))
+        total_uptime = max(total_uptime, int(norm.get("elapsed", 0)))
+        temps.extend(norm.get("temps", []) or [])
+        fans.extend(norm.get("fans", []) or [])
+        log.append({
+            "timestamp": norm.get("when", ""),
+            "ip": ip,
+            "hash": norm.get("hash_ths", 0.0),
+        })
 
-        overall_srcs.add(src)
-        totals['power'] += float(payload['power_w'])
-        totals['hash'] += float(payload['hashrate_ths'])
-        totals['uptime'] = max(totals['uptime'], int(payload['elapsed_s']))
-        if payload['avg_temp_c']:
-            totals['temps'].append(float(payload['avg_temp_c']))
-        if payload['avg_fan_rpm']:
-            totals['fans'].append(float(payload['avg_fan_rpm']))
-
-        data.append({'timestamp': payload['when'], 'ip': ip, 'hash': payload['hashrate_ths'], 'source': src})
+    avg_temp = round(sum(temps) / len(temps), 1) if temps else 0
+    avg_fan = round(sum(fans) / len(fans), 0) if fans else 0
 
     session.close()
 
@@ -218,6 +170,44 @@ def summary():
         'live' if overall_srcs == {'live'} else
         ('db_fallback' if overall_srcs == {'db_fallback'} else 'mixed')
     )
+
+    # for ip in miners:
+    #     payload = None
+    #     src = 'live'
+    #     try:
+    #         payload = MinerClient(ip).fetch_normalized()
+    #     except MinerError:
+    #         # Fallback: use last DB metric for this IP (offline/demo mode)
+    #         last = (
+    #             session.query(Metric)
+    #             .filter(Metric.miner_ip == ip)
+    #             .order_by(Metric.timestamp.desc())
+    #             .first()
+    #         )
+    #         if last:
+    #             payload = {
+    #                 'hashrate_ths': last.hashrate_ths,
+    #                 'elapsed_s': last.elapsed_s,
+    #                 'avg_temp_c': last.avg_temp_c,
+    #                 'avg_fan_rpm': last.avg_fan_rpm,
+    #                 'power_w': last.power_w,
+    #                 'when': last.timestamp.isoformat() + 'Z',
+    #             }
+    #             src = 'db_fallback'
+    #     if not payload:
+    #         continue
+    #
+    #     overall_srcs.add(src)
+    #     totals['power'] += float(payload['power_w'])
+    #     totals['hash'] += float(payload['hashrate_ths'])
+    #     totals['uptime'] = max(totals['uptime'], int(payload['elapsed_s']))
+    #     if payload['avg_temp_c']:
+    #         totals['temps'].append(float(payload['avg_temp_c']))
+    #     if payload['avg_fan_rpm']:
+    #         totals['fans'].append(float(payload['avg_fan_rpm']))
+    #
+    #     data.append({'timestamp': payload['when'], 'ip': ip, 'hash': payload['hashrate_ths'], 'source': src})
+    #
 
     return jsonify({
         'source': overall_source,

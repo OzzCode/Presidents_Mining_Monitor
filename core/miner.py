@@ -52,7 +52,7 @@ class MinerClient:
                 chunks.append(buf)
 
             text = b"".join(chunks).decode("utf-8", errors="ignore").strip()
-            # bmminer sometimes adds NULs; split by newlines/NULs and parse first valid JSON
+            # bmminer sometimes adds NULs; split by newlines/NULs and parse the first valid JSON
             for line in [p for p in text.replace("\x00", "\n").splitlines() if p.strip()]:
                 try:
                     return json.loads(line)
