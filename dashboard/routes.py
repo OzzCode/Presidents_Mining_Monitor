@@ -12,3 +12,9 @@ def index():
 @dash_bp.route('/miners')
 def show_miners():
     return render_template('miners.html')
+
+
+@dash_bp.route('/logs')
+def view_logs():
+    # optional: pass ?ip=... to filter
+    return render_template('logs.html')

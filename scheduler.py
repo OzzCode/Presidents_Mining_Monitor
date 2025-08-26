@@ -1,8 +1,9 @@
 import time
 from apscheduler.schedulers.background import BackgroundScheduler
 from core.db import Base, engine, SessionLocal, Metric
-from api.endpoints import discover_miners, _read_summary_fields
+from api.endpoints import discover_miners, _read_summary_fields, log_event
 from config import POLL_INTERVAL
+from core.miner import MinerClient
 
 
 # create tables
@@ -12,6 +13,7 @@ def setup_db():
 
 def poll_metrics():
     session = SessionLocal()
+
     try:
         for ip in discover_miners():
             norm = _read_summary_fields(ip)

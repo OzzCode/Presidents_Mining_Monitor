@@ -5,11 +5,12 @@ from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, jsonify, request
 from zeroconf import Zeroconf, ServiceBrowser
 from dateutil import parser
-from core.db import SessionLocal, Metric
+from core.db import SessionLocal, Metric, Event
 from core.miner import MinerClient, MinerError
 from config import MINER_IP_RANGE, POLL_INTERVAL, EFFICIENCY_J_PER_TH
 from datetime import datetime, timezone
 from utils import efficiency_for_model
+
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -133,6 +134,23 @@ def _read_summary_fields(ip: str):
     }
 
 
+def log_event(level: str, message: str, miner_ip: str | None = None, source: str = 'app'):
+    """Write a single event row; swallow errors so logging never breaks requests."""
+    try:
+        s = SessionLocal()
+        s.add(Event(level=level, miner_ip=miner_ip, source=source, message=message))
+        s.commit()
+    except Exception:
+        try:
+            s.rollback()
+        except Exception:
+            pass
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
+
 @api_bp.route('/summary')
 def summary():
     """Summarize current metrics and indicate a data source (live vs. DB fallback)."""
@@ -149,21 +167,21 @@ def summary():
     overall_srcs = set()
     session = SessionLocal()
 
-    # for ip in miners:
-    #     norm = _read_summary_fields(ip)
-    #     total_power += float(norm.get("power", 0.0))
-    #     total_hash += float(norm.get("hash_ths", 0.0))
-    #     total_uptime = max(total_uptime, int(norm.get("elapsed", 0)))
-    #     temps.extend(norm.get("temps", []) or [])
-    #     fans.extend(norm.get("fans", []) or [])
-    #     log.append({
-    #         "timestamp": norm.get("when", ""),
-    #         "ip": ip,
-    #         "hash": norm.get("hash_ths", 0.0),
-    #     })
+    for ip in miners:
+        norm = _read_summary_fields(ip)
+        total_power += float(norm.get("power", 0.0))
+        total_hash += float(norm.get("hash_ths", 0.0))
+        total_uptime = max(total_uptime, int(norm.get("elapsed", 0)))
+        temps.extend(norm.get("temps", []) or [])
+        fans.extend(norm.get("fans", []) or [])
+        log.append({
+            "timestamp": norm.get("when", ""),
+            "ip": ip,
+            "hash": norm.get("hash_ths", 0.0),
+        })
 
-    # avg_temp = round(sum(temps) / len(temps), 1) if temps else 0
-    # avg_fan = round(sum(fans) / len(fans), 0) if fans else 0
+    avg_temp = round(sum(temps) / len(temps), 1) if temps else 0
+    avg_fan = round(sum(fans) / len(fans), 0) if fans else 0
 
     session.close()
 
@@ -283,7 +301,8 @@ def miners():
             d = MinerClient(ip).get_summary()
             model = d.get('Model', 'Model') if isinstance(d, dict) else 'Unknown'
             status = 'Online'
-        except Exception:
+        except Exception as e:
+            log_event("ERROR", f"Summary failed: {e}", miner_ip=ip, source="summary")
             model = 'Unknown'
             status = 'Offline'
         last_seen_iso, age_sec = _last_seen_for_ip(ip)
@@ -331,3 +350,74 @@ def metrics():
         }
         for m in rows
     ])
+
+
+@api_bp.route('/events')
+def events():
+    """
+    App-captured events (errors, warnings). Filters:
+      - ip: filter by miner_ip
+      - level: INFO/WARN/ERROR
+      - since: ISO8601
+      - limit: default 200
+    """
+    ip = request.args.get('ip')
+    level = request.args.get('level')
+    since = request.args.get('since')
+    limit = int(request.args.get('limit', 200))
+
+    s = SessionLocal()
+    q = s.query(Event)
+    if ip:
+        q = q.filter(Event.miner_ip == ip)
+    if level:
+        q = q.filter(Event.level == level.upper())
+    if since:
+        dt = parser.isoparse(since)
+        q = q.filter(Event.timestamp >= dt)
+    rows = q.order_by(Event.timestamp.desc()).limit(limit).all()
+    s.close()
+
+    return jsonify([
+        {
+            "timestamp": e.timestamp.isoformat(),
+            "miner_ip": e.miner_ip,
+            "level": e.level,
+            "source": e.source,
+            "message": e.message
+        } for e in rows
+    ])
+
+@api_bp.route('/miner/<ip>/logs')
+def miner_logs(ip):
+    """
+    Live miner notices/logs if the firmware exposes them via 'notify' or 'log'.
+    Returns a normalized list of entries: [{ts, level, message}]
+    """
+    entries = []
+    try:
+        m = MinerClient(ip)
+        # Try notify first
+        raw = m.get_notify()
+        if isinstance(raw, dict) and raw.get("NOTIFY"):
+            for n in raw["NOTIFY"]:
+                # Typical fields differ; normalize conservatively
+                msg = n.get("Msg") or n.get("Message") or str(n)
+                level = n.get("Level", "").upper() or "INFO"
+                ts = n.get("When") or n.get("Time") or ""
+                entries.append({"ts": ts, "level": level, "message": msg})
+        else:
+            # try generic 'log'
+            raw = m.get_log()
+            # Some return {"LOG":[{"Time":...,"Msg":...}, ...]}
+            for n in (raw.get("LOG") or []):
+                msg = n.get("Msg") or n.get("Message") or str(n)
+                level = n.get("Level", "").upper() or "INFO"
+                ts = n.get("When") or n.get("Time") or ""
+                entries.append({"ts": ts, "level": level, "message": msg})
+    except Exception as e:
+        # also record this failure as an app event so it appears in /events
+        log_event("ERROR", f"Failed to fetch miner logs: {e}", miner_ip=ip, source="miner-logs")
+        return jsonify({"ok": False, "entries": [], "error": str(e)}), 502
+
+    return jsonify({"ok": True, "entries": entries})

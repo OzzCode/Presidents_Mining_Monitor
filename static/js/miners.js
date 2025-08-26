@@ -2,9 +2,9 @@ const REFRESH_INTERVAL = 30;
 
 function freshnessDot(ageSec) {
     if (ageSec == null) return '<span class="dot dot-gray" title="No data"></span>';
-    if (ageSec <= 2 * REFRESH_INTERVAL) return '<span class="dot dot-green" title="Fresh"></span>';
-    if (ageSec <= 5 * REFRESH_INTERVAL) return '<span class="dot dot-yellow" title="Lagging"></span>';
-    return '<span class="dot dot-red" title="Stale"></span>';
+    if (ageSec <= 2 * REFRESH_INTERVAL) return '<span class="dot dot-yellow" title="Fresh"></span>';
+    if (ageSec <= 5 * REFRESH_INTERVAL) return '<span class="dot dot-red" title="Lagging"></span>';
+    return '<span class="dot dot-green" title="Stale"></span>';
 }
 
 function fmtLastSeen(lastSeenIso) {

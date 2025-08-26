@@ -74,6 +74,13 @@ class MinerClient:
 
     def get_pools(self) -> dict:
         return self._send_command("pools")
+    
+    def get_notify(self) -> dict:
+        return self._send_command("notify")
+
+    def get_log(self) -> dict:
+        # some firmwares expose 'log' or 'readlog'; try 'log' first
+        return self._send_command("log")
 
     # ---- Normalized view across SUMMARY/STATS ----
     def fetch_normalized(self) -> dict:

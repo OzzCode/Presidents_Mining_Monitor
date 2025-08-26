@@ -7,7 +7,7 @@ async function fetchSummary() {
     document.getElementById('last-update')?.replaceChildren(
         document.createTextNode('Last update: ' + new Date().toLocaleString())
     );
-    document.getElementById('total-power').textContent = `${data.total_power} W`;
+    document.getElementById('total-power').textContent = `${data.total_power} W (est.)`;
     document.getElementById('total-hashrate').textContent = `${data.total_hashrate} TH/s`;
     document.getElementById('total-uptime').textContent = `${data.total_uptime} s`;
     document.getElementById('avg-temp').textContent = `${data.avg_temp} °C`;
