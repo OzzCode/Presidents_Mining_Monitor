@@ -1,7 +1,8 @@
 import socket
 import json
 import datetime as _dt
-from config import CGMINER_TIMEOUT
+from config import CGMINER_TIMEOUT, EFFICIENCY_J_PER_TH
+from utils import efficiency_for_model
 
 
 class MinerError(Exception):
@@ -90,6 +91,17 @@ class MinerClient:
 
         s0 = (summ.get("SUMMARY") or [{}])[0]
 
+        summary = self.get_summary()
+        model = None
+        if isinstance(summary, dict):
+            # Most firmwares expose 'Model' either in top-level or inside SUMMARY[0]
+            model = summary.get("Model")
+            if not model and summary.get("SUMMARY"):
+                try:
+                    model = summary["SUMMARY"][0].get("Model")
+                except Exception:
+                    pass
+
         # Hashrate: prefer GHS, fallback to MHS
         ths = 0.0
         for k in ("GHS 5s", "GHS av", "GHS 1s", "MHS 5s", "MHS av", "MHS 1s"):
@@ -119,11 +131,16 @@ class MinerClient:
                 elif lk in ("power", "device power", "power_draw", "chain_power"):
                     powers.append(fv)
 
+        j_per_th = efficiency_for_model(model)
+        power_w = ths * j_per_th
+
         return {
             "hashrate_ths": ths,
             "elapsed_s": elapsed,
             "avg_temp_c": _avg(temps),
             "avg_fan_rpm": _avg(fans),
-            "power_w": sum(powers) if powers else 0.0,
+            # Ignore live powers[], always estimate:
+            "power_w": power_w,
             "when": when_iso,
+            "model": model or "",
         }
