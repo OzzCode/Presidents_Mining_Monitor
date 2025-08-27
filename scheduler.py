@@ -1,8 +1,8 @@
 import time
 from apscheduler.schedulers.background import BackgroundScheduler
+from api.endpoints import discover_miners, log_event, _read_summary_fields
+from config import POLL_INTERVAL, EFFICIENCY_J_PER_TH
 from core.db import Base, engine, SessionLocal, Metric
-from api.endpoints import discover_miners, _read_summary_fields, log_event
-from config import POLL_INTERVAL
 from core.miner import MinerClient
 
 
@@ -13,22 +13,35 @@ def setup_db():
 
 def poll_metrics():
     session = SessionLocal()
-
     try:
         for ip in discover_miners():
-            norm = _read_summary_fields(ip)
-            temps = norm["temps"]
-            fans = norm["fans"]
-            metric = Metric(
-                miner_ip=ip,
-                power_w=norm["power"],
-                hashrate_ths=norm["hash_ths"],
-                elapsed_s=norm["elapsed"],
-                avg_temp_c=(sum(temps) / len(temps) if temps else 0),
-                avg_fan_rpm=(sum(fans) / len(fans) if fans else 0)
-            )
-            session.add(metric)
+            try:
+                # If you're using fetch_normalized():
+                payload = MinerClient(ip).fetch_normalized()
+
+                metric = Metric(
+                    miner_ip=ip,
+                    power_w=float(payload.get("power_w", 0.0)),
+                    hashrate_ths=float(payload.get("hashrate_ths", 0.0)),
+                    elapsed_s=int(payload.get("elapsed_s", 0)),
+                    avg_temp_c=float(payload.get("avg_temp_c", 0.0) or 0.0),
+                    avg_fan_rpm=float(payload.get("avg_fan_rpm", 0.0) or 0.0),
+                )
+                session.add(metric)
+
+            except Exception as e:
+                # Record that this IP failed to poll during the scheduled run
+                log_event("ERROR", f"scheduler: poll failed: {e}", miner_ip=ip, source="scheduler")
+                continue
+
         session.commit()
+    except Exception as e:
+        # If the commit fails (disk, schema), record once at job level
+        log_event("ERROR", f"scheduler: commit failed: {e}", source="scheduler")
+        try:
+            session.rollback()
+        except Exception:
+            pass
     finally:
         session.close()
 

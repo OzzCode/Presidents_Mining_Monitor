@@ -38,7 +38,7 @@ async function loadEvents() {
 async function loadLive() {
   const ip = document.getElementById("ip-filter").value.trim();
   if (!ip) {
-    alert("Enter a Miner IP to load live logs");
+    alert("Enter a Miner IP to load live logs.html");
     return;
   }
   const res = await fetch(`/api/miner/${encodeURIComponent(ip)}/logs`);
@@ -48,7 +48,7 @@ async function loadLive() {
   if (!payload.ok) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td colspan="3">Error: ${
-      payload.error || "failed to fetch logs"
+      payload.error || "failed to fetch logs.html"
     }</td>`;
     tbody.appendChild(tr);
     return;

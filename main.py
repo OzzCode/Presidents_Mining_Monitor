@@ -1,6 +1,6 @@
 from flask import Flask, render_template
 from dashboard.routes import dash_bp
-from api.endpoints import api_bp
+from api.endpoints import api_bp, log_event
 from scheduler import start_scheduler
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
@@ -13,6 +13,17 @@ def home():
 
 app.register_blueprint(dash_bp)
 app.register_blueprint(api_bp)
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # Log and return a basic 500 JSON
+    try:
+        log_event("ERROR", f"flask unhandled: {repr(e)}", source="flask")
+    except Exception:
+        pass
+    return {"ok": False, "error": "Internal Server Error"}, 500
+
 
 start_scheduler()
 

@@ -9,7 +9,42 @@ from core.db import SessionLocal, Metric, Event
 from core.miner import MinerClient, MinerError
 from config import MINER_IP_RANGE, POLL_INTERVAL, EFFICIENCY_J_PER_TH
 from datetime import datetime, timezone
-from utils import efficiency_for_model
+
+
+def _read_summary_fields(ip: str):
+    from core.miner import MinerClient
+    client = MinerClient(ip)
+
+    # --- SUMMARY ---
+    try:
+        summary = client.get_summary()
+        s = summary["SUMMARY"][0] if isinstance(summary, dict) and summary.get("SUMMARY") else (
+            summary if isinstance(summary, dict) else {})
+    except Exception:
+        return {"power": 0.0, "hash_ths": 0.0, "elapsed": 0, "temps": [], "fans": [], "when": ""}
+
+    mhs_5s = float(s.get("MHS 5s", 0.0)) if isinstance(s.get("MHS 5s", 0.0), (int, float, str)) else 0.0
+    elapsed = int(float(s.get("Elapsed", 0) or 0))
+
+    # --- STATS (temps/fans) ---
+    temps, fans = [], []
+    try:
+        stats = client.get_stats()
+        if isinstance(stats, dict) and stats.get("STATS"):
+            st0 = stats["STATS"][0]
+            for k, v in st0.items():
+                if isinstance(v, (int, float)):
+                    lk = str(k).lower()
+                    if lk.startswith("temp"): temps.append(float(v))
+                    if lk.startswith("fan"):  fans.append(float(v))
+    except Exception:
+        pass
+
+    power = float(s.get("Power", 0.0) or 0.0)
+    when = s.get("When") or s.get("STIME") or ""
+
+    return {"power": power, "hash_ths": round(mhs_5s / 1e6, 3), "elapsed": elapsed, "temps": temps, "fans": fans,
+            "when": when}
 
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -71,6 +106,25 @@ def _last_seen_for_ip(ip: str):
 # Normalization helper
 # --------------------------
 # noinspection PyBroadException
+def log_event(level: str, message: str, miner_ip: str | None = None, source: str = 'app'):
+    """Write a single event row; errors here are swallowed so logging never breaks requests."""
+    s = None
+    try:
+        s = SessionLocal()
+        s.add(Event(level=level.upper(), miner_ip=miner_ip, source=source, message=message))
+        s.commit()
+    except Exception:
+        try:
+            s and s.rollback()
+        except Exception:
+            pass
+    finally:
+        try:
+            s and s.close()
+        except Exception:
+            pass
+
+
 def _read_summary_fields(ip: str):
     """
     Query a miner and normalize cgminer/BMminer SUMMARY/STATS into a consistent
@@ -93,7 +147,6 @@ def _read_summary_fields(ip: str):
         mhs_5s = float(s.get("MHS 5s", 0.0))
     except Exception:
         mhs_5s = 0.0
-    hash_ths = round(mhs_5s / 1e6, 3)
     try:
         elapsed = int(s.get("Elapsed", 0))
     except Exception:
@@ -117,12 +170,10 @@ def _read_summary_fields(ip: str):
 
     when = s.get("When") or s.get("STIME") or ""
 
-    # Power: reported or fallback estimate
     try:
-        reported_w = float(s.get("Power", 0.0) or 0.0)
+        power = float(s.get("Power", 0.0) or 0.0)
     except Exception:
-        reported_w = 0.0
-    power = reported_w if reported_w > 0 else hash_ths * EFFICIENCY_J_PER_TH
+        power = 0.0
 
     return {
         "power": power,
@@ -134,23 +185,6 @@ def _read_summary_fields(ip: str):
     }
 
 
-def log_event(level: str, message: str, miner_ip: str | None = None, source: str = 'app'):
-    """Write a single event row; swallow errors so logging never breaks requests."""
-    try:
-        s = SessionLocal()
-        s.add(Event(level=level, miner_ip=miner_ip, source=source, message=message))
-        s.commit()
-    except Exception:
-        try:
-            s.rollback()
-        except Exception:
-            pass
-    finally:
-        try:
-            s.close()
-        except Exception:
-            pass
-
 @api_bp.route('/summary')
 def summary():
     """Summarize current metrics and indicate a data source (live vs. DB fallback)."""
@@ -159,37 +193,9 @@ def summary():
 
     data = []
     totals = {'power': 0.0, 'hash': 0.0, 'uptime': 0, 'temps': [], 'fans': [], 'log': []}
-    total_power = 0.0
-    total_hash = 0.0
-    total_uptime = 0
-    temps, fans, log = [], [], []
-
     overall_srcs = set()
+
     session = SessionLocal()
-
-    for ip in miners:
-        norm = _read_summary_fields(ip)
-        total_power += float(norm.get("power", 0.0))
-        total_hash += float(norm.get("hash_ths", 0.0))
-        total_uptime = max(total_uptime, int(norm.get("elapsed", 0)))
-        temps.extend(norm.get("temps", []) or [])
-        fans.extend(norm.get("fans", []) or [])
-        log.append({
-            "timestamp": norm.get("when", ""),
-            "ip": ip,
-            "hash": norm.get("hash_ths", 0.0),
-        })
-
-    avg_temp = round(sum(temps) / len(temps), 1) if temps else 0
-    avg_fan = round(sum(fans) / len(fans), 0) if fans else 0
-
-    session.close()
-
-    overall_source = (
-        'live' if overall_srcs == {'live'} else
-        ('db_fallback' if overall_srcs == {'db_fallback'} else 'mixed')
-    )
-
     for ip in miners:
         payload = None
         src = 'live'
@@ -216,18 +222,6 @@ def summary():
         if not payload:
             continue
 
-        model = payload.get('model')
-        if not model:
-            try:
-                s = MinerClient(ip).get_summary()
-                model = (s.get("Model")
-                        or (s.get("SUMMARY") and s["SUMMARY"][0].get("Model")))
-            except Exception:
-                model = None
-
-        eff = efficiency_for_model(model)
-        payload['power_w'] = float(payload['hashrate_ths']) * eff
-    
         overall_srcs.add(src)
         totals['power'] += float(payload['power_w'])
         totals['hash'] += float(payload['hashrate_ths'])
@@ -236,9 +230,15 @@ def summary():
             totals['temps'].append(float(payload['avg_temp_c']))
         if payload['avg_fan_rpm']:
             totals['fans'].append(float(payload['avg_fan_rpm']))
-    
+
         data.append({'timestamp': payload['when'], 'ip': ip, 'hash': payload['hashrate_ths'], 'source': src})
-    
+
+    session.close()
+
+    overall_source = (
+        'live' if overall_srcs == {'live'} else
+        ('db_fallback' if overall_srcs == {'db_fallback'} else 'mixed')
+    )
 
     return jsonify({
         'source': overall_source,
@@ -299,10 +299,9 @@ def miners():
     for ip in discover_miners():
         try:
             d = MinerClient(ip).get_summary()
-            model = d.get('Model', 'Model') if isinstance(d, dict) else 'Unknown'
+            model = d.get('Model', 'Unknown') if isinstance(d, dict) else 'Unknown'
             status = 'Online'
-        except Exception as e:
-            log_event("ERROR", f"Summary failed: {e}", miner_ip=ip, source="summary")
+        except Exception:
             model = 'Unknown'
             status = 'Offline'
         last_seen_iso, age_sec = _last_seen_for_ip(ip)
@@ -350,74 +349,3 @@ def metrics():
         }
         for m in rows
     ])
-
-
-@api_bp.route('/events')
-def events():
-    """
-    App-captured events (errors, warnings). Filters:
-      - ip: filter by miner_ip
-      - level: INFO/WARN/ERROR
-      - since: ISO8601
-      - limit: default 200
-    """
-    ip = request.args.get('ip')
-    level = request.args.get('level')
-    since = request.args.get('since')
-    limit = int(request.args.get('limit', 200))
-
-    s = SessionLocal()
-    q = s.query(Event)
-    if ip:
-        q = q.filter(Event.miner_ip == ip)
-    if level:
-        q = q.filter(Event.level == level.upper())
-    if since:
-        dt = parser.isoparse(since)
-        q = q.filter(Event.timestamp >= dt)
-    rows = q.order_by(Event.timestamp.desc()).limit(limit).all()
-    s.close()
-
-    return jsonify([
-        {
-            "timestamp": e.timestamp.isoformat(),
-            "miner_ip": e.miner_ip,
-            "level": e.level,
-            "source": e.source,
-            "message": e.message
-        } for e in rows
-    ])
-
-@api_bp.route('/miner/<ip>/logs')
-def miner_logs(ip):
-    """
-    Live miner notices/logs if the firmware exposes them via 'notify' or 'log'.
-    Returns a normalized list of entries: [{ts, level, message}]
-    """
-    entries = []
-    try:
-        m = MinerClient(ip)
-        # Try notify first
-        raw = m.get_notify()
-        if isinstance(raw, dict) and raw.get("NOTIFY"):
-            for n in raw["NOTIFY"]:
-                # Typical fields differ; normalize conservatively
-                msg = n.get("Msg") or n.get("Message") or str(n)
-                level = n.get("Level", "").upper() or "INFO"
-                ts = n.get("When") or n.get("Time") or ""
-                entries.append({"ts": ts, "level": level, "message": msg})
-        else:
-            # try generic 'log'
-            raw = m.get_log()
-            # Some return {"LOG":[{"Time":...,"Msg":...}, ...]}
-            for n in (raw.get("LOG") or []):
-                msg = n.get("Msg") or n.get("Message") or str(n)
-                level = n.get("Level", "").upper() or "INFO"
-                ts = n.get("When") or n.get("Time") or ""
-                entries.append({"ts": ts, "level": level, "message": msg})
-    except Exception as e:
-        # also record this failure as an app event so it appears in /events
-        log_event("ERROR", f"Failed to fetch miner logs: {e}", miner_ip=ip, source="miner-logs")
-        return jsonify({"ok": False, "entries": [], "error": str(e)}), 502
-
-    return jsonify({"ok": True, "entries": entries})

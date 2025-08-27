@@ -14,6 +14,9 @@ SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
 ALERT_EMAIL = os.getenv('ALERT_EMAIL')
 # SMTP_USER = os.getenv('SMTP_USER')
 # SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
+# Add this line (default 29 J/TH)
+EFFICIENCY_J_PER_TH = float(os.getenv('EFFICIENCY_J_PER_TH', 29))
+
 
 # Base fallback (used if model not recognized)
 EFFICIENCY_J_PER_TH = float(os.getenv('EFFICIENCY_J_PER_TH', 29))

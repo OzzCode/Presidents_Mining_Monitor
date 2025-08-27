@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Miner Logs</title>
+    <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+<nav>
+    <a href="/">Home</a>
+    <a href="/dashboard/">Dashboard</a>
+    <a href="/dashboard/miners">Miners</a>
+    <a href="/dashboard/logs">Logs</a>
+</nav>
+
+<div class="container">
+    <div class="controls">
+        <label>Miner IP: <input id="ip-filter" placeholder="192.168.x.x"/></label>
+        <label>Level:
+            <select id="level-filter">
+                <option value="">Any</option>
+                <option>ERROR</option>
+                <option>WARN</option>
+                <option>INFO</option>
+            </select>
+        </label>
+        <label>Since: <input id="since-filter" type="datetime-local"/></label>
+        <button id="load-events">Load Events</button>
+        <button id="load-live">Load Miner Live Logs</button>
+    </div>
+
+    <h2>App Events</h2>
+    <table>
+        <thead>
+        <tr>
+            <th>Time</th>
+            <th>IP</th>
+            <th>Level</th>
+            <th>Source</th>
+            <th>Message</th>
+        </tr>
+        </thead>
+        <tbody id="events-body"></tbody>
+    </table>
+
+    <h2>Miner Live Logs</h2>
+    <table>
+        <thead>
+        <tr>
+            <th>Time</th>
+            <th>Level</th>
+            <th>Message</th>
+        </tr>
+        </thead>
+        <tbody id="live-body"></tbody>
+    </table>
+</div>
+
+<script src="/static/logs.js"></script>
+</body>
+</html>
