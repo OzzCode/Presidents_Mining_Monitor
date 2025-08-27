@@ -1,5 +1,3 @@
-import socket
-import json
 import datetime as _dt
 from config import CGMINER_TIMEOUT, EFFICIENCY_J_PER_TH
 from utils import efficiency_for_model
@@ -74,7 +72,7 @@ class MinerClient:
 
     def get_pools(self) -> dict:
         return self._send_command("pools")
-    
+
     def get_notify(self) -> dict:
         return self._send_command("notify")
 

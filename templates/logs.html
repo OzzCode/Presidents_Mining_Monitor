@@ -1,60 +1,62 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 <head>
-    <title>Miner Logs</title>
-    <link rel="stylesheet" href="/static/style.css"/>
+    <meta charset="utf-8"/>
+    <title>Error Logs</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-<nav>
-    <a href="/">Home</a>
-    <a href="/dashboard/">Dashboard</a>
-    <a href="/dashboard/miners">Miners</a>
-    <a href="/dashboard/logs">Logs</a>
-</nav>
+<nav><a href="{{ url_for('home') }}">Home</a></nav>
+<h1>Error Logs</h1>
 
-<div class="container">
-    <div class="controls">
-        <label>Miner IP: <input id="ip-filter" placeholder="192.168.x.x"/></label>
-        <label>Level:
-            <select id="level-filter">
-                <option value="">Any</option>
-                <option>ERROR</option>
-                <option>WARN</option>
-                <option>INFO</option>
-            </select>
-        </label>
-        <label>Since: <input id="since-filter" type="datetime-local"/></label>
-        <button id="load-events">Load Events</button>
-        <button id="load-live">Load Miner Live Logs</button>
-    </div>
-
-    <h2>App Events</h2>
-    <table>
-        <thead>
-        <tr>
-            <th>Time</th>
-            <th>IP</th>
-            <th>Level</th>
-            <th>Source</th>
-            <th>Message</th>
-        </tr>
-        </thead>
-        <tbody id="events-body"></tbody>
-    </table>
-
-    <h2>Miner Live Logs</h2>
-    <table>
-        <thead>
-        <tr>
-            <th>Time</th>
-            <th>Level</th>
-            <th>Message</th>
-        </tr>
-        </thead>
-        <tbody id="live-body"></tbody>
-    </table>
+<div class="controls">
+    <select id="level">
+        <option value="">All levels</option>
+        <option>ERROR</option>
+        <option>WARNING</option>
+        <option>INFO</option>
+        <option>DEBUG</option>
+    </select>
+    <input id="ip" placeholder="IP (optional)"/>
+    <input id="since" type="datetime-local"/>
+    <button id="load">Load</button>
 </div>
 
-<script src="/static/logs.js"></script>
+<table class="table">
+    <thead>
+    <tr>
+        <th>Time</th>
+        <th>Level</th>
+        <th>Component</th>
+        <th>IP</th>
+        <th>Message</th>
+    </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+</table>
+
+<script>
+    async function loadLogs() {
+        let url = '/api/error-logs?limit=200';
+        const lvl = document.getElementById('level').value;
+        const ip = document.getElementById('ip').value.trim();
+        const s = document.getElementById('since').value;
+        if (lvl) url += `&level=${encodeURIComponent(lvl)}`;
+        if (ip) url += `&ip=${encodeURIComponent(ip)}`;
+        if (s) url += `&since=${new Date(s).toISOString()}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const tb = document.getElementById('tbody');
+        tb.innerHTML = '';
+        data.forEach(r => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${r.created_at}</td><td>${r.level}</td><td>${r.component}</td><td>${r.miner_ip || ''}</td><td>${r.message}</td>`;
+            tb.appendChild(tr);
+        });
+    }
+
+    document.getElementById('load').addEventListener('click', loadLogs);
+    window.addEventListener('DOMContentLoaded', loadLogs);
+</script>
 </body>
 </html>

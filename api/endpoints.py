@@ -5,10 +5,13 @@ from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, jsonify, request
 from zeroconf import Zeroconf, ServiceBrowser
 from dateutil import parser
-from core.db import SessionLocal, Metric, Event
+from core.db import SessionLocal, Metric, Event, ErrorEvent
 from core.miner import MinerClient, MinerError
 from config import MINER_IP_RANGE, POLL_INTERVAL, EFFICIENCY_J_PER_TH
 from datetime import datetime, timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _read_summary_fields(ip: str):
@@ -201,6 +204,11 @@ def summary():
         src = 'live'
         try:
             payload = MinerClient(ip).fetch_normalized()
+            row_src = "live"
+        except MinerError:
+            logger.warning("summary_live_fetch_failed", extra={"component": "api", "miner_ip": ip})
+        try:
+            payload = MinerClient(ip).fetch_normalized()
         except MinerError:
             # Fallback: use last DB metric for this IP (offline/demo mode)
             last = (
@@ -349,3 +357,32 @@ def metrics():
         }
         for m in rows
     ])
+
+
+@api_bp.route("/error-logs")
+def error_logs():
+    level = request.args.get("level")
+    miner_ip = request.args.get("ip")
+    since = request.args.get("since")
+    limit = int(request.args.get("limit", 200))
+
+    session = SessionLocal()
+    q = session.query(ErrorEvent)
+    if level: q = q.filter(ErrorEvent.level == level.upper())
+    if miner_ip: q = q.filter(ErrorEvent.miner_ip == miner_ip)
+    if since:
+        dt = parser.isoparse(since)
+        if dt.tzinfo: dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        q = q.filter(ErrorEvent.created_at >= dt)
+    rows = q.order_by(ErrorEvent.created_at.desc()).limit(limit).all()
+    out = [{
+        "id": r.id,
+        "created_at": r.created_at.isoformat() + "Z",
+        "level": r.level,
+        "component": r.component,
+        "miner_ip": r.miner_ip,
+        "message": r.message,
+        "context": r.context,
+    } for r in rows]
+    session.close()
+    return jsonify(out)

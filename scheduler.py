@@ -1,7 +1,9 @@
 import time
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+import logging
 from apscheduler.schedulers.background import BackgroundScheduler
-from api.endpoints import discover_miners, log_event, _read_summary_fields
-from config import POLL_INTERVAL, EFFICIENCY_J_PER_TH
+from api.endpoints import discover_miners, log_event
+from config import POLL_INTERVAL
 from core.db import Base, engine, SessionLocal, Metric
 from core.miner import MinerClient
 
@@ -9,6 +11,16 @@ from core.miner import MinerClient
 # create tables
 def setup_db():
     Base.metadata.create_all(bind=engine)
+
+
+logger = logging.getLogger(__name__)
+
+
+def _job_listener(event):
+    if event.exception:
+        logger.exception("scheduler_job_failed", extra={"component": "scheduler", "job_id": event.job_id})
+    else:
+        logger.debug("scheduler_job_ok", extra={"component": "scheduler", "job_id": event.job_id})
 
 
 def poll_metrics():
@@ -50,6 +62,7 @@ def start_scheduler():
     setup_db()
     scheduler = BackgroundScheduler()
     scheduler.add_job(poll_metrics, 'interval', seconds=POLL_INTERVAL, id='poll_metrics')
+    scheduler.add_listener(_job_listener, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED)
     scheduler.start()
     print(f"Polling every {POLL_INTERVAL}s...")
 

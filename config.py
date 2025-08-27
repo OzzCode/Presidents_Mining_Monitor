@@ -18,9 +18,6 @@ ALERT_EMAIL = os.getenv('ALERT_EMAIL')
 EFFICIENCY_J_PER_TH = float(os.getenv('EFFICIENCY_J_PER_TH', 29))
 
 
-# Base fallback (used if model not recognized)
-EFFICIENCY_J_PER_TH = float(os.getenv('EFFICIENCY_J_PER_TH', 29))
-
 # Optional per-model overrides (J/TH). Tune these as you like.
 # You can override any of these via env vars with the same keys (optional).
 EFFICIENCY_MAP = {
@@ -44,3 +41,9 @@ ROLLING_WINDOW_SAMPLES = int(os.getenv('ROLLING_WINDOW_SAMPLES', 10))
 
 # CGMiner client behavior
 CGMINER_TIMEOUT = float(os.getenv('CGMINER_TIMEOUT', 1.0))  # seconds
+
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+LOG_DIR = os.getenv("LOG_DIR", "logs")
+LOG_FORMAT = os.getenv("LOG_FORMAT", "json")            # or 'text'
+LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "7"))
+LOG_TO_DB = os.getenv("LOG_TO_DB", "1") in ("1","true","True")
