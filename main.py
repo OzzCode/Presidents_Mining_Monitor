@@ -40,8 +40,9 @@ from config import LOG_TO_DB
 
 if LOG_TO_DB:
     import logging
-    from logging_db_handler import DBHandler
-logging.getLogger().addHandler(DBHandler())
+    from core.logging_db_handler import DBHandler
+    
+    logging.getLogger().addHandler(DBHandler())
 
 
 @app.after_request
