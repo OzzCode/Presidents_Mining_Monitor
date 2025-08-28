@@ -1,5 +1,67 @@
 // Poll every 30s
 const POLL_INTERVAL = 30;
+
+// Derive miner IP from querystring if you don't inject MINER_IP from the server
+const qs = new URLSearchParams(location.search);
+const QS_IP = qs.get('ip');
+
+// Build the summary URL
+const summaryUrl = QS_IP ? `/api/summary?ip=${encodeURIComponent(QS_IP)}` : '/api/summary';
+
+// Small helpers
+function $(id) {
+    return document.getElementById(id);
+}
+
+function setText(id, text) {
+    const el = $(id);
+    if (el) el.textContent = text;
+}
+
+function num(n, digits = 0) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return 0;
+    return digits > 0 ? Number(v.toFixed(digits)) : Math.round(v);
+}
+
+async function fetchSummaryAndFillCards() {
+    try {
+        const res = await fetch(summaryUrl);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        // Expected keys from /api/summary:
+        // total_power, total_hashrate, total_uptime, avg_temp, avg_fan_speed, total_workers
+        setText('total-power', `${num(data.total_power, 1)} W`);        // add "(est.)" if you want
+        setText('total-hashrate', `${num(data.total_hashrate, 3)} TH/s`);
+        setText('total-uptime', `${num(data.total_uptime)} s`);
+        setText('avg-temp', `${num(data.avg_temp, 1)} °C`);
+        setText('avg-fan-speed', `${num(data.avg_fan_speed)} RPM`);
+        setText('total-workers', `${num(data.total_workers)}`);
+
+        // Optional: show when the page last fetched
+        const stamp = $('last-update');
+        if (stamp) stamp.textContent = `Last update: ${new Date().toLocaleString()}`;
+
+        // Optional: if you return data.last_updated from the API, you can display it too
+        const fromServer = $('server-update');
+        if (fromServer && data.last_updated) {
+            fromServer.textContent = `Server time: ${new Date(data.last_updated).toLocaleString()}`;
+        }
+    } catch (err) {
+        console.warn('summary fetch failed', err);
+        // Show safe placeholders so cards don’t stay blank if a fetch fails
+        ['total-power', 'total-hashrate', 'total-uptime', 'avg-temp', 'avg-fan-speed', 'total-workers']
+            .forEach(id => setText(id, '—'));
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    fetchSummaryAndFillCards();
+    setInterval(fetchSummaryAndFillCards, POLL_INTERVAL * 1000);
+});
+
+
 const ipParam = typeof MINER_IP !== 'undefined' ? MINER_IP : null;
 
 // Build the metrics URL for the last 24 hours
