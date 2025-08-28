@@ -1,6 +1,6 @@
 import datetime as _dt
-from config import CGMINER_TIMEOUT, EFFICIENCY_J_PER_TH
-from utils import efficiency_for_model
+from config import CGMINER_TIMEOUT
+from helpers.utils import efficiency_for_model
 
 
 class MinerError(Exception):

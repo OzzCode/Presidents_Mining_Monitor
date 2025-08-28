@@ -26,34 +26,34 @@ def handle_exception(e):
     return {"ok": False, "error": "Internal Server Error"}, 500
 
 
-@app.before_request
-def _begin():
-    g.req_id = str(uuid.uuid4())[:8]
-    g.req_ts = time.time()
-
-
-from logging_setup import setup_logging
-
-logger = setup_logging("antminer_monitor")
-
-from config import LOG_TO_DB
-
-if LOG_TO_DB:
-    import logging
-    from core.logging_db_handler import DBHandler
-    
-    logging.getLogger().addHandler(DBHandler())
-
-
-@app.after_request
-def _end(resp):
-    elapsed = (time.time() - getattr(g, "req_ts", time.time())) * 1000
-    logger.info("http_request", extra={
-        "component": "api", "path": request.path, "endpoint": request.endpoint, "job_id": g.req_id,
-    })
-    resp.headers["X-Request-ID"] = g.req_id
-    resp.headers["X-Elapsed-ms"] = f"{elapsed:.1f}"
-    return resp
+# @app.before_request
+# def _begin():
+#     g.req_id = str(uuid.uuid4())[:8]
+#     g.req_ts = time.time()
+#
+#
+# from logging_setup import setup_logging
+#
+# logger = setup_logging("antminer_monitor")
+#
+# from config import LOG_TO_DB
+#
+# if LOG_TO_DB:
+#     import logging
+#     from helpers.logging_db_handler import DBHandler
+#
+#     logging.getLogger().addHandler(DBHandler())
+#
+#
+# @app.after_request
+# def _end(resp):
+#     elapsed = (time.time() - getattr(g, "req_ts", time.time())) * 1000
+#     logger.info("http_request", extra={
+#         "component": "api", "path": request.path, "endpoint": request.endpoint, "job_id": g.req_id,
+#     })
+#     resp.headers["X-Request-ID"] = g.req_id
+#     resp.headers["X-Elapsed-ms"] = f"{elapsed:.1f}"
+#     return resp
 
 
 start_scheduler()
