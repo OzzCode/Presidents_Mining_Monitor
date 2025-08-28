@@ -287,3 +287,23 @@ tr.stale {
 tr.stale {
   opacity: 0.5;
 }
+
+/* Log row severity coloring */
+.log-row td.log-level {
+  font-weight: bold;
+}
+
+.log-error {
+  background: #ffecec;
+  color: #b91c1c; /* dark red */
+}
+
+.log-warn {
+  background: #fff8e1;
+  color: #92400e; /* amber/brown */
+}
+
+.log-info {
+  background: #f1f5f9;
+  color: #1e3a8a; /* muted blue */
+}

@@ -22,17 +22,23 @@ async function loadEvents() {
   const data = await res.json();
   const tbody = document.getElementById("events-body");
   tbody.innerHTML = "";
-  data.forEach((e) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${e.timestamp}</td>
-      <td>${e.miner_ip || "—"}</td>
-      <td>${e.level}</td>
-      <td>${e.source}</td>
-      <td>${e.message}</td>`;
-    if (e.level === "ERROR") tr.style.background = "#ffecec";
-    tbody.appendChild(tr);
-  });
+data.forEach((e) => {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td>${e.timestamp}</td>
+    <td>${e.miner_ip || "—"}</td>
+    <td class="log-level">${e.level}</td>
+    <td>${e.source}</td>
+    <td>${e.message}</td>`;
+  
+  // Add CSS classes by severity
+  tr.classList.add("log-row");
+  if (e.level === "ERROR") tr.classList.add("log-error");
+  else if (e.level === "WARN" || e.level === "WARNING") tr.classList.add("log-warn");
+  else tr.classList.add("log-info");
+
+  tbody.appendChild(tr);
+});
 }
 
 async function loadLive() {
