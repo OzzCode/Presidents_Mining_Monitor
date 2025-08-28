@@ -18,7 +18,7 @@ class DBHandler(logging.Handler):
                 context=context,
                 traceback=record.exc_text or None,
             )
-            session.add(ev);
+            session.add(ev)
             session.commit()
         except Exception:
             pass
