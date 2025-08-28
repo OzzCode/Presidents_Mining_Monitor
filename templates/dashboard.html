@@ -37,20 +37,27 @@
             <p id="total-workers">--</p></div>
     </div>
     <h2>Hashrate (recent)</h2>
-    <div class="metrics">
-        <div class="card">
-            <h3>Last 10 min</h3>
-            <canvas id="chart-10m"></canvas>
+    <div class="dashboard-grid" style="margin-top:12px;">
+        <div class="chart-card">
+            <h3>Hashrate (TH/s)</h3>
+            <div class="chart-wrap">
+                <canvas id="chart-hashrate"></canvas>
+            </div>
         </div>
-        <div class="card">
-            <h3>Last 1 hour</h3>
-            <canvas id="chart-1h"></canvas>
+        <div class="chart-card">
+            <h3>Power (W)</h3>
+            <div class="chart-wrap">
+                <canvas id="chart-power"></canvas>
+            </div>
         </div>
-        <div class="card">
-            <h3>Last 1 day</h3>
-            <canvas id="chart-1d"></canvas>
+        <div class="chart-card">
+            <h3>Temp / Fan</h3>
+            <div class="chart-wrap">
+                <canvas id="chart-tempfan"></canvas>
+            </div>
         </div>
     </div>
+
 
     <h2>Statistics Log</h2>
     <table>
@@ -103,6 +110,7 @@
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 <script src="{{ url_for('static', filename='js/history.js') }}"></script>
 <script src="{{ url_for('static', filename='js/overview_history.js') }}"></script>
+<script src="{{ url_for('static', filename='js/overview.js') }}"></script>
 
 
 <footer style="text-align:center; margin:20px;">

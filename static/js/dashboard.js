@@ -1,30 +1,118 @@
+// Poll every 30s
 const POLL_INTERVAL = 30;
-const baseUrl = MINER_IP ? `/api/summary?ip=${encodeURIComponent(MINER_IP)}` : '/api/summary';
+const ipParam = typeof MINER_IP !== 'undefined' ? MINER_IP : null;
 
-async function fetchSummary() {
-    const res = await fetch(baseUrl);
-    const data = await res.json();
-    document.getElementById('last-update')?.replaceChildren(
-        document.createTextNode('Last update: ' + new Date().toLocaleString())
-    );
-    document.getElementById('total-power').textContent = `${data.total_power} W (est.)`;
-    document.getElementById('total-hashrate').textContent = `${data.total_hashrate} TH/s`;
-    document.getElementById('total-uptime').textContent = `${data.total_uptime} s`;
-    document.getElementById('avg-temp').textContent = `${data.avg_temp} °C`;
-    document.getElementById('avg-fan-speed').textContent = `${data.avg_fan_speed} RPM`;
-    document.getElementById('total-workers').textContent = data.total_workers;
-    const tbody = document.getElementById('stats-log');
-    tbody.innerHTML = '';
-    data.log.forEach(e => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${e.timestamp}</td><td>${e.ip}</td><td>${e.hash}</td>`;
-        tbody.appendChild(tr);
-    });
+// Build the metrics URL for the last 24 hours
+function metricsUrl() {
+    const now = new Date();
+    const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    const p = new URLSearchParams({since, limit: "3000"});
+    if (ipParam) p.set("ip", ipParam);
+    return `/api/metrics?${p.toString()}`;
+}
+
+let charts = {};
+
+function ensureCharts() {
+    if (!charts.hash) {
+        charts.hash = new Chart(document.getElementById('chart-hashrate'), {
+            type: 'line',
+            data: {labels: [], datasets: [{label: 'TH/s', data: [], tension: 0.2, fill: false}]},
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {x: {ticks: {maxRotation: 0}, type: 'time', time: {unit: 'hour'}}, y: {beginAtZero: true}},
+                plugins: {legend: {display: false}}
+            }
+        });
+    }
+    if (!charts.power) {
+        charts.power = new Chart(document.getElementById('chart-power'), {
+            type: 'line',
+            data: {labels: [], datasets: [{label: 'W', data: [], tension: 0.2, fill: false}]},
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {x: {ticks: {maxRotation: 0}, type: 'time', time: {unit: 'hour'}}, y: {beginAtZero: true}},
+                plugins: {legend: {display: false}}
+            }
+        });
+    }
+    if (!charts.tempfan) {
+        charts.tempfan = new Chart(document.getElementById('chart-tempfan'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {label: 'Temp (°C)', data: [], yAxisID: 'y', tension: 0.2, fill: false},
+                    {label: 'Fan (RPM)', data: [], yAxisID: 'y1', tension: 0.2, fill: false}
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {ticks: {maxRotation: 0}, type: 'time', time: {unit: 'hour'}},
+                    y: {beginAtZero: true, position: 'left'},
+                    y1: {beginAtZero: true, position: 'right', grid: {drawOnChartArea: false}}
+                }
+            }
+        });
+    }
+}
+
+function setNoData(chart, msg) {
+    // Optionally you can overlay a message; for simplicity, clear data
+    chart.data.labels = [];
+    chart.data.datasets.forEach(d => d.data = []);
+    chart.update();
+    console.warn(msg);
+}
+
+async function loadAndRender() {
+    ensureCharts();
+
+    let rows = [];
+    try {
+        const res = await fetch(metricsUrl());
+        rows = await res.json();
+        if (!Array.isArray(rows)) rows = [];
+    } catch (e) {
+        console.error('metrics fetch failed', e);
+        Object.values(charts).forEach(c => setNoData(c, 'Fetch failed'));
+        return;
+    }
+
+    if (!rows.length) {
+        Object.values(charts).forEach(c => setNoData(c, 'No rows'));
+        return;
+    }
+
+    // Map fields from API to Chart.js points
+    const labels = rows.map(r => r.timestamp);
+    const hash = rows.map(r => Number(r.hashrate_ths || 0));
+    const power = rows.map(r => Number(r.power_w || 0));
+    const temp = rows.map(r => Number(r.avg_temp_c || 0));
+    const fan = rows.map(r => Number(r.avg_fan_rpm || 0));
+
+    // Update charts
+    charts.hash.data.labels = labels;
+    charts.hash.data.datasets[0].data = hash;
+    charts.hash.update();
+
+    charts.power.data.labels = labels;
+    charts.power.data.datasets[0].data = power;
+    charts.power.update();
+
+    charts.tempfan.data.labels = labels;
+    charts.tempfan.data.datasets[0].data = temp; // Temp (°C)
+    charts.tempfan.data.datasets[1].data = fan;  // RPM
+    charts.tempfan.update();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    fetchSummary();
-    setInterval(fetchSummary, POLL_INTERVAL * 1e3);
+    loadAndRender();
+    setInterval(loadAndRender, POLL_INTERVAL * 1000);
 });
 
 

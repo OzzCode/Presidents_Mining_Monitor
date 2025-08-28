@@ -17,5 +17,53 @@
         <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
     </ul>
 </div>
+<!-- Include Chart.js once if not already present anywhere -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<!-- KPI row (optional) -->
+<div id="farm-kpis" style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px;">
+    <div class="kpi-card">
+        <div class="kpi-label">Total Hashrate</div>
+        <div class="kpi-value" id="kpi-hash">—</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Total Power (est.)</div>
+        <div class="kpi-value" id="kpi-power">—</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Avg Temp</div>
+        <div class="kpi-value" id="kpi-temp">—</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Workers</div>
+        <div class="kpi-value" id="kpi-workers">—</div>
+    </div>
+</div>
+
+<!-- Overview charts -->
+<div class="dashboard-grid" style="margin-top:12px;">
+    <div class="chart-card">
+        <h3>Farm Hashrate (TH/s)</h3>
+        <div class="chart-wrap">
+            <canvas id="overview-hash"></canvas>
+        </div>
+    </div>
+    <div class="chart-card">
+        <h3>Farm Power (W)</h3>
+        <div class="chart-wrap">
+            <canvas id="overview-power"></canvas>
+        </div>
+    </div>
+    <div class="chart-card">
+        <h3>Farm Temp / Fan</h3>
+        <div class="chart-wrap">
+            <canvas id="overview-tempfan"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Attach the script -->
+<script src="/static/overview.js"></script>
+
 </body>
 </html>

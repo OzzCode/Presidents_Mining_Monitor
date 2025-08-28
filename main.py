@@ -16,6 +16,7 @@ app.register_blueprint(dash_bp)
 app.register_blueprint(api_bp)
 
 
+# noinspection PyBroadException
 @app.errorhandler(Exception)
 def handle_exception(e):
     # Log and return a basic 500 JSON
