@@ -1,9 +1,9 @@
 import ipaddress
 import socket
 import time
-from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, jsonify, request
 from zeroconf import Zeroconf, ServiceBrowser
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dateutil import parser
 from core.db import SessionLocal, Metric, Event, ErrorEvent
 from core.miner import MinerClient, MinerError
@@ -11,44 +11,11 @@ from config import MINER_IP_RANGE, POLL_INTERVAL, EFFICIENCY_J_PER_TH
 from datetime import datetime, timezone
 import logging
 
+# tune these if needed
+_PER_MINER_TIMEOUT = 4.0  # seconds for each miner fetch
+_MAX_WORKERS = 16  # threads for concurrent fetches
+
 logger = logging.getLogger(__name__)
-
-
-def _read_summary_fields(ip: str):
-    from core.miner import MinerClient
-    client = MinerClient(ip)
-
-    # --- SUMMARY ---
-    try:
-        summary = client.get_summary()
-        s = summary["SUMMARY"][0] if isinstance(summary, dict) and summary.get("SUMMARY") else (
-            summary if isinstance(summary, dict) else {})
-    except Exception:
-        return {"power": 0.0, "hash_ths": 0.0, "elapsed": 0, "temps": [], "fans": [], "when": ""}
-
-    mhs_5s = float(s.get("MHS 5s", 0.0)) if isinstance(s.get("MHS 5s", 0.0), (int, float, str)) else 0.0
-    elapsed = int(float(s.get("Elapsed", 0) or 0))
-
-    # --- STATS (temps/fans) ---
-    temps, fans = [], []
-    try:
-        stats = client.get_stats()
-        if isinstance(stats, dict) and stats.get("STATS"):
-            st0 = stats["STATS"][0]
-            for k, v in st0.items():
-                if isinstance(v, (int, float)):
-                    lk = str(k).lower()
-                    if lk.startswith("temp"): temps.append(float(v))
-                    if lk.startswith("fan"):  fans.append(float(v))
-    except Exception:
-        pass
-
-    power = float(s.get("Power", 0.0) or 0.0)
-    when = s.get("When") or s.get("STIME") or ""
-
-    return {"power": power, "hash_ths": round(mhs_5s / 1e6, 3), "elapsed": elapsed, "temps": temps, "fans": fans,
-            "when": when}
-
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -194,58 +161,88 @@ def summary():
     ipf = request.args.get('ip')
     miners = [ipf] if ipf else discover_miners()
 
+    totals = {'power': 0.0, 'hash': 0.0, 'uptime': 0, 'temps': [], 'fans': []}
     data = []
-    totals = {'power': 0.0, 'hash': 0.0, 'uptime': 0, 'temps': [], 'fans': [], 'log': []}
     overall_srcs = set()
 
-    session = SessionLocal()
-    for ip in miners:
-        payload = None
-        src = 'live'
+    # worker that returns (ip, payload, src) or (ip, None, None)
+    def _fetch_one(ip: str):
+        # 1) try live
         try:
             payload = MinerClient(ip).fetch_normalized()
-            row_src = "live"
+            return ip, payload, 'live'
         except MinerError:
-            logger.warning("summary_live_fetch_failed", extra={"component": "api", "miner_ip": ip})
+            # logger.warning("summary_live_fetch_failed", extra={"component": "api", "miner_ip": ip})
+            pass
+        except Exception:
+            # logger.warning(f"summary_live_exception: {e}", extra={"component": "api", "miner_ip": ip})
+            pass
+
+        # 2) fallback: last DB metric
+        s = SessionLocal()
         try:
-            payload = MinerClient(ip).fetch_normalized()
-        except MinerError:
-            # Fallback: use last DB metric for this IP (offline/demo mode)
             last = (
-                session.query(Metric)
+                s.query(Metric)
                 .filter(Metric.miner_ip == ip)
                 .order_by(Metric.timestamp.desc())
                 .first()
             )
             if last:
-                payload = {
+                return ip, {
                     'hashrate_ths': last.hashrate_ths,
                     'elapsed_s': last.elapsed_s,
                     'avg_temp_c': last.avg_temp_c,
                     'avg_fan_rpm': last.avg_fan_rpm,
                     'power_w': last.power_w,
                     'when': last.timestamp.isoformat() + 'Z',
-                }
-                src = 'db_fallback'
-        if not payload:
-            continue
+                }, 'db_fallback'
+            else:
+                return ip, None, None
+        finally:
+            s.close()
 
-        overall_srcs.add(src)
-        totals['power'] += float(payload['power_w'])
-        totals['hash'] += float(payload['hashrate_ths'])
-        totals['uptime'] = max(totals['uptime'], int(payload['elapsed_s']))
-        if payload['avg_temp_c']:
-            totals['temps'].append(float(payload['avg_temp_c']))
-        if payload['avg_fan_rpm']:
-            totals['fans'].append(float(payload['avg_fan_rpm']))
+    # fetch all miners concurrently with hard per-future timeout
+    with ThreadPoolExecutor(max_workers=min(_MAX_WORKERS, max(len(miners), 1))) as ex:
+        futures = {ex.submit(_fetch_one, ip): ip for ip in miners}
+        for fut in as_completed(futures, timeout=None):
+            ip = futures[fut]
+            try:
+                ip, payload, src = fut.result(timeout=_PER_MINER_TIMEOUT)
+            except Exception as e:
+                # includes per-future timeout or worker exception
+                # logger.warning(f"summary_future_failed: {e}", extra={"component":"api","miner_ip":ip})
+                continue
 
-        data.append({'timestamp': payload['when'], 'ip': ip, 'hash': payload['hashrate_ths'], 'source': src})
+            if not payload:
+                continue
 
-    session.close()
+            overall_srcs.add(src)
+            totals['power'] += float(payload.get('power_w', 0) or 0)
+            totals['hash'] += float(payload.get('hashrate_ths', 0) or 0)
+            totals['uptime'] = max(totals['uptime'], int(payload.get('elapsed_s', 0) or 0))
+
+            avg_temp_c = payload.get('avg_temp_c')
+            avg_fan_rpm = payload.get('avg_fan_rpm')
+            if avg_temp_c:
+                totals['temps'].append(float(avg_temp_c))
+            if avg_fan_rpm:
+                totals['fans'].append(float(avg_fan_rpm))
+
+            ts = payload.get('when')
+            if not ts:
+                # fallback to now (UTC) if miner didn’t provide a 'when
+                ts = datetime.now(timezone.utc).isoformat()
+
+            data.append({
+                'timestamp': ts,
+                'ip': ip,
+                'hash': payload.get('hashrate_ths', 0),
+                'source': src
+            })
 
     overall_source = (
         'live' if overall_srcs == {'live'} else
-        ('db_fallback' if overall_srcs == {'db_fallback'} else 'mixed')
+        ('db_fallback' if overall_srcs == {'db_fallback'} else ('mixed' if overall_srcs else 'none'))
     )
 
     return jsonify({
@@ -259,45 +256,6 @@ def summary():
         'log': data,
         'last_updated': datetime.now(timezone.utc).isoformat()
     })
-
-
-# @api_bp.route('/summary')
-# def summary():
-#     """Aggregate summary metrics, optionally filtered by IP."""
-#     ip_filter = request.args.get('ip')
-#     miners = [ip_filter] if ip_filter else discover_miners()
-#
-#     total_power = 0.0
-#     total_hash = 0.0
-#     total_uptime = 0
-#     temps, fans, log = [], [], []
-#
-#     # Use normalized fields so the frontend gets real numbers.
-#     for ip in miners:
-#         norm = _read_summary_fields(ip)
-#         total_power += float(norm.get("power", 0.0))
-#         total_hash += float(norm.get("hash_ths", 0.0))
-#         total_uptime = max(total_uptime, int(norm.get("elapsed", 0)))
-#         temps.extend(norm.get("temps", []) or [])
-#         fans.extend(norm.get("fans", []) or [])
-#         log.append({
-#             "timestamp": norm.get("when", ""),
-#             "ip": ip,
-#             "hash": norm.get("hash_ths", 0.0)
-#         })
-#
-#     avg_temp = round(sum(temps) / len(temps), 1) if temps else 0
-#     avg_fan = round(sum(fans) / len(fans), 0) if fans else 0
-#
-#     return jsonify({
-#         "total_power": total_power,
-#         "total_hashrate": round(total_hash, 3),
-#         "total_uptime": total_uptime,
-#         "avg_temp": avg_temp,
-#         "avg_fan_speed": avg_fan,
-#         "total_workers": len(miners),
-#         "log": log
-#     })
 
 
 # noinspection PyBroadException
@@ -368,6 +326,7 @@ def error_logs():
 
     session = SessionLocal()
     q = session.query(ErrorEvent)
+
     if level: q = q.filter(ErrorEvent.level == level.upper())
     if miner_ip: q = q.filter(ErrorEvent.miner_ip == miner_ip)
     if since:
@@ -384,5 +343,7 @@ def error_logs():
         "message": r.message,
         "context": r.context,
     } for r in rows]
+
     session.close()
+
     return jsonify(out)

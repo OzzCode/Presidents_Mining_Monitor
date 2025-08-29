@@ -172,8 +172,49 @@ async function loadAndRender() {
     charts.tempfan.update();
 }
 
+async function fillStatsLogFromMetrics() {
+    const qs = new URLSearchParams(location.search);
+    const ip = qs.get('ip') || '';  // single-miner view should have ?ip=
+    const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(); // last 2h
+    const params = new URLSearchParams({since, limit: '500'});
+    if (ip) params.set('ip', ip);
+
+    let rows = [];
+    try {
+        const res = await fetch(`/api/metrics?${params.toString()}`);
+        rows = await res.json();
+        if (!Array.isArray(rows)) rows = [];
+    } catch (e) {
+        console.warn('metrics fetch for stats log failed', e);
+        rows = [];
+    }
+
+    const tbody = document.getElementById('stats-log');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (!rows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="3">No recent data.</td>`;
+        tbody.appendChild(tr);
+        return;
+    }
+
+    // newest last for readability
+    rows.slice(-100).forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+      <td>${r.timestamp}</td>
+      <td>${ip || '—'}</td>
+      <td>${Number(r.hashrate_ths || 0).toFixed(3)} TH/s</td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+
 document.addEventListener('DOMContentLoaded', () => {
     loadAndRender();
+    fillStatsLogFromMetrics();
     setInterval(loadAndRender, POLL_INTERVAL * 1000);
 });
 
