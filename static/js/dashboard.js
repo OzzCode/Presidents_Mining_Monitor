@@ -203,10 +203,7 @@ async function fillStatsLogFromMetrics() {
     // newest last for readability
     rows.slice(-100).forEach(r => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-      <td>${r.timestamp}</td>
-      <td>${ip || '—'}</td>
-      <td>${Number(r.hashrate_ths || 0).toFixed(3)} TH/s</td>`;
+        tr.innerHTML = `<td>${r.timestamp}</td> <td>${r.ip || '—'}</td> <td>${Number(r.hashrate_ths || 0).toFixed(3)} TH/s</td>`;
         tbody.appendChild(tr);
     });
 }

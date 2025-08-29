@@ -2,13 +2,14 @@ import ipaddress
 import socket
 import time
 from flask import Blueprint, jsonify, request
+from sqlalchemy import func
 from zeroconf import Zeroconf, ServiceBrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dateutil import parser
 from core.db import SessionLocal, Metric, Event, ErrorEvent
 from core.miner import MinerClient, MinerError
 from config import MINER_IP_RANGE, POLL_INTERVAL, EFFICIENCY_J_PER_TH
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
 
 # tune these if needed
@@ -286,35 +287,76 @@ def miners():
 @api_bp.route('/metrics')
 def metrics():
     """
-    Return historical metrics, optionally filtered by:
-      - ip:    miner IP address
-      - since: ISO8601 timestamp
-      - limit: number of samples
+    Historical metrics.
+    Query params:
+      - ip: single IP (existing)
+      - ips: comma-separated IPs (new)
+      - since: ISO8601 lower bound
+      - limit: int (default 500)
+      - active_only: 'true'/'false' (new)
+      - fresh_within: minutes (default 30) (new)
     """
     ip_filter = request.args.get("ip")
+    ips_param = request.args.get("ips")
     since = request.args.get("since")
     limit = int(request.args.get("limit", 500))
+    active_only = (request.args.get("active_only", "false").lower() == "true")
+    fresh_within = int(request.args.get("fresh_within", 30))
 
     session = SessionLocal()
-    q = session.query(Metric)
-    if ip_filter:
-        q = q.filter(Metric.miner_ip == ip_filter)
-    if since:
-        dt = parser.isoparse(since)
-        q = q.filter(Metric.timestamp >= dt)
-    rows = q.order_by(Metric.timestamp.asc()).limit(limit).all()
-    session.close()
+    try:
+        q = session.query(Metric)
 
-    return jsonify([
-        {
-            "timestamp": m.timestamp.isoformat(),
-            "power_w": m.power_w,
-            "hashrate_ths": m.hashrate_ths,
-            "avg_temp_c": m.avg_temp_c,
-            "avg_fan_rpm": m.avg_fan_rpm
-        }
-        for m in rows
-    ])
+        # Single IP (legacy)
+        if ip_filter:
+            q = q.filter(Metric.miner_ip == ip_filter)
+
+        # Multiple IPs (new)
+        ip_list = None
+        if not ip_filter and ips_param:
+            ip_list = [i.strip() for i in ips_param.split(",") if i.strip()]
+            if ip_list:
+                q = q.filter(Metric.miner_ip.in_(ip_list))
+
+        # Since (existing)
+        if since:
+            dt = parser.isoparse(since)
+            q = q.filter(Metric.timestamp >= dt)
+
+        # Active-only (new): include only miners whose *latest* row is fresh
+        if active_only:
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=fresh_within)
+            latest_subq = (
+                session.query(
+                    Metric.miner_ip.label("ip"),
+                    func.max(Metric.timestamp).label("last_ts")
+                )
+                .group_by(Metric.miner_ip)
+                .subquery()
+            )
+            active_ips = [
+                r.ip for r in session.query(latest_subq)
+                .filter(latest_subq.c.last_ts >= cutoff)
+                .all()
+            ]
+            if active_ips:
+                q = q.filter(Metric.miner_ip.in_(active_ips))
+            else:
+                return jsonify([])  # nothing fresh → empty result
+
+        rows = q.order_by(Metric.timestamp.asc()).limit(limit).all()
+        return jsonify([
+            {
+                "timestamp": m.timestamp.isoformat(),
+                "ip": m.miner_ip,  # <- include ip for the table
+                "power_w": m.power_w,
+                "hashrate_ths": m.hashrate_ths,
+                "avg_temp_c": m.avg_temp_c,
+                "avg_fan_rpm": m.avg_fan_rpm,
+            } for m in rows
+        ])
+    finally:
+        session.close()
 
 
 @api_bp.route("/error-logs")

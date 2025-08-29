@@ -3,6 +3,48 @@ const OV_REFRESH = 30; // seconds
 
 let ovCharts = {};
 
+function getFreshWithin() {
+    const sel = document.getElementById('fresh-within');
+    if (!sel) return 30;
+    const val = parseInt(sel.value, 10);
+    return Number.isFinite(val) ? val : 30;
+}
+
+function getActiveOnly() {
+    const cb = document.getElementById('active-only');
+    return cb ? !!cb.checked : true;
+}
+
+function saveFreshPrefs() {
+    try {
+        localStorage.setItem('ov_fresh_within', String(getFreshWithin()));
+        localStorage.setItem('ov_active_only', getActiveOnly() ? '1' : '0');
+    } catch {
+    }
+}
+
+function loadFreshPrefs() {
+    try {
+        const fw = localStorage.getItem('ov_fresh_within');
+        const ao = localStorage.getItem('ov_active_only');
+        if (fw && document.getElementById('fresh-within')) {
+            document.getElementById('fresh-within').value = fw;
+        }
+        if (ao && document.getElementById('active-only')) {
+            document.getElementById('active-only').checked = ao === '1';
+        }
+    } catch {
+    }
+}
+
+function updateActiveWindowBadge() {
+    const el = document.getElementById('active-window-badge');
+    if (!el) return;
+    const mins = getFreshWithin();
+    el.textContent = `Active window: last ${mins} min`;
+}
+
+
 function ensureOvCharts() {
     if (!ovCharts.hash) {
         ovCharts.hash = new Chart(document.getElementById('overview-hash'), {
@@ -49,7 +91,7 @@ function ensureOvCharts() {
 }
 
 function binTs(ts, minutes = 5) {
-    // Bucket an ISO string ts to nearest N-minute boundary
+    // Bucket an ISO string ts to the nearest N-minute boundary
     const d = new Date(ts);
     if (Number.isNaN(d.getTime())) return null;
     const ms = minutes * 60 * 1000;
@@ -66,13 +108,21 @@ async function loadSummaryKPIs() {
         document.getElementById('kpi-workers').textContent = s.total_workers;
     } catch (e) {
         console.warn('summary fetch failed', e);
+    } finally {
+        updateActiveWindowBadge();
     }
 }
+
 
 async function loadAggregateSeries() {
     // last 24h, all miners (no ip filter)
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const url = `/api/metrics?since=${encodeURIComponent(since)}&limit=3000`;
+    const freshWithin = getFreshWithin();
+    const activeOnly = getActiveOnly();
+
+    const url = `/api/metrics?since=${encodeURIComponent(since)}&limit=3000`
+        + `&active_only=${activeOnly ? 'true' : 'false'}`
+        + `&fresh_within=${encodeURIComponent(freshWithin)}`;
 
     let rows = [];
     try {
@@ -152,6 +202,26 @@ async function initOverview() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    loadFreshPrefs();
+    updateActiveWindowBadge();
+
+    // Re-run on change
+    const sel = document.getElementById('fresh-within');
+    const cb = document.getElementById('active-only');
+    if (sel) sel.addEventListener('change', () => {
+        saveFreshPrefs();
+        updateActiveWindowBadge();
+        loadSummaryKPIs();
+        loadAggregateSeries();
+    });
+    if (cb) cb.addEventListener('change', () => {
+        saveFreshPrefs();
+        updateActiveWindowBadge();
+        loadSummaryKPIs();
+        loadAggregateSeries();
+    });
+
+    // Your existing init
     initOverview();
     setInterval(() => {
         loadSummaryKPIs();
