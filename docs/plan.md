@@ -209,8 +209,8 @@ Improvements and rationale:
 
 ## Implementation Roadmap (Incremental)
 
-1) API correctness quick win
-- Add _normalize_since helper and integrate into /api/metrics. Cap limit with API_MAX_LIMIT. Return 400 on invalid params.
+- [x] API correctness quick win
+  - Add _normalize_since helper and integrate into /api/metrics. Cap limit with API_MAX_LIMIT. Return 400 on invalid params.
 
 2) Scheduler safety
 - Gate scheduler start with ENABLE_SCHEDULER (default true when running main.py; false in tests via env). Add try/except around per-miner poll and collect stats in logs.

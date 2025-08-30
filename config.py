@@ -17,21 +17,19 @@ ALERT_EMAIL = os.getenv('ALERT_EMAIL')
 
 EFFICIENCY_J_PER_TH = float(os.getenv('EFFICIENCY_J_PER_TH', 29))
 
-
 # Optional per-model overrides (J/TH). Tune these as you like.
 # You can override any of these via env vars with the same keys (optional).
 EFFICIENCY_MAP = {
     # Common S19 family baselines (rough stock figures)
-    "S19":        float(os.getenv("EFF_S19",        29)),
-    "S19 Pro":    float(os.getenv("EFF_S19_PRO",    27)),
-    "S19j":       float(os.getenv("EFF_S19J",       31)),
-    "S19j Pro":   float(os.getenv("EFF_S19J_PRO",   29)),
-    "S19 XP":     float(os.getenv("EFF_S19_XP",     21.5)),  # ~21–22 J/TH
-    "S19a":       float(os.getenv("EFF_S19A",       30)),
-    "S19a Pro":   float(os.getenv("EFF_S19A_PRO",   28)),
+    "S19": float(os.getenv("EFF_S19", 29)),
+    "S19 Pro": float(os.getenv("EFF_S19_PRO", 27)),
+    "S19j": float(os.getenv("EFF_S19J", 31)),
+    "S19j Pro": float(os.getenv("EFF_S19J_PRO", 29)),
+    "S19 XP": float(os.getenv("EFF_S19_XP", 21.5)),  # ~21–22 J/TH
+    "S19a": float(os.getenv("EFF_S19A", 30)),
+    "S19a Pro": float(os.getenv("EFF_S19A_PRO", 28)),
     # Add more models as needed
 }
-
 
 # Alert thresholds & behavior
 TEMP_THRESHOLD = float(os.getenv('TEMP_THRESHOLD', 80))
@@ -44,6 +42,17 @@ CGMINER_TIMEOUT = float(os.getenv('CGMINER_TIMEOUT', 1.0))  # seconds
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_DIR = os.getenv("LOG_DIR", "logs")
-LOG_FORMAT = os.getenv("LOG_FORMAT", "json")            # or 'text'
+LOG_FORMAT = os.getenv("LOG_FORMAT", "json")  # or 'text'
 LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "7"))
-LOG_TO_DB = os.getenv("LOG_TO_DB", "1") in ("1","true","True")
+LOG_TO_DB = os.getenv("LOG_TO_DB", "1") in ("1", "true", "True")
+
+# API behavior
+API_MAX_LIMIT = int(os.getenv('API_MAX_LIMIT', 10000))
+
+
+def efficiency_for_model(model: str | None) -> float:
+    if not model: return EFFICIENCY_J_PER_TH
+    name = model.lower()
+    for k, v in EFFICIENCY_MAP.items():
+        if k.lower() in name: return v
+    return EFFICIENCY_J_PER_TH

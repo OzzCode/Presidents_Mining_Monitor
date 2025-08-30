@@ -82,7 +82,7 @@ DB_PATH = DB_DIR / "metrics.db"
 # Engine (SQLite best practices for multithreaded app + scheduler)
 # -----------------------------------------------------------------------------
 engine = create_engine(
-    f"sqlite:///{DB_PATH.as_posix()}",
+    f"sqlite:///{DB_PATH}",
     echo=False,
     future=True,
     connect_args={"check_same_thread": False},  # scheduler + web threads
@@ -154,6 +154,6 @@ class ErrorEvent(Base):
 # -----------------------------------------------------------------------------
 # Utility
 # -----------------------------------------------------------------------------
-def init_db() -> None:
+def init_db():
     """Create tables if they do not exist."""
     Base.metadata.create_all(bind=engine)

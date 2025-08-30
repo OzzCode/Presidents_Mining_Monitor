@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dateutil import parser
 from core.db import SessionLocal, Metric, Event, ErrorEvent
 from core.miner import MinerClient, MinerError
-from config import MINER_IP_RANGE, POLL_INTERVAL, EFFICIENCY_J_PER_TH
+from config import MINER_IP_RANGE, POLL_INTERVAL, EFFICIENCY_J_PER_TH, API_MAX_LIMIT
 from datetime import datetime, timezone, timedelta
 import logging
 
@@ -37,21 +37,24 @@ def discover_miners(timeout=1, workers=50):
             except Exception:
                 return None
 
-    hosts = [ip for ip in ThreadPoolExecutor(workers).map(scan, network.hosts()) if ip]
-    zeroconf = Zeroconf()
-    services = []
+    # hosts = [ip for ip in ThreadPoolExecutor(workers).map(scan, network.hosts()) if ip]
+    # zeroconf = Zeroconf()
+    # services = []
+    #
+    # def on_service(zc, type_, name):
+    #     info = zc.get_service_info(type_, name)
+    #     if info:
+    #         for addr in info.addresses:
+    #             services.append(socket.inet_ntoa(addr))
+    #
+    # ServiceBrowser(zeroconf, "_cgminer._tcp.local.", handlers=[on_service])
+    # time.sleep(2)
+    # zeroconf.close()
 
-    def on_service(zc, type_, name):
-        info = zc.get_service_info(type_, name)
-        if info:
-            for addr in info.addresses:
-                services.append(socket.inet_ntoa(addr))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        return sorted(set([ip for ip in ex.map(scan, network.hosts()) if ip]))
 
-    ServiceBrowser(zeroconf, "_cgminer._tcp.local.", handlers=[on_service])
-    time.sleep(2)
-    zeroconf.close()
-
-    return sorted(set(hosts + services))
+    # return sorted(set(hosts + services))
 
 
 def _last_seen_for_ip(ip: str):
@@ -71,6 +74,23 @@ def _last_seen_for_ip(ip: str):
         return ts.isoformat(), int(age_sec)
     finally:
         session.close()
+
+
+def _normalize_since(value: str) -> datetime:
+    """
+    Convert an ISO8601 string to a naive UTC datetime, per tests/plan expectations.
+    - If input is naive: assume it's already UTC and return as-is (tzinfo=None)
+    - If input is aware (Z or offset): convert to UTC and strip tzinfo
+    Raises ValueError on parse errors or invalid type.
+    """
+    if not isinstance(value, str):
+        raise ValueError("since must be a string")
+    dt = parser.isoparse(value)
+    if dt.tzinfo is None:
+        # treat naive as UTC already
+        return dt
+    # convert to UTC and strip tzinfo
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 # --------------------------
@@ -262,26 +282,52 @@ def summary():
 # noinspection PyBroadException
 @api_bp.route('/miners')
 def miners():
-    info = []
-    for ip in discover_miners():
-        try:
-            d = MinerClient(ip).get_summary()
-            model = d.get('Model', 'Unknown') if isinstance(d, dict) else 'Unknown'
-            status = 'Online'
-        except Exception:
-            model = 'Unknown'
-            status = 'Offline'
-        last_seen_iso, age_sec = _last_seen_for_ip(ip)
-        is_stale = (age_sec is None) or (age_sec > 2 * POLL_INTERVAL)
-        info.append({
-            'model': model,
-            'ip': ip,
-            'status': status,
-            'last_seen': last_seen_iso,
-            'age_sec': age_sec,
-            'is_stale': is_stale
-        })
-    return jsonify({'poll_interval': POLL_INTERVAL, 'miners': info})
+    # info = []
+    # for ip in discover_miners():
+    #     try:
+    #         d = MinerClient(ip).get_summary()
+    #         model = d.get('Model', 'Unknown') if isinstance(d, dict) else 'Unknown'
+    #         status = 'Online'
+    #     except Exception:
+    #         model = 'Unknown'
+    #         status = 'Offline'
+    #     last_seen_iso, age_sec = _last_seen_for_ip(ip)
+    #     is_stale = (age_sec is None) or (age_sec > 2 * POLL_INTERVAL)
+    #     info.append({
+    #         'model': model,
+    #         'ip': ip,
+    #         'status': status,
+    #         'last_seen': last_seen_iso,
+    #         'age_sec': age_sec,
+    #         'is_stale': is_stale
+    #     })
+    # return jsonify({'poll_interval': POLL_INTERVAL, 'miners': info})
+    window_min = int(request.args.get("window_min", 30))
+    active_only = request.args.get("active_only", "true").lower() == "true"
+    fresh_within = int(request.args.get("fresh_within", 30))
+    now = datetime.now(timezone.utc)
+    since_dt = now - timedelta(minutes=window_min)
+    cutoff = now - timedelta(minutes=fresh_within)
+    s = SessionLocal()
+    try:
+        q = (s.query(Metric.miner_ip.label("ip"),
+                     func.max(Metric.timestamp).label("last_ts"),
+                     func.avg(Metric.hashrate_ths).label("avg_ths"))
+             .filter(Metric.timestamp >= since_dt))
+        if active_only:
+            q = q.group_by(Metric.miner_ip).having(func.max(Metric.timestamp) >= cutoff)
+        else:
+            q = q.group_by(Metric.miner_ip)
+        q = q.order_by(func.max(Metric.timestamp).desc())
+        rows = q.all()
+        return jsonify([{
+            "ip": r.ip,
+            "last_seen": (r.last_ts.replace(tzinfo=timezone.utc).isoformat()
+                          if r.last_ts and r.last_ts.tzinfo is None else (r.last_ts.isoformat() if r.last_ts else "")),
+            "avg_ths": float(r.avg_ths or 0.0)
+        } for r in rows])
+    finally:
+        s.close()
 
 
 @api_bp.route('/metrics')
@@ -299,62 +345,50 @@ def metrics():
     ip_filter = request.args.get("ip")
     ips_param = request.args.get("ips")
     since = request.args.get("since")
-    limit = int(request.args.get("limit", 500))
+
+    # limit validation and cap
+    try:
+        limit = int(request.args.get("limit", 500))
+    except Exception:
+        return jsonify({"error": "invalid limit"}), 400
+    if limit < 1:
+        return jsonify({"error": "limit must be positive"}), 400
+    if limit > API_MAX_LIMIT:
+        limit = API_MAX_LIMIT
+
+    # optional flags
     active_only = (request.args.get("active_only", "false").lower() == "true")
-    fresh_within = int(request.args.get("fresh_within", 30))
+    try:
+        fresh_within = int(request.args.get("fresh_within", 30))
+    except Exception:
+        return jsonify({"error": "invalid fresh_within"}), 400
 
     session = SessionLocal()
     try:
         q = session.query(Metric)
-
-        # Single IP (legacy)
-        if ip_filter:
-            q = q.filter(Metric.miner_ip == ip_filter)
-
-        # Multiple IPs (new)
+        if ip_filter: q = q.filter(Metric.miner_ip == ip_filter)
         ip_list = None
         if not ip_filter and ips_param:
             ip_list = [i.strip() for i in ips_param.split(",") if i.strip()]
-            if ip_list:
-                q = q.filter(Metric.miner_ip.in_(ip_list))
-
-        # Since (existing)
+            if ip_list: q = q.filter(Metric.miner_ip.in_(ip_list))
         if since:
-            dt = parser.isoparse(since)
-            q = q.filter(Metric.timestamp >= dt)
-
-        # Active-only (new): include only miners whose *latest* row is fresh
+            q = q.filter(Metric.timestamp >= parser.isoparse(since))
         if active_only:
             cutoff = datetime.now(timezone.utc) - timedelta(minutes=fresh_within)
-            latest_subq = (
-                session.query(
-                    Metric.miner_ip.label("ip"),
-                    func.max(Metric.timestamp).label("last_ts")
-                )
-                .group_by(Metric.miner_ip)
-                .subquery()
-            )
-            active_ips = [
-                r.ip for r in session.query(latest_subq)
-                .filter(latest_subq.c.last_ts >= cutoff)
-                .all()
-            ]
-            if active_ips:
-                q = q.filter(Metric.miner_ip.in_(active_ips))
-            else:
-                return jsonify([])  # nothing fresh → empty result
-
+            sub = (session.query(Metric.miner_ip.label("ip"), func.max(Metric.timestamp).label("last"))
+                   .group_by(Metric.miner_ip).subquery())
+            active_ips = [r.ip for r in session.query(sub).filter(sub.c.last >= cutoff).all()]
+            if not active_ips: return jsonify([])
+            q = q.filter(Metric.miner_ip.in_(active_ips))
         rows = q.order_by(Metric.timestamp.asc()).limit(limit).all()
-        return jsonify([
-            {
-                "timestamp": m.timestamp.isoformat(),
-                "ip": m.miner_ip,  # <- include ip for the table
-                "power_w": m.power_w,
-                "hashrate_ths": m.hashrate_ths,
-                "avg_temp_c": m.avg_temp_c,
-                "avg_fan_rpm": m.avg_fan_rpm,
-            } for m in rows
-        ])
+        return jsonify([{
+            "timestamp": m.timestamp.isoformat(),
+            "ip": m.miner_ip,
+            "power_w": m.power_w,
+            "hashrate_ths": m.hashrate_ths,
+            "avg_temp_c": m.avg_temp_c,
+            "avg_fan_rpm": m.avg_fan_rpm,
+        } for m in rows])
     finally:
         session.close()
 
@@ -389,3 +423,19 @@ def error_logs():
     session.close()
 
     return jsonify(out)
+
+
+@api_bp.route("/events")
+def events():
+    s = SessionLocal()
+    try:
+        rows = (s.query(Event).order_by(Event.timestamp.desc()).limit(500).all())
+        return jsonify([{
+            "timestamp": e.timestamp.isoformat(),
+            "miner_ip": e.miner_ip,
+            "level": e.level,
+            "source": e.source,
+            "message": e.message
+        } for e in rows])
+    finally:
+        s.close()

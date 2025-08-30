@@ -1,5 +1,5 @@
 import datetime as _dt
-from config import CGMINER_TIMEOUT
+from config import CGMINER_TIMEOUT, EFFICIENCY_J_PER_TH
 from helpers.utils import efficiency_for_model
 
 
@@ -23,7 +23,7 @@ def _avg(seq):
 class MinerClient:
     """CGMiner/BMminer API client for Antminer devices."""
 
-    def __init__(self, ip, port=4028, timeout: float | None = None):
+    def __init__(self, ip, port=4028, timeout=8):
         self.ip = ip
         self.port = port
         self.timeout = timeout if timeout is not None else CGMINER_TIMEOUT
@@ -57,11 +57,11 @@ class MinerClient:
                     return json.loads(line)
                 except Exception:
                     continue
-            raise ValueError(f"Unable to parse miner response: {text[:200]}")
+            raise MinerError(f"Unable to parse miner response: {text[:200]}")
         finally:
             try:
                 s.close()
-            except Exception:
+            except:
                 pass
 
     def get_summary(self) -> dict:
@@ -97,7 +97,7 @@ class MinerClient:
         s0 = (summ.get("SUMMARY") or [{}])[0]
 
         summary = self.get_summary()
-        model = None
+        model = summ.get("Model") or s0.get("Model")
         if isinstance(summary, dict):
             # Most firmwares expose 'Model' either in top-level or inside SUMMARY[0]
             model = summary.get("Model")
@@ -137,7 +137,7 @@ class MinerClient:
                     powers.append(fv)
 
         j_per_th = efficiency_for_model(model)
-        power_w = ths * j_per_th
+        power_w = ths * (j_per_th or EFFICIENCY_J_PER_TH)
 
         return {
             "hashrate_ths": ths,

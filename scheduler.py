@@ -1,11 +1,10 @@
-import time
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 import logging
 from apscheduler.schedulers.background import BackgroundScheduler
-from api.endpoints import discover_miners, log_event
+from api.endpoints import discover_miners
 from config import POLL_INTERVAL
 from core.db import Base, engine, SessionLocal, Metric
-from core.miner import MinerClient
+from core.miner import MinerClient, MinerError
 
 
 # create tables
@@ -30,30 +29,19 @@ def poll_metrics():
             try:
                 # If you're using fetch_normalized():
                 payload = MinerClient(ip).fetch_normalized()
-
-                metric = Metric(
-                    miner_ip=ip,
-                    power_w=float(payload.get("power_w", 0.0)),
-                    hashrate_ths=float(payload.get("hashrate_ths", 0.0)),
-                    elapsed_s=int(payload.get("elapsed_s", 0)),
-                    avg_temp_c=float(payload.get("avg_temp_c", 0.0) or 0.0),
-                    avg_fan_rpm=float(payload.get("avg_fan_rpm", 0.0) or 0.0),
-                )
-                session.add(metric)
-
-            except Exception as e:
-                # Record that this IP failed to poll during the scheduled run
-                log_event("ERROR", f"scheduler: poll failed: {e}", miner_ip=ip, source="scheduler")
+            except MinerError:
                 continue
 
-        session.commit()
-    except Exception as e:
-        # If the commit fails (disk, schema), record once at job level
-        log_event("ERROR", f"scheduler: commit failed: {e}", source="scheduler")
-        try:
-            session.rollback()
-        except Exception:
-            pass
+            session.add(Metric(
+                miner_ip=ip,
+                power_w=float(payload.get("power_w", 0.0)),
+                hashrate_ths=float(payload.get("hashrate_ths", 0.0)),
+                elapsed_s=int(payload.get("elapsed_s", 0)),
+                avg_temp_c=float(payload.get("avg_temp_c", 0.0) or 0.0),
+                avg_fan_rpm=float(payload.get("avg_fan_rpm", 0.0) or 0.0),
+            ))
+
+            session.commit()
     finally:
         session.close()
 
@@ -64,13 +52,14 @@ def start_scheduler():
     scheduler.add_job(poll_metrics, 'interval', seconds=POLL_INTERVAL, id='poll_metrics')
     scheduler.add_listener(_job_listener, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED)
     scheduler.start()
+
     print(f"Polling every {POLL_INTERVAL}s...")
 
 
-if __name__ == '__main__':
-    start_scheduler()
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        pass
+# if __name__ == '__main__':
+#     start_scheduler()
+#     try:
+#         while True:
+#             time.sleep(1)
+#     except KeyboardInterrupt:
+#         pass
