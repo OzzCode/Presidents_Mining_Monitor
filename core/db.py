@@ -89,7 +89,7 @@ engine = create_engine(
 )
 
 
-# Apply WAL & reasonable sync level for durability + concurrency
+# Apply WAL & reasonable sync level for durability and concurrency
 @event.listens_for(engine, "connect")
 def _set_sqlite_pragmas(dbapi_connection, connection_record):
     cur = dbapi_connection.cursor()
