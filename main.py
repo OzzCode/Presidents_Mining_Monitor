@@ -1,7 +1,7 @@
 from flask import Flask, render_template
-# from dashboard.routes import dash_bp
 from api.endpoints import api_bp, log_event
 from core.db import init_db
+from dashboard.routes import dash_bp
 from scheduler import start_scheduler
 from flask_cors import CORS
 
@@ -17,9 +17,7 @@ def create_app():
     def home():
         return render_template("home.html")
 
-    @app.route("/dashboard/")
-    def dashboard():
-        return render_template("dashboard.html")
+    app.register_blueprint(dash_bp)
 
     @app.route("/dashboard/logs")
     def logs():
