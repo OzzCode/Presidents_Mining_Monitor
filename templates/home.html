@@ -8,35 +8,13 @@
 </head>
 <body>
 <nav>
-    <a href="{{ url_for('home') }}">Home</a>
-</nav>
-
-<div class="container">
-    <h1>Antminer Monitor</h1>
+    <h1 href="{{ url_for('home') }}">Antminer Monitor</h1>
     <ul class="nav-list">
         <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
         <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
     </ul>
-</div>
+</nav>
 
-<div class="controls-bar" style="margin:12px 0; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-    <label>
-        Show miners active within
-        <select id="fresh-within" style="margin-left:6px;">
-            <option value="15">15 min</option>
-            <option value="30" selected>30 min</option>
-            <option value="60">60 min</option>
-            <option value="180">3 hours</option>
-            <option value="720">12 hours</option>
-            <option value="1440">24 hours</option>
-        </select>
-    </label>
-    <label style="display:flex;align-items:center;gap:6px;">
-        <input type="checkbox" id="active-only" checked>
-        Active-only
-    </label>
-    <span id="active-window-badge" style="font-size:0.9rem;color:#6b7280;"></span>
-</div>
 <!-- Include Chart.js once if not already present anywhere -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
@@ -80,6 +58,25 @@
             <canvas id="overview-tempfan"></canvas>
         </div>
     </div>
+</div>
+
+<div class="controls-bar" style="margin:12px 0; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+    <label>
+        Show miners active within
+        <select id="fresh-within" style="margin-left:6px;">
+            <option value="15">15 min</option>
+            <option value="30" selected>30 min</option>
+            <option value="60">60 min</option>
+            <option value="180">3 hours</option>
+            <option value="720">12 hours</option>
+            <option value="1440">24 hours</option>
+        </select>
+    </label>
+    <label style="display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" id="active-only" checked>
+        Active-only
+    </label>
+    <span id="active-window-badge" style="font-size:0.9rem;color:#6b7280;"></span>
 </div>
 
 <!-- Attach the script -->
