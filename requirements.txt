@@ -1,3 +1,4 @@
+flask-cors
 flask-sqlalchemy
 psutil
 flask~=3.1.1
