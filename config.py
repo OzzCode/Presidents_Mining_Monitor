@@ -15,13 +15,13 @@ ALERT_EMAIL = os.getenv('ALERT_EMAIL')
 # SMTP_USER = os.getenv('SMTP_USER')
 # SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
 
-EFFICIENCY_J_PER_TH = float(os.getenv('EFFICIENCY_J_PER_TH', 29))
+EFFICIENCY_J_PER_TH = float(os.getenv('EFFICIENCY_J_PER_TH', 29.5))
 
 # Optional per-model overrides (J/TH). Tune these as you like.
 # You can override any of these via env vars with the same keys (optional).
 EFFICIENCY_MAP = {
     # Common S19 family baselines (rough stock figures)
-    "S19": float(os.getenv("EFF_S19", 29)),
+    "S19": float(os.getenv("EFF_S19", 29.5)),
     "S19 Pro": float(os.getenv("EFF_S19_PRO", 27)),
     "S19j": float(os.getenv("EFF_S19J", 31)),
     "S19j Pro": float(os.getenv("EFF_S19J_PRO", 29)),

@@ -1,3 +1,5 @@
+import time
+
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 import logging
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -54,7 +56,6 @@ def start_scheduler():
     scheduler.start()
 
     print(f"Polling every {POLL_INTERVAL}s...")
-
 
 # if __name__ == '__main__':
 #     start_scheduler()

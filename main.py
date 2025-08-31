@@ -4,12 +4,11 @@ from core.db import init_db
 from dashboard.routes import dash_bp
 from scheduler import start_scheduler
 from flask_cors import CORS
-
-app = Flask(__name__, static_url_path='/static', static_folder='static')
+import os
 
 
 def create_app():
-    app = Flask(__name__)
+    app = Flask(__name__, static_url_path='/static', static_folder='static')
     CORS(app)
     app.register_blueprint(api_bp)
 
@@ -36,9 +35,16 @@ def create_app():
     return app
 
 
-
 if __name__ == '__main__':
-    init_db()
-    start_scheduler()
     app = create_app()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Ensure DB is initialized with app context
+    with app.app_context():
+        init_db()
+
+    # Start background scheduler only in the main serving process
+    # Avoid duplicate threads when the reloader would spawn a child process
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        start_scheduler()
+
+    # On Windows, disable the reloader to avoid socket close races causing WinError 10038
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

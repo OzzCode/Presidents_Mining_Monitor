@@ -61,7 +61,7 @@ class MinerClient:
         finally:
             try:
                 s.close()
-            except:
+            except Exception:
                 pass
 
     def get_summary(self) -> dict:
