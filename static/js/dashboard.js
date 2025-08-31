@@ -1,14 +1,11 @@
 // Poll every 30s
 const POLL_INTERVAL = 30;
 
-// Derive miner IP from querystring if you don't inject MINER_IP from the server
 const qs = new URLSearchParams(location.search);
 const QS_IP = qs.get('ip');
 
-// Build the summary URL
 const summaryUrl = QS_IP ? `/api/summary?ip=${encodeURIComponent(QS_IP)}` : '/api/summary';
 
-// Small helpers
 function $(id) {
     return document.getElementById(id);
 }
@@ -30,27 +27,21 @@ async function fetchSummaryAndFillCards() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
-        // Expected keys from /api/summary:
-        // total_power, total_hashrate, total_uptime, avg_temp, avg_fan_speed, total_workers
-        setText('total-power', `${num(data.total_power, 1)} W`);        // add "(est.)" if you want
+        setText('total-power', `${num(data.total_power, 1)} W`);
         setText('total-hashrate', `${num(data.total_hashrate, 3)} TH/s`);
         setText('total-uptime', `${num(data.total_uptime)} s`);
         setText('avg-temp', `${num(data.avg_temp, 1)} °C`);
         setText('avg-fan-speed', `${num(data.avg_fan_speed)} RPM`);
         setText('total-workers', `${num(data.total_workers)}`);
 
-        // Optional: show when the page last fetched
         const stamp = $('last-update');
         if (stamp) stamp.textContent = `Last update: ${new Date().toLocaleString()}`;
-
-        // Optional: if you return data.last_updated from the API, you can display it too
         const fromServer = $('server-update');
         if (fromServer && data.last_updated) {
             fromServer.textContent = `Server time: ${new Date(data.last_updated).toLocaleString()}`;
         }
     } catch (err) {
         console.warn('summary fetch failed', err);
-        // Show safe placeholders so cards don’t stay blank if a fetch fails
         ['total-power', 'total-hashrate', 'total-uptime', 'avg-temp', 'avg-fan-speed', 'total-workers']
             .forEach(id => setText(id, '—'));
     }
@@ -61,10 +52,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(fetchSummaryAndFillCards, POLL_INTERVAL * 1000);
 });
 
-
 const ipParam = typeof MINER_IP !== 'undefined' ? MINER_IP : null;
 
-// Build the metrics URL for the last 24 hours
 function metricsUrl() {
     const now = new Date();
     const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -83,7 +72,7 @@ function ensureCharts() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                scales: {x: {ticks: {maxRotation: 0}, type: 'time', time: {unit: 'hour'}}, y: {beginAtZero: true}},
+                scales: {x: {type: 'time', time: {unit: 'hour'}}, y: {beginAtZero: true}},
                 plugins: {legend: {display: false}}
             }
         });
@@ -95,7 +84,7 @@ function ensureCharts() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                scales: {x: {ticks: {maxRotation: 0}, type: 'time', time: {unit: 'hour'}}, y: {beginAtZero: true}},
+                scales: {x: {type: 'time', time: {unit: 'hour'}}, y: {beginAtZero: true}},
                 plugins: {legend: {display: false}}
             }
         });
@@ -104,17 +93,14 @@ function ensureCharts() {
         charts.tempfan = new Chart(document.getElementById('chart-tempfan'), {
             type: 'line',
             data: {
-                labels: [],
-                datasets: [
+                labels: [], datasets: [
                     {label: 'Temp (°C)', data: [], yAxisID: 'y', tension: 0.2, fill: false},
                     {label: 'Fan (RPM)', data: [], yAxisID: 'y1', tension: 0.2, fill: false}
                 ]
             },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: {ticks: {maxRotation: 0}, type: 'time', time: {unit: 'hour'}},
+                responsive: true, maintainAspectRatio: false, scales: {
+                    x: {type: 'time', time: {unit: 'hour'}},
                     y: {beginAtZero: true, position: 'left'},
                     y1: {beginAtZero: true, position: 'right', grid: {drawOnChartArea: false}}
                 }
@@ -124,7 +110,6 @@ function ensureCharts() {
 }
 
 function setNoData(chart, msg) {
-    // Optionally you can overlay a message; for simplicity, clear data
     chart.data.labels = [];
     chart.data.datasets.forEach(d => d.data = []);
     chart.update();
@@ -150,32 +135,28 @@ async function loadAndRender() {
         return;
     }
 
-    // Map fields from API to Chart.js points
     const labels = rows.map(r => r.timestamp);
     const hash = rows.map(r => Number(r.hashrate_ths || 0));
     const power = rows.map(r => Number(r.power_w || 0));
     const temp = rows.map(r => Number(r.avg_temp_c || 0));
     const fan = rows.map(r => Number(r.avg_fan_rpm || 0));
 
-    // Update charts
     charts.hash.data.labels = labels;
     charts.hash.data.datasets[0].data = hash;
     charts.hash.update();
-
     charts.power.data.labels = labels;
     charts.power.data.datasets[0].data = power;
     charts.power.update();
-
     charts.tempfan.data.labels = labels;
-    charts.tempfan.data.datasets[0].data = temp; // Temp (°C)
-    charts.tempfan.data.datasets[1].data = fan;  // RPM
+    charts.tempfan.data.datasets[0].data = temp;
+    charts.tempfan.data.datasets[1].data = fan;
     charts.tempfan.update();
 }
 
 async function fillStatsLogFromMetrics() {
     const qs = new URLSearchParams(location.search);
-    const ip = qs.get('ip') || '';  // single-miner view should have ?ip=
-    const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(); // last 2h
+    const ip = qs.get('ip') || '';
+    const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     const params = new URLSearchParams({since, limit: '500'});
     if (ip) params.set('ip', ip);
 
@@ -200,14 +181,12 @@ async function fillStatsLogFromMetrics() {
         return;
     }
 
-    // newest last for readability
     rows.slice(-100).forEach(r => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${r.timestamp}</td> <td>${r.ip || '—'}</td> <td>${Number(r.hashrate_ths || 0).toFixed(3)} TH/s</td>`;
         tbody.appendChild(tr);
     });
 }
-
 
 document.addEventListener('DOMContentLoaded', () => {
     loadAndRender();

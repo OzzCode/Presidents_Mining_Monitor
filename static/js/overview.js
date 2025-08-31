@@ -44,7 +44,6 @@ function updateActiveWindowBadge() {
     el.textContent = `Active window: last ${mins} min`;
 }
 
-
 function ensureOvCharts() {
     if (!ovCharts.hash) {
         ovCharts.hash = new Chart(document.getElementById('overview-hash'), {
@@ -91,7 +90,6 @@ function ensureOvCharts() {
 }
 
 function binTs(ts, minutes = 5) {
-    // Bucket an ISO string ts to the nearest N-minute boundary
     const d = new Date(ts);
     if (Number.isNaN(d.getTime())) return null;
     const ms = minutes * 60 * 1000;
@@ -113,9 +111,7 @@ async function loadSummaryKPIs() {
     }
 }
 
-
 async function loadAggregateSeries() {
-    // last 24h, all miners (no ip filter)
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const freshWithin = getFreshWithin();
     const activeOnly = getActiveOnly();
@@ -145,15 +141,13 @@ async function loadAggregateSeries() {
         return;
     }
 
-    // Aggregate by 5-minute bins across all miners
-    const bins = new Map(); // key: binned ISO -> {hash,power,temp,fan,count}
+    const bins = new Map();
     rows.forEach(r => {
         const key = binTs(r.timestamp, 5);
         if (!key) return;
         const obj = bins.get(key) || {hash: 0, power: 0, temp: 0, fan: 0, count: 0, temp_count: 0, fan_count: 0};
         obj.hash += Number(r.hashrate_ths || 0);
         obj.power += Number(r.power_w || 0);
-        // temp/fan are averages per bin — sum and track counts where non-zero
         const tv = Number(r.avg_temp_c || 0);
         if (tv > 0) {
             obj.temp += tv;
@@ -169,18 +163,17 @@ async function loadAggregateSeries() {
     });
 
     const labels = Array.from(bins.keys()).sort();
-    const hash = labels.map(k => bins.get(k).hash);                 // sum TH/s across miners
-    const power = labels.map(k => bins.get(k).power);               // sum W across miners
+    const hash = labels.map(k => bins.get(k).hash);
+    const power = labels.map(k => bins.get(k).power);
     const temp = labels.map(k => {
         const b = bins.get(k);
-        return b.temp_count ? b.temp / b.temp_count : 0;              // avg temp
+        return b.temp_count ? b.temp / b.temp_count : 0;
     });
     const fan = labels.map(k => {
         const b = bins.get(k);
-        return b.fan_count ? b.fan / b.fan_count : 0;                 // avg fan
+        return b.fan_count ? b.fan / b.fan_count : 0;
     });
 
-    // Update charts
     ovCharts.hash.data.labels = labels;
     ovCharts.hash.data.datasets[0].data = hash;
     ovCharts.hash.update();
@@ -205,7 +198,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadFreshPrefs();
     updateActiveWindowBadge();
 
-    // Re-run on change
     const sel = document.getElementById('fresh-within');
     const cb = document.getElementById('active-only');
     if (sel) sel.addEventListener('change', () => {
@@ -221,7 +213,6 @@ document.addEventListener('DOMContentLoaded', () => {
         loadAggregateSeries();
     });
 
-    // Your existing init
     initOverview();
     setInterval(() => {
         loadSummaryKPIs();
