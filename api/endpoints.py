@@ -1,14 +1,12 @@
 import ipaddress
 import socket
-import time
 from flask import Blueprint, jsonify, request
-from sqlalchemy import func
-from zeroconf import Zeroconf, ServiceBrowser
+from sqlalchemy import func, and_
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dateutil import parser
 from core.db import SessionLocal, Metric, Event, ErrorEvent
 from core.miner import MinerClient, MinerError
-from config import MINER_IP_RANGE, POLL_INTERVAL, EFFICIENCY_J_PER_TH, API_MAX_LIMIT
+from config import MINER_IP_RANGE, API_MAX_LIMIT
 from datetime import datetime, timezone, timedelta
 import logging
 
@@ -263,7 +261,8 @@ def summary():
 
     overall_source = (
         'live' if overall_srcs == {'live'} else
-        ('db_fallback' if overall_srcs == {'db_fallback'} else ('mixed' if overall_srcs else 'none'))
+        ('db_fallback' if overall_srcs == {'db_fallback'}
+         else ('mixed' if overall_srcs else 'none'))
     )
 
     return jsonify({
@@ -280,7 +279,7 @@ def summary():
 
 
 # noinspection PyBroadException
-@api_bp.route('/miners')
+# @api_bp.route('/miners')
 @api_bp.route('/miners/summary')
 def miners():
     # info = []
@@ -346,6 +345,63 @@ def miners():
             "avg_ths": float(r.avg_ths or 0.0),
             "avg_power_w": float(r.avg_power_w or 0.0),
         } for r in rows])
+    finally:
+        s.close()
+
+
+@api_bp.route('/miners/current')
+def miners_current():
+    """
+    One latest metric per miner.
+    Returns: [{ ip, last_seen, hashrate_ths, power_w, avg_temp_c, avg_fan_rpm }]
+    Query params (optional):
+      - active_only=true|false (default true)
+      - fresh_within=minutes (default 30)
+      - ips=comma,separated, list (optional)
+    """
+    active_only = request.args.get('active_only', 'true').lower() == 'true'
+    fresh_within = int(request.args.get('fresh_within', 30))
+    ips_param = request.args.get('ips')
+
+    ip_list = [i.strip() for i in ips_param.split(',')] if ips_param else None
+
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=fresh_within)
+
+    s = SessionLocal()
+    try:
+        latest = (
+            s.query(
+                Metric.miner_ip.label('ip'),
+                func.max(Metric.timestamp).label('last_ts')
+            )
+            .group_by(Metric.miner_ip)
+            .subquery()
+        )
+
+        q = (
+            s.query(Metric)
+            .join(latest, and_(Metric.miner_ip == latest.c.ip,
+                               Metric.timestamp == latest.c.last_ts))
+        )
+
+        if ip_list:
+            q = q.filter(Metric.miner_ip.in_(ip_list))
+        if active_only:
+            q = q.filter(Metric.timestamp >= cutoff)
+
+        rows = q.order_by(Metric.miner_ip.asc()).all()
+
+        return jsonify([{
+            "ip": m.miner_ip,
+            "last_seen": (m.timestamp.replace(tzinfo=timezone.utc).isoformat()
+                          if m.timestamp and m.timestamp.tzinfo is None else (
+                m.timestamp.isoformat() if m.timestamp else "")),
+            "hashrate_ths": float(m.hashrate_ths or 0.0),
+            "power_w": float(m.power_w or 0.0),
+            "avg_temp_c": float(m.avg_temp_c or 0.0),
+            "avg_fan_rpm": float(m.avg_fan_rpm or 0.0),
+        } for m in rows])
     finally:
         s.close()
 

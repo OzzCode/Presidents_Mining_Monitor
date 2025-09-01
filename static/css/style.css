@@ -399,3 +399,12 @@ tr.stale {
     width: 16px;
     height: 16px;
 }
+
+.link-ip {
+    text-decoration: none;
+    color: #2563eb;
+}
+
+.link-ip:hover {
+    text-decoration: underline;
+}

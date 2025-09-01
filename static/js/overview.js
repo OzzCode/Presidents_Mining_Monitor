@@ -237,13 +237,7 @@ async function fillMinersSummaryTable() {
 
     rows.forEach(r => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-      <td>${r.last_seen || '—'}</td>
-      <td>${r.ip || '—'}</td>
-      <td>${fmt(r.avg_ths, 3)}</td>
-      <td>${fmt0(r.avg_power_w)}</td>   <!-- NEW -->
-      <td><a class="btn btn-sm" href="/dashboard/?ip=${encodeURIComponent(r.ip)}">Open</a></td>
-    `;
+        tr.innerHTML = `<td>${r.last_seen || '—'}</td> <td><a href="/dashboard/?ip=${encodeURIComponent(r.ip)}" class="link-ip">${r.ip}</a></td> <td>${fmt(r.hashrate_ths, 3)}</td> <td>${fmt0(r.power_w)}</td> <td>${fmt(r.avg_temp_c, 1)}</td> <td>${fmt0(r.avg_fan_rpm)}</td> `;
         tbody.appendChild(tr);
     });
 }
