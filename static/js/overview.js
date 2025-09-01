@@ -188,10 +188,72 @@ async function loadAggregateSeries() {
     ovCharts.tempfan.update();
 }
 
+function fmt(n, d = 3) {
+    const v = Number(n);
+    return Number.isFinite(v) ? v.toFixed(d) : '0';
+}
+
+function fmt(n, d = 3) {
+    const v = Number(n);
+    return Number.isFinite(v) ? v.toFixed(d) : '0';
+}
+
+function fmt0(n) {
+    const v = Number(n);
+    return Number.isFinite(v) ? Math.round(v).toString() : '0';
+}
+
+async function fillMinersSummaryTable() {
+    const tbody = document.getElementById('stats-log');
+    if (!tbody) return;
+
+    const windowMin = Math.max(getFreshWithin(), 30);
+    const freshWithin = getFreshWithin();
+    const activeOnly = getActiveOnly();
+
+    const params = new URLSearchParams({
+        window_min: String(windowMin),
+        active_only: activeOnly ? 'true' : 'false',
+        fresh_within: String(freshWithin),
+    });
+
+    let rows = [];
+    try {
+        const res = await fetch(`/api/miners/summary?${params.toString()}`);
+        rows = await res.json();
+        if (!Array.isArray(rows)) rows = [];
+    } catch (e) {
+        console.warn('miners/summary fetch failed', e);
+        rows = [];
+    }
+
+    tbody.innerHTML = '';
+    if (!rows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="5">No miners in the selected window.</td>`;
+        tbody.appendChild(tr);
+        return;
+    }
+
+    rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+      <td>${r.last_seen || '—'}</td>
+      <td>${r.ip || '—'}</td>
+      <td>${fmt(r.avg_ths, 3)}</td>
+      <td>${fmt0(r.avg_power_w)}</td>   <!-- NEW -->
+      <td><a class="btn btn-sm" href="/dashboard/?ip=${encodeURIComponent(r.ip)}">Open</a></td>
+    `;
+        tbody.appendChild(tr);
+    });
+}
+
+
 async function initOverview() {
     ensureOvCharts();
     await loadSummaryKPIs();
     await loadAggregateSeries();
+    await fillMinersSummaryTable();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -205,17 +267,20 @@ document.addEventListener('DOMContentLoaded', () => {
         updateActiveWindowBadge();
         loadSummaryKPIs();
         loadAggregateSeries();
+        fillMinersSummaryTable();
     });
     if (cb) cb.addEventListener('change', () => {
         saveFreshPrefs();
         updateActiveWindowBadge();
         loadSummaryKPIs();
         loadAggregateSeries();
+        fillMinersSummaryTable();
     });
 
     initOverview();
     setInterval(() => {
         loadSummaryKPIs();
         loadAggregateSeries();
+        fillMinersSummaryTable();
     }, OV_REFRESH * 1000);
 });

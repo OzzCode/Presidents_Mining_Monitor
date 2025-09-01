@@ -281,6 +281,7 @@ def summary():
 
 # noinspection PyBroadException
 @api_bp.route('/miners')
+@api_bp.route('/miners/summary')
 def miners():
     # info = []
     # for ip in discover_miners():
@@ -305,26 +306,45 @@ def miners():
     window_min = int(request.args.get("window_min", 30))
     active_only = request.args.get("active_only", "true").lower() == "true"
     fresh_within = int(request.args.get("fresh_within", 30))
+    ips_param = request.args.get('ips')
+    since_param = request.args.get('since')
     now = datetime.now(timezone.utc)
-    since_dt = now - timedelta(minutes=window_min)
+
+    if since_param:
+        try:
+            since_dt = parser.isoparse(since_param)
+        except Exception:
+            since_dt = now - timedelta(minutes=window_min)
+    else:
+        since_dt = now - timedelta(minutes=window_min)
+
     cutoff = now - timedelta(minutes=fresh_within)
+    ip_list = [i.strip() for i in ips_param.split(',')] if ips_param else None
+
     s = SessionLocal()
     try:
         q = (s.query(Metric.miner_ip.label("ip"),
                      func.max(Metric.timestamp).label("last_ts"),
-                     func.avg(Metric.hashrate_ths).label("avg_ths"))
-             .filter(Metric.timestamp >= since_dt))
+                     func.avg(Metric.hashrate_ths).label("avg_ths"),
+                     func.avg(Metric.power_w).label('avg_power_w'),
+                     )
+             .filter(Metric.timestamp >= since_dt)
+             )
+        if ip_list:
+            q = q.filter(Metric.miner_ip.in_(ip_list))
         if active_only:
             q = q.group_by(Metric.miner_ip).having(func.max(Metric.timestamp) >= cutoff)
         else:
             q = q.group_by(Metric.miner_ip)
         q = q.order_by(func.max(Metric.timestamp).desc())
         rows = q.all()
+
         return jsonify([{
             "ip": r.ip,
             "last_seen": (r.last_ts.replace(tzinfo=timezone.utc).isoformat()
                           if r.last_ts and r.last_ts.tzinfo is None else (r.last_ts.isoformat() if r.last_ts else "")),
-            "avg_ths": float(r.avg_ths or 0.0)
+            "avg_ths": float(r.avg_ths or 0.0),
+            "avg_power_w": float(r.avg_power_w or 0.0),
         } for r in rows])
     finally:
         s.close()

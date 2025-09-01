@@ -1,3 +1,4 @@
+werkzeug
 flask-cors
 flask-sqlalchemy
 psutil

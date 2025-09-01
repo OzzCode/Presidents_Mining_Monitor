@@ -5,6 +5,7 @@ from dashboard.routes import dash_bp
 from scheduler import start_scheduler
 from flask_cors import CORS
 import os
+from werkzeug.exceptions import HTTPException
 
 
 def create_app():
@@ -25,7 +26,10 @@ def create_app():
     # noinspection PyBroadException
     @app.errorhandler(Exception)
     def handle_exception(e):
-        # Log and return a basic 500 JSON
+        # Allow HTTPExceptions (404, 400, etc.) to pass through with the correct status
+        if isinstance(e, HTTPException):
+            return e
+        # Log and return a basic 500 JSON for unexpected errors
         try:
             log_event("ERROR", f"flask unhandled: {repr(e)}", source="flask")
         except Exception:
