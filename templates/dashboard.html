@@ -36,6 +36,38 @@
         <div class="card"><h2>Workers</h2>
             <p id="total-workers">--</p></div>
     </div>
+    <div id="filters-badge" class="filters-badge" aria-live="polite"></div>
+    <div class="controls-bar" id="controls-bar"
+         style="margin:8px 0 12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="ctl-active-only" checked>
+            Active-only
+        </label>
+
+        <label>
+            Freshness
+            <select id="ctl-fresh-mins" style="margin-left:6px;">
+                <option value="15">15 min</option>
+                <option value="30" selected>30 min</option>
+                <option value="60">60 min</option>
+                <option value="180">3 h</option>
+            </select>
+        </label>
+
+        <label>
+            Charts window
+            <select id="ctl-chart-hours" style="margin-left:6px;">
+                <option value="6">6 h</option>
+                <option value="12">12 h</option>
+                <option value="24" selected>24 h</option>
+                <option value="48">48 h</option>
+                <option value="168">7 d</option>
+            </select>
+        </label>
+
+        <span id="filters-badge" class="filters-badge"></span>
+    </div>
+
     <h2>Hashrate (recent)</h2>
     <div class="dashboard-grid" style="margin-top:12px;">
         <div class="chart-card">

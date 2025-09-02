@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dateutil import parser
 from core.db import SessionLocal, Metric, Event, ErrorEvent
 from core.miner import MinerClient, MinerError
-from config import MINER_IP_RANGE, API_MAX_LIMIT
+from config import MINER_IP_RANGE, API_MAX_LIMIT, POLL_INTERVAL
 from datetime import datetime, timezone, timedelta
 import logging
 
@@ -351,22 +351,12 @@ def miners():
 
 @api_bp.route('/miners/current')
 def miners_current():
-    """
-    One latest metric per miner.
-    Returns: [{ ip, last_seen, hashrate_ths, power_w, avg_temp_c, avg_fan_rpm }]
-    Query params (optional):
-      - active_only=true|false (default true)
-      - fresh_within=minutes (default 30)
-      - ips=comma,separated, list (optional)
-    """
     active_only = request.args.get('active_only', 'true').lower() == 'true'
     fresh_within = int(request.args.get('fresh_within', 30))
     ips_param = request.args.get('ips')
-
     ip_list = [i.strip() for i in ips_param.split(',')] if ips_param else None
 
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(minutes=fresh_within)
+    cutoff = _naive_utc_now() - timedelta(minutes=fresh_within)
 
     s = SessionLocal()
     try:
@@ -384,19 +374,15 @@ def miners_current():
             .join(latest, and_(Metric.miner_ip == latest.c.ip,
                                Metric.timestamp == latest.c.last_ts))
         )
-
         if ip_list:
             q = q.filter(Metric.miner_ip.in_(ip_list))
         if active_only:
             q = q.filter(Metric.timestamp >= cutoff)
 
         rows = q.order_by(Metric.miner_ip.asc()).all()
-
         return jsonify([{
             "ip": m.miner_ip,
-            "last_seen": (m.timestamp.replace(tzinfo=timezone.utc).isoformat()
-                          if m.timestamp and m.timestamp.tzinfo is None else (
-                m.timestamp.isoformat() if m.timestamp else "")),
+            "last_seen": (m.timestamp.isoformat() + "Z"),
             "hashrate_ths": float(m.hashrate_ths or 0.0),
             "power_w": float(m.power_w or 0.0),
             "avg_temp_c": float(m.avg_temp_c or 0.0),
@@ -406,67 +392,84 @@ def miners_current():
         s.close()
 
 
-@api_bp.route('/metrics')
+def _naive_utc_now():
+    # return a naive UTC datetime (no tzinfo) to match DB storage
+    return datetime.utcnow()
+
+
+def _to_naive_utc(dt):
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        # assume it's already UTC-naive
+        return dt
+    # convert aware → UTC → strip tzinfo
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+@api_bp.route("/metrics")
 def metrics():
-    """
-    Historical metrics.
-    Query params:
-      - ip: single IP (existing)
-      - ips: comma-separated IPs (new)
-      - since: ISO8601 lower bound
-      - limit: int (default 500)
-      - active_only: 'true'/'false' (new)
-      - fresh_within: minutes (default 30) (new)
-    """
     ip_filter = request.args.get("ip")
     ips_param = request.args.get("ips")
     since = request.args.get("since")
+    limit = int(request.args.get("limit", 500))
+    active_only = request.args.get("active_only", "false").lower() == "true"
+    fresh_within = int(request.args.get("fresh_within", 30))
 
-    # limit validation and cap
+    s = SessionLocal()
     try:
-        limit = int(request.args.get("limit", 500))
-    except Exception:
-        return jsonify({"error": "invalid limit"}), 400
-    if limit < 1:
-        return jsonify({"error": "limit must be positive"}), 400
-    if limit > API_MAX_LIMIT:
-        limit = API_MAX_LIMIT
+        q = s.query(Metric)
 
-    # optional flags
-    active_only = (request.args.get("active_only", "false").lower() == "true")
-    try:
-        fresh_within = int(request.args.get("fresh_within", 30))
-    except Exception:
-        return jsonify({"error": "invalid fresh_within"}), 400
+        if ip_filter:
+            q = q.filter(Metric.miner_ip == ip_filter)
 
-    session = SessionLocal()
-    try:
-        q = session.query(Metric)
-        if ip_filter: q = q.filter(Metric.miner_ip == ip_filter)
-        ip_list = None
-        if not ip_filter and ips_param:
+        if ips_param and not ip_filter:
             ip_list = [i.strip() for i in ips_param.split(",") if i.strip()]
-            if ip_list: q = q.filter(Metric.miner_ip.in_(ip_list))
+            if ip_list:
+                q = q.filter(Metric.miner_ip.in_(ip_list))
+
         if since:
-            q = q.filter(Metric.timestamp >= parser.isoparse(since))
+            try:
+                dt = parser.isoparse(since)
+            except Exception:
+                dt = None
+            if dt:
+                q = q.filter(Metric.timestamp >= _to_naive_utc(dt))
+
         if active_only:
-            cutoff = datetime.now(timezone.utc) - timedelta(minutes=fresh_within)
-            sub = (session.query(Metric.miner_ip.label("ip"), func.max(Metric.timestamp).label("last"))
-                   .group_by(Metric.miner_ip).subquery())
-            active_ips = [r.ip for r in session.query(sub).filter(sub.c.last >= cutoff).all()]
-            if not active_ips: return jsonify([])
+            cutoff = _naive_utc_now() - timedelta(minutes=fresh_within)
+            latest_subq = (
+                s.query(
+                    Metric.miner_ip.label("ip"),
+                    func.max(Metric.timestamp).label("last_ts"),
+                )
+                .group_by(Metric.miner_ip)
+                .subquery()
+            )
+            active_ips = [
+                r.ip
+                for r in s.query(latest_subq)
+                .filter(latest_subq.c.last_ts >= cutoff)
+                .all()
+            ]
+            if not active_ips:
+                return jsonify([])
             q = q.filter(Metric.miner_ip.in_(active_ips))
+
         rows = q.order_by(Metric.timestamp.asc()).limit(limit).all()
-        return jsonify([{
-            "timestamp": m.timestamp.isoformat(),
-            "ip": m.miner_ip,
-            "power_w": m.power_w,
-            "hashrate_ths": m.hashrate_ths,
-            "avg_temp_c": m.avg_temp_c,
-            "avg_fan_rpm": m.avg_fan_rpm,
-        } for m in rows])
+        return jsonify([
+            {
+                "timestamp": (m.timestamp.isoformat() + "Z"),  # return ISO+Z
+                "ip": m.miner_ip,
+                "power_w": m.power_w,
+                "hashrate_ths": m.hashrate_ths,
+                "avg_temp_c": m.avg_temp_c,
+                "avg_fan_rpm": m.avg_fan_rpm,
+            }
+            for m in rows
+        ])
     finally:
-        session.close()
+        s.close()
 
 
 @api_bp.route("/error-logs")
