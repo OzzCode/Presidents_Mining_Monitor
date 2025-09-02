@@ -1,6 +1,5 @@
 // === Dashboard: supports both farm-wide and single-miner modes ===
 const POLL_INTERVAL = 30;
-
 const qs = new URLSearchParams(location.search);
 const QS_IP = qs.get('ip'); // if set -> single-miner mode
 const FARM_ACTIVE_ONLY = true;
@@ -10,7 +9,6 @@ const CHART_WINDOW_HRS = 24;   // chart lookback window
 const LS_ACTIVE_ONLY = 'dash_active_only';
 const LS_FRESH_MINS = 'dash_fresh_mins';
 const LS_CHART_HOURS = 'dash_chart_hours';
-
 // Defaults
 const DEF_ACTIVE_ONLY = true;
 const DEF_FRESH_MINS = 30;
@@ -114,19 +112,6 @@ function savePrefs() {
         localStorage.setItem(LS_FRESH_MINS, String(uiFreshMins()));
         localStorage.setItem(LS_CHART_HOURS, String(uiChartHours()));
     } catch {
-    }
-}
-
-function updateFiltersBadge() {
-    const el = document.getElementById('filters-badge');
-    if (!el) return;
-    if (QS_IP) {
-        el.innerHTML = `<span class="chip">Miner ${QS_IP}</span><span class="chip">Window ${uiChartHours()} h</span>`;
-    } else {
-        el.innerHTML =
-            `<span class="chip">${uiActiveOnly() ? 'Active-only' : 'All miners'}</span>` +
-            `<span class="chip">Last ${uiFreshMins()} min</span>` +
-            `<span class="chip">Charts ${uiChartHours()} h</span>`;
     }
 }
 
