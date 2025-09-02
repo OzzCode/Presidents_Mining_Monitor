@@ -100,10 +100,19 @@ async function loadSummaryKPIs() {
     try {
         const res = await fetch('/api/summary');
         const s = await res.json();
-        document.getElementById('kpi-hash').textContent = `${s.total_hashrate} TH/s`;
-        document.getElementById('kpi-power').textContent = `${s.total_power} W (est.)`;
-        document.getElementById('kpi-temp').textContent = `${s.avg_temp} °C`;
-        document.getElementById('kpi-workers').textContent = s.total_workers;
+        const safeSetText = (id, text) => {
+            const el = document.getElementById(id);
+            if (!el) {
+                console.warn(`Missing KPI element: #${id}`);
+                return;
+            }
+            el.textContent = text;
+        };
+
+        safeSetText('kpi-hash', `${s.total_hashrate} TH/s`);
+        safeSetText('kpi-power', `${s.total_power} W (est.)`);
+        safeSetText('kpi-temp', `${s.avg_temp} °C`);
+        safeSetText('kpi-workers', s.total_workers);
     } catch (e) {
         console.warn('summary fetch failed', e);
     } finally {
@@ -186,11 +195,6 @@ async function loadAggregateSeries() {
     ovCharts.tempfan.data.datasets[0].data = temp;
     ovCharts.tempfan.data.datasets[1].data = fan;
     ovCharts.tempfan.update();
-}
-
-function fmt(n, d = 3) {
-    const v = Number(n);
-    return Number.isFinite(v) ? v.toFixed(d) : '0';
 }
 
 function fmt(n, d = 3) {

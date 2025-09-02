@@ -91,6 +91,21 @@ def _normalize_since(value: str) -> datetime:
     return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+def _naive_utc_now():
+    # return a naive UTC datetime (no tzinfo) to match DB storage
+    return datetime.utcnow()
+
+
+def _to_naive_utc(dt):
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        # assume it's already UTC-naive
+        return dt
+    # convert aware → UTC → strip tzinfo
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 # --------------------------
 # Normalization helper
 # --------------------------
@@ -364,9 +379,7 @@ def miners_current():
             s.query(
                 Metric.miner_ip.label('ip'),
                 func.max(Metric.timestamp).label('last_ts')
-            )
-            .group_by(Metric.miner_ip)
-            .subquery()
+            ).group_by(Metric.miner_ip).subquery()
         )
 
         q = (
@@ -382,7 +395,7 @@ def miners_current():
         rows = q.order_by(Metric.miner_ip.asc()).all()
         return jsonify([{
             "ip": m.miner_ip,
-            "last_seen": (m.timestamp.isoformat() + "Z"),
+            "last_seen": m.timestamp.isoformat() + "Z",
             "hashrate_ths": float(m.hashrate_ths or 0.0),
             "power_w": float(m.power_w or 0.0),
             "avg_temp_c": float(m.avg_temp_c or 0.0),
@@ -390,21 +403,6 @@ def miners_current():
         } for m in rows])
     finally:
         s.close()
-
-
-def _naive_utc_now():
-    # return a naive UTC datetime (no tzinfo) to match DB storage
-    return datetime.utcnow()
-
-
-def _to_naive_utc(dt):
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        # assume it's already UTC-naive
-        return dt
-    # convert aware → UTC → strip tzinfo
-    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 @api_bp.route("/metrics")

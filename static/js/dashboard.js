@@ -2,18 +2,16 @@
 const POLL_INTERVAL = 30;
 const qs = new URLSearchParams(location.search);
 const QS_IP = qs.get('ip'); // if set -> single-miner mode
-const FARM_ACTIVE_ONLY = true;
-const FARM_FRESH_MIN = 30;   // minutes
-const CHART_WINDOW_HRS = 24;   // chart lookback window
+
 // Persisted settings keys
 const LS_ACTIVE_ONLY = 'dash_active_only';
 const LS_FRESH_MINS = 'dash_fresh_mins';
 const LS_CHART_HOURS = 'dash_chart_hours';
+
 // Defaults
 const DEF_ACTIVE_ONLY = true;
 const DEF_FRESH_MINS = 30;
 const DEF_CHART_HOURS = 24;
-
 
 function $(sel) {
     return typeof sel === 'string' && sel.startsWith('#')
@@ -41,42 +39,7 @@ function fmt0(n) {
     return Number.isFinite(v) ? Math.round(v).toString() : '0';
 }
 
-// Humanize seconds as d h m s
-function humanDuration(seconds) {
-    const s = Math.max(0, Math.floor(Number(seconds) || 0));
-    const d = Math.floor(s / 86400);
-    const h = Math.floor((s % 86400) / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = s % 60;
-    if (d) return `${d}d ${h}h ${m}m`;
-    if (h) return `${h}h ${m}m`;
-    if (m) return `${m}m ${sec}s`;
-    return `${sec}s`;
-}
-
-function updateFiltersBadge() {
-    const el = document.getElementById('filters-badge');
-    if (!el) return;
-
-    // build chips safely (avoid innerHTML with QS_IP)
-    el.textContent = '';
-    const addChip = (text) => {
-        const span = document.createElement('span');
-        span.className = 'chip';
-        span.textContent = text;
-        el.appendChild(span);
-    };
-
-    if (QS_IP) {
-        addChip(`Miner ${QS_IP}`);
-        addChip(`Window ${CHART_WINDOW_HRS} h`);
-    } else {
-        addChip(FARM_ACTIVE_ONLY ? 'Active-only' : 'All miners');
-        addChip(`Last ${FARM_FRESH_MIN} min`);
-        addChip(`Charts ${CHART_WINDOW_HRS} h`);
-    }
-}
-
+// ---- controls state ----
 function uiActiveOnly() {
     const el = document.getElementById('ctl-active-only');
     return el ? !!el.checked : DEF_ACTIVE_ONLY;
@@ -115,6 +78,32 @@ function savePrefs() {
     }
 }
 
+// Humanize seconds as d h m s
+function humanDuration(seconds) {
+    const s = Math.max(0, Math.floor(Number(seconds) || 0));
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (d) return `${d}d ${h}h ${m}m`;
+    if (h) return `${h}h ${m}m`;
+    if (m) return `${m}m ${sec}s`;
+    return `${sec}s`;
+}
+
+function updateFiltersBadge() {
+    const el = document.getElementById('filters-badge');
+    if (!el) return;
+    if (QS_IP) {
+        el.innerHTML = `<span class="chip">Miner ${QS_IP}</span><span class="chip">Window ${uiChartHours()} h</span>`;
+    } else {
+        el.innerHTML =
+            `<span class="chip">${uiActiveOnly() ? 'Active-only' : 'All miners'}</span>` +
+            `<span class="chip">Last ${uiFreshMins()} min</span>` +
+            `<span class="chip">Charts ${uiChartHours()} h</span>`;
+    }
+}
+
 // ----- Cards -----
 async function fillCards() {
     const url = QS_IP ? `/api/summary?ip=${encodeURIComponent(QS_IP)}` : '/api/summary';
@@ -138,12 +127,16 @@ async function fillCards() {
             srv.textContent = `Server time: ${Number.isNaN(dt.getTime()) ? s.last_updated : dt.toLocaleString()}`;
         }
 
-        // Optional: show which miner on single-miner page (if you have a title spot)
         const title = $('#page-title');
         if (title && QS_IP) title.textContent = `Miner ${QS_IP}`;
     } catch (e) {
         console.warn('summary failed', e);
-        ['total-power', 'total-hashrate', 'total-uptime', 'avg-temp', 'avg-fan-speed', 'total-workers'].forEach(id => setText(id, '—'));
+        ['total-power', 'total-hashrate', 'total-uptime', 'avg-temp', 'avg-fan-speed', 'total-workers']
+            .forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) console.warn(`Missing element: ${id}`);
+                setText(id, '—');
+            });
     }
 }
 
@@ -151,12 +144,12 @@ async function fillCards() {
 let charts = {};
 
 function ensureCharts() {
-    const elHash = $('#chart-hashrate');
-    const elPower = $('#chart-power');
-    const elTempFan = $('#chart-tempfan');
+    const ctxHash = document.getElementById("chart-hashrate")?.getContext("2d");
+    const ctxPower = document.getElementById("chart-power")?.getContext("2d");
+    const ctxTempFan = document.getElementById("chart-tempfan")?.getContext("2d");
 
-    if (!charts.hash && elHash) {
-        charts.hash = new Chart(elHash, {
+    if (!charts.hash && ctxHash) {
+        charts.hash = new Chart(ctxHash, {
             type: 'line',
             data: {labels: [], datasets: [{label: 'TH/s', data: [], tension: 0.2, fill: false}]},
             options: {
@@ -167,8 +160,8 @@ function ensureCharts() {
             }
         });
     }
-    if (!charts.power && elPower) {
-        charts.power = new Chart(elPower, {
+    if (!charts.power && ctxPower) {
+        charts.power = new Chart(ctxPower, {
             type: 'line',
             data: {labels: [], datasets: [{label: 'W', data: [], tension: 0.2, fill: false}]},
             options: {
@@ -179,8 +172,8 @@ function ensureCharts() {
             }
         });
     }
-    if (!charts.tempfan && elTempFan) {
-        charts.tempfan = new Chart(elTempFan, {
+    if (!charts.tempfan && ctxTempFan) {
+        charts.tempfan = new Chart(ctxTempFan, {
             type: 'line',
             data: {
                 labels: [], datasets: [
@@ -208,10 +201,8 @@ function binTs(ts, minutes = 5) {
 
 async function fillCharts() {
     ensureCharts();
-    const windowMs = CHART_WINDOW_HRS * 60 * 60 * 1000;
-    const since = new Date(Date.now() - windowMs).toISOString();
-    // Approximate max rows by client poll interval
-    const limit = String(Math.ceil(windowMs / (POLL_INTERVAL * 1000)) + 200); // small headroom
+
+    const since = new Date(Date.now() - uiChartHours() * 60 * 60 * 1000).toISOString();
     const params = new URLSearchParams({since, limit: '3000'});
     if (QS_IP) {
         params.set('ip', QS_IP); // single-miner raw series
@@ -219,111 +210,92 @@ async function fillCharts() {
         params.set('active_only', uiActiveOnly() ? 'true' : 'false');
         params.set('fresh_within', String(uiFreshMins()));
     }
+
     let rows = [];
     try {
         const res = await fetch(`/api/metrics?${params.toString()}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         rows = await res.json();
         if (!Array.isArray(rows)) rows = [];
     } catch (e) {
+        console.warn('metrics fetch failed', e);
         rows = [];
     }
 
     if (!rows.length) {
-        let rows = [];
-        try {
-            const res = await fetch(`/api/metrics?${params.toString()}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            rows = await res.json();
-            if (!Array.isArray(rows)) rows = [];
-        } catch (e) {
-            console.warn('metrics fetch failed', e);
-            rows = [];
-        }
+        Object.values(charts).forEach(c => {
+            if (!c) return;
+            c.data.labels = [];
+            c.data.datasets.forEach(d => d.data = []);
+            c.update();
+        });
+        return;
+    }
 
-        if (!rows.length) {
-            Object.values(charts).forEach(c => {
-                if (!c) return;
-                c.data.labels = [];
-                c.data.datasets.forEach(d => d.data = []);
-                c.update();
-            });
-            return;
-        }
+    if (QS_IP) {
+        // single-miner: plot raw series
+        const labels = rows.map(r => r.timestamp);
+        const hash = rows.map(r => Number(r.hashrate_ths || 0));
+        const power = rows.map(r => Number(r.power_w || 0));
+        const temp = rows.map(r => Number(r.avg_temp_c || 0));
+        const fan = rows.map(r => Number(r.avg_fan_rpm || 0));
 
-        if (QS_IP) {
-            // single-miner: plot raw series
-            const labels = rows.map(r => r.timestamp);
-            const hash = rows.map(r => Number(r.hashrate_ths || 0));
-            const power = rows.map(r => Number(r.power_w || 0));
-            const temp = rows.map(r => Number(r.avg_temp_c || 0));
-            const fan = rows.map(r => Number(r.avg_fan_rpm || 0));
+        // noinspection DuplicatedCode
+        charts.hash.data.labels = labels;
+        charts.hash.data.datasets[0].data = hash;
+        charts.hash.update();
+        charts.power.data.labels = labels;
+        charts.power.data.datasets[0].data = power;
+        charts.power.update();
+        charts.tempfan.data.labels = labels;
+        charts.tempfan.data.datasets[0].data = temp;
+        charts.tempfan.data.datasets[1].data = fan;
+        charts.tempfan.update();
+    } else {
+        // farm: aggregate into 5-min bins (sum hash/power, avg temp/fan)
+        const bins = new Map();
+        rows.forEach(r => {
+            const key = binTs(r.timestamp, 5);
+            if (!key) return;
+            const o = bins.get(key) || {hash: 0, power: 0, temp: 0, fan: 0, tc: 0, fc: 0};
+            o.hash += Number(r.hashrate_ths || 0);
+            o.power += Number(r.power_w || 0);
+            const t = Number(r.avg_temp_c || 0);
+            if (Number.isFinite(t) && t > 0) {
+                o.temp += t;
+                o.tc++;
+            }
+            const f = Number(r.avg_fan_rpm || 0);
+            if (Number.isFinite(f) && f > 0) {
+                o.fan += f;
+                o.fc++;
+            }
+            bins.set(key, o);
+        });
 
-            if (charts.hash) {
-                charts.hash.data.labels = labels;
-                charts.hash.data.datasets[0].data = hash;
-                charts.hash.update();
-            }
-            if (charts.power) {
-                charts.power.data.labels = labels;
-                charts.power.data.datasets[0].data = power;
-                charts.power.update();
-            }
-            if (charts.tempfan) {
-                charts.tempfan.data.labels = labels;
-                charts.tempfan.data.datasets[0].data = temp;
-                charts.tempfan.data.datasets[1].data = fan;
-                charts.tempfan.update();
-            }
-        } else {
-            // farm: aggregate into 5-min bins (sum hash/power, avg temp/fan)
-            const bins = new Map();
-            rows.forEach(r => {
-                const key = binTs(r.timestamp, 5);
-                if (!key) return;
-                const o = bins.get(key) || {hash: 0, power: 0, temp: 0, fan: 0, tc: 0, fc: 0};
-                o.hash += Number(r.hashrate_ths || 0);
-                o.power += Number(r.power_w || 0);
-                const t = Number(r.avg_temp_c || 0);
-                if (Number.isFinite(t) && t > 0) {
-                    o.temp += t;
-                    o.tc++;
-                }
-                const f = Number(r.avg_fan_rpm || 0);
-                if (Number.isFinite(f) && f > 0) {
-                    o.fan += f;
-                    o.fc++;
-                }
-                bins.set(key, o);
-            });
-            const labels = Array.from(bins.keys()).sort();
-            const hash = labels.map(k => bins.get(k).hash);
-            const power = labels.map(k => bins.get(k).power);
-            const temp = labels.map(k => {
-                const b = bins.get(k);
-                return b.tc ? b.temp / b.tc : 0;
-            });
-            const fan = labels.map(k => {
-                const b = bins.get(k);
-                return b.fc ? b.fan / b.fc : 0;
-            });
+        const labels = Array.from(bins.keys()).sort();
+        const hash = labels.map(k => bins.get(k).hash);
+        const power = labels.map(k => bins.get(k).power);
+        const temp = labels.map(k => {
+            const b = bins.get(k);
+            return b.tc ? b.temp / b.tc : 0;
+        });
+        const fan = labels.map(k => {
+            const b = bins.get(k);
+            return b.fc ? b.fan / b.fc : 0;
+        });
 
-            if (charts.hash) {
-                charts.hash.data.labels = labels;
-                charts.hash.data.datasets[0].data = hash;
-                charts.hash.update();
-            }
-            if (charts.power) {
-                charts.power.data.labels = labels;
-                charts.power.data.datasets[0].data = power;
-                charts.power.update();
-            }
-            if (charts.tempfan) {
-                charts.tempfan.data.labels = labels;
-                charts.tempfan.data.datasets[0].data = temp;
-                charts.tempfan.data.datasets[1].data = fan;
-                charts.tempfan.update();
-            }
-        }
+        // noinspection DuplicatedCode
+        charts.hash.data.labels = labels;
+        charts.hash.data.datasets[0].data = hash;
+        charts.hash.update();
+        charts.power.data.labels = labels;
+        charts.power.data.datasets[0].data = power;
+        charts.power.update();
+        charts.tempfan.data.labels = labels;
+        charts.tempfan.data.datasets[0].data = temp;
+        charts.tempfan.data.datasets[1].data = fan;
+        charts.tempfan.update();
     }
 }
 
@@ -333,12 +305,11 @@ async function fillTable() {
     if (!tbody) return;
 
     if (QS_IP) {
-        // single-miner: show recent samples (last 2h)
-        const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-        const params = new URLSearchParams({
-            active_only: uiActiveOnly() ? 'true' : 'false',
-            fresh_within: String(uiFreshMins())
-        });
+        // single-miner: last ≤6h (keep table tight)
+        const hours = Math.min(uiChartHours(), 6);
+        const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+        const params = new URLSearchParams({since, limit: '500', ip: QS_IP});
+
         let rows = [];
         try {
             const res = await fetch(`/api/metrics?${params.toString()}`);
@@ -353,43 +324,44 @@ async function fillTable() {
         tbody.textContent = '';
         if (!rows.length) {
             const tr = document.createElement('tr');
-            const td = document.createElement('td');
-            td.colSpan = 6;
-            td.textContent = `No recent data for ${QS_IP}.`;
-            tr.appendChild(td);
+            tr.innerHTML = `<td colspan="6">No recent data for ${QS_IP}.</td>`;
             tbody.appendChild(tr);
             return;
         }
 
         rows.slice(-200).forEach(r => {
             const tr = document.createElement('tr');
-            const cells = [
-                r.timestamp,
-                r.ip || QS_IP,
-                fmt(r.hashrate_ths, 3),
-                fmt0(r.power_w),
-                fmt(r.avg_temp_c, 1),
-                fmt0(r.avg_fan_rpm),
-            ];
-            cells.forEach((val) => {
-                const td = document.createElement('td');
-                td.textContent = String(val ?? '—');
-                tr.appendChild(td);
-            });
+            tr.innerHTML = `
+        <td>${r.timestamp}</td>
+        <td>${r.ip || QS_IP}</td>
+        <td>${fmt(r.hashrate_ths, 3)}</td>
+        <td>${fmt0(r.power_w)}</td>
+        <td>${fmt(r.avg_temp_c, 1)}</td>
+        <td>${fmt0(r.avg_fan_rpm)}</td>
+      `;
             tbody.appendChild(tr);
         });
     } else {
         // farm: one latest row per miner
-        const params = new URLSearchParams({
-            active_only: String(!!FARM_ACTIVE_ONLY),
-            fresh_within: String(FARM_FRESH_MIN)
-        });
-        let rows = [];
-        try {
+        async function fetchCurrent(activeOnly, freshMins) {
+            const params = new URLSearchParams({
+                active_only: activeOnly ? 'true' : 'false',
+                fresh_within: String(freshMins)
+            });
             const res = await fetch(`/api/miners/current?${params.toString()}`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            rows = await res.json();
-            if (!Array.isArray(rows)) rows = [];
+            const rows = await res.json();
+            return Array.isArray(rows) ? rows : [];
+        }
+
+        let rows = [];
+        try {
+            // first, respect the UI window
+            rows = await fetchCurrent(uiActiveOnly(), uiFreshMins());
+            // if nothing, relax active_only only (do NOT change the freshness text)
+            if (!rows.length && uiActiveOnly()) {
+                rows = await fetchCurrent(false, uiFreshMins());
+            }
         } catch (e) {
             console.warn('miners/current fetch failed', e);
             rows = [];
@@ -398,45 +370,20 @@ async function fillTable() {
         tbody.textContent = '';
         if (!rows.length) {
             const tr = document.createElement('tr');
-            const td = document.createElement('td');
-            td.colSpan = 6;
-            td.textContent = `No active miners in the last ${FARM_FRESH_MIN} minutes.`;
-            tr.appendChild(td);
+            tr.innerHTML = `<td colspan="6">No miners found in the selected window.</td>`;
             tbody.appendChild(tr);
             return;
         }
 
         rows.forEach(r => {
             const tr = document.createElement('tr');
-
-            const tdLast = document.createElement('td');
-            tdLast.textContent = r.last_seen || '—';
-            tr.appendChild(tdLast);
-
-            const tdIp = document.createElement('td');
-            const a = document.createElement('a');
-            a.href = `/dashboard/?ip=${encodeURIComponent(r.ip)}`;
-            a.className = 'link-ip';
-            a.textContent = r.ip;
-            tdIp.appendChild(a);
-            tr.appendChild(tdIp);
-
-            const tdHash = document.createElement('td');
-            tdHash.textContent = fmt(r.hashrate_ths, 3);
-            tr.appendChild(tdHash);
-
-            const tdPower = document.createElement('td');
-            tdPower.textContent = fmt0(r.power_w);
-            tr.appendChild(tdPower);
-
-            const tdTemp = document.createElement('td');
-            tdTemp.textContent = fmt(r.avg_temp_c, 1);
-            tr.appendChild(tdTemp);
-
-            const tdFan = document.createElement('td');
-            tdFan.textContent = fmt0(r.avg_fan_rpm);
-            tr.appendChild(tdFan);
-
+            tr.innerHTML = `
+      <td>${r.last_seen || '—'}</td>
+      <td><a href="/dashboard/?ip=${encodeURIComponent(r.ip)}" class="link-ip">${r.ip}</a></td>
+      <td>${fmt(r.hashrate_ths, 3)}</td>
+      <td>${fmt0(r.power_w)}</td>
+      <td>${fmt(r.avg_temp_c, 1)}</td>
+      <td>${fmt0(r.avg_fan_rpm)}</td> `;
             tbody.appendChild(tr);
         });
     }
@@ -446,7 +393,7 @@ async function fillTable() {
 document.addEventListener('DOMContentLoaded', () => {
     loadPrefs();
 
-    // Hide farm-only controls on single-miner page if you want
+    // Hide farm-only controls on a single-miner page if you want
     if (QS_IP) {
         const ao = document.getElementById('ctl-active-only');
         const fm = document.getElementById('ctl-fresh-mins');
@@ -467,14 +414,12 @@ document.addEventListener('DOMContentLoaded', () => {
         fillTable();
         updateFiltersBadge();
     };
-    const ctlA = document.getElementById('ctl-active-only');
-    const ctlF = document.getElementById('ctl-fresh-mins');
-    const ctlC = document.getElementById('ctl-chart-hours');
-    if (ctlA) ctlA.addEventListener('change', onChange);
-    if (ctlF) ctlF.addEventListener('change', onChange);
-    if (ctlC) ctlC.addEventListener('change', onChange);
+    ['ctl-active-only', 'ctl-fresh-mins', 'ctl-chart-hours'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', onChange);
+    });
 
-    // Auto-refresh (still useful)
+    // Auto-refresh
     setInterval(() => {
         fillCards();
         fillCharts();

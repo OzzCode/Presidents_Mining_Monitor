@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>Antminer Monitor Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -88,8 +89,8 @@
                 <canvas id="chart-tempfan"></canvas>
             </div>
         </div>
+        <div id="kpi-hash">Loading...</div>
     </div>
-
 
     <h2>Statistics Log</h2>
     <table>

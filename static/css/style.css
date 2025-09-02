@@ -369,23 +369,25 @@ tr.stale {
 
 /* Simple KPI cards */
 .kpi-card {
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    padding: 12px 16px;
-    min-width: 180px;
+    flex: 1 1 180px;
+    background-color: #1e1e2f;
+    border-radius: 8px;
+    padding: 1rem;
+    color: #fff;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .kpi-label {
-    font-size: 0.8rem;
-    color: #6b7280;
-    margin-bottom: 4px;
+    font-size: 0.9rem;
+    color: #bbb;
+    margin-bottom: 0.3rem;
 }
 
 .kpi-value {
-    font-size: 1.2rem;
-    font-weight: 600;
-    color: #111827;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #00ffd0;
 }
 
 .controls-bar select {
