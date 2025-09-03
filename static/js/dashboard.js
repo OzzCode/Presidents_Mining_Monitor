@@ -346,7 +346,7 @@ async function fillTable() {
         async function fetchCurrent(activeOnly, freshMins) {
             const params = new URLSearchParams({
                 active_only: activeOnly ? 'true' : 'false',
-                fresh_within: String(freshMins)
+                fresh_within: String(freshMins())
             });
             const res = await fetch(`/api/miners/current?${params.toString()}`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);

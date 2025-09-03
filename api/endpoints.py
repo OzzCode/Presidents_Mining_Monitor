@@ -1,6 +1,6 @@
 import ipaddress
 import socket
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 from sqlalchemy import func, and_
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dateutil import parser
@@ -9,6 +9,7 @@ from core.miner import MinerClient, MinerError
 from config import MINER_IP_RANGE, API_MAX_LIMIT, POLL_INTERVAL
 from datetime import datetime, timezone, timedelta
 import logging
+from flask import current_app
 
 # tune these if needed
 _PER_MINER_TIMEOUT = 4.0  # seconds for each miner fetch
@@ -17,6 +18,64 @@ _MAX_WORKERS = 16  # threads for concurrent fetches
 logger = logging.getLogger(__name__)
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
+
+
+@api_bp.route("/api/debug/peek")
+def debug_peek():
+    """Show last metric per miner, plus age in minutes."""
+    fresh_within = int(request.args.get("fresh_within", 30))
+    cutoff = datetime.utcnow() - timedelta(minutes=fresh_within)
+
+    s = SessionLocal()
+    try:
+        latest = (
+            s.query(
+                Metric.miner_ip.label('ip'),
+                func.max(Metric.timestamp).label('last_ts')
+            ).group_by(Metric.miner_ip).subquery()
+        )
+        q = (s.query(Metric)
+             .join(latest, and_(Metric.miner_ip == latest.c.ip,
+                                Metric.timestamp == latest.c.last_ts))
+             .order_by(Metric.miner_ip.asc()))
+        rows = q.all()
+
+        out = []
+        for m in rows:
+            age_min = (datetime.utcnow() - m.timestamp).total_seconds() / 60.0
+            out.append({
+                "ip": m.miner_ip,
+                "last_seen": m.timestamp.isoformat() + "Z",
+                "age_min": round(age_min, 1),
+                "active@fresh_min": fresh_within,
+                "is_active": m.timestamp >= cutoff,
+                "hashrate_ths": float(m.hashrate_ths or 0.0),
+                "power_w": float(m.power_w or 0.0),
+            })
+        return jsonify(out)
+    finally:
+        s.close()
+
+
+@api_bp.route("/api/debug/tail")
+def debug_tail():
+    """Return last N metrics (optionally for one miner)."""
+    ip = request.args.get("ip")
+    n = int(request.args.get("n", 50))
+    s = SessionLocal()
+    try:
+        q = s.query(Metric)
+        if ip:
+            q = q.filter(Metric.miner_ip == ip)
+        rows = (q.order_by(Metric.timestamp.desc()).limit(n).all())
+        rows.reverse()
+        return jsonify([{
+            "timestamp": r.timestamp.isoformat() + "Z",
+            "ip": r.miner_ip, "hashrate_ths": r.hashrate_ths,
+            "power_w": r.power_w, "temp_c": r.avg_temp_c, "fan_rpm": r.avg_fan_rpm
+        } for r in rows])
+    finally:
+        s.close()
 
 
 def discover_miners(timeout=1, workers=50):
@@ -92,7 +151,6 @@ def _normalize_since(value: str) -> datetime:
 
 
 def _naive_utc_now():
-    # return a naive UTC datetime (no tzinfo) to match DB storage
     return datetime.utcnow()
 
 
@@ -295,38 +353,31 @@ def summary():
 
 # noinspection PyBroadException
 # @api_bp.route('/miners')
+# returns one row per miner with averages over a window
 @api_bp.route('/miners/summary')
-def miners():
-    # info = []
-    # for ip in discover_miners():
-    #     try:
-    #         d = MinerClient(ip).get_summary()
-    #         model = d.get('Model', 'Unknown') if isinstance(d, dict) else 'Unknown'
-    #         status = 'Online'
-    #     except Exception:
-    #         model = 'Unknown'
-    #         status = 'Offline'
-    #     last_seen_iso, age_sec = _last_seen_for_ip(ip)
-    #     is_stale = (age_sec is None) or (age_sec > 2 * POLL_INTERVAL)
-    #     info.append({
-    #         'model': model,
-    #         'ip': ip,
-    #         'status': status,
-    #         'last_seen': last_seen_iso,
-    #         'age_sec': age_sec,
-    #         'is_stale': is_stale
-    #     })
-    # return jsonify({'poll_interval': POLL_INTERVAL, 'miners': info})
-    window_min = int(request.args.get("window_min", 30))
-    active_only = request.args.get("active_only", "true").lower() == "true"
-    fresh_within = int(request.args.get("fresh_within", 30))
+def miners_summary():
+    """
+    Query params:
+      window_min (int, default 30) — averaging window length
+      active_only (bool, default true) — filter miners whose last row is fresh
+      fresh_within (int, default 30) — freshness window in minutes
+      ips (csv, optional) — restrict to a list of IPs
+      since (ISO, optional) — overrides window_min if set
+    Response: [{ ip, last_seen, avg_ths, avg_power_w }]
+    """
+    window_min = int(request.args.get('window_min', 30))
+    active_only = request.args.get('active_only', 'true').lower() == 'true'
+    fresh_within = int(request.args.get('fresh_within', 30))
     ips_param = request.args.get('ips')
     since_param = request.args.get('since')
-    now = datetime.now(timezone.utc)
 
+    now = _naive_utc_now()
     if since_param:
         try:
-            since_dt = parser.isoparse(since_param)
+            # if you already import dateutil.parser you can parse ISO here;
+            # otherwise, treat since_param as ISO UTC
+            from dateutil import parser
+            since_dt = _to_naive_utc(parser.isoparse(since_param))
         except Exception:
             since_dt = now - timedelta(minutes=window_min)
     else:
@@ -337,29 +388,35 @@ def miners():
 
     s = SessionLocal()
     try:
-        q = (s.query(Metric.miner_ip.label("ip"),
-                     func.max(Metric.timestamp).label("last_ts"),
-                     func.avg(Metric.hashrate_ths).label("avg_ths"),
-                     func.avg(Metric.power_w).label('avg_power_w'),
-                     )
-             .filter(Metric.timestamp >= since_dt)
-             )
+        q = (
+            s.query(
+                Metric.miner_ip.label('ip'),
+                func.max(Metric.timestamp).label('last_ts'),
+                func.avg(Metric.hashrate_ths).label('avg_ths'),
+                func.avg(Metric.power_w).label('avg_power_w'),
+            )
+            .filter(Metric.timestamp >= since_dt)
+        )
         if ip_list:
             q = q.filter(Metric.miner_ip.in_(ip_list))
-        if active_only:
-            q = q.group_by(Metric.miner_ip).having(func.max(Metric.timestamp) >= cutoff)
-        else:
-            q = q.group_by(Metric.miner_ip)
-        q = q.order_by(func.max(Metric.timestamp).desc())
-        rows = q.all()
 
-        return jsonify([{
-            "ip": r.ip,
-            "last_seen": (r.last_ts.replace(tzinfo=timezone.utc).isoformat()
-                          if r.last_ts and r.last_ts.tzinfo is None else (r.last_ts.isoformat() if r.last_ts else "")),
-            "avg_ths": float(r.avg_ths or 0.0),
-            "avg_power_w": float(r.avg_power_w or 0.0),
-        } for r in rows])
+        q = q.group_by(Metric.miner_ip)
+        if active_only:
+            q = q.having(func.max(Metric.timestamp) >= cutoff)
+
+        q = q.order_by(func.max(Metric.timestamp).desc())
+
+        rows = q.all()
+        out = []
+        for r in rows:
+            last_ts = r.last_ts
+            out.append({
+                "ip": r.ip,
+                "last_seen": (last_ts.isoformat() + "Z") if last_ts else "",
+                "avg_ths": float(r.avg_ths or 0.0),
+                "avg_power_w": float(r.avg_power_w or 0.0),
+            })
+        return jsonify(out)
     finally:
         s.close()
 
@@ -382,11 +439,10 @@ def miners_current():
             ).group_by(Metric.miner_ip).subquery()
         )
 
-        q = (
-            s.query(Metric)
-            .join(latest, and_(Metric.miner_ip == latest.c.ip,
-                               Metric.timestamp == latest.c.last_ts))
-        )
+        q = (s.query(Metric)
+             .join(latest, and_(Metric.miner_ip == latest.c.ip,
+                                Metric.timestamp == latest.c.last_ts)))
+
         if ip_list:
             q = q.filter(Metric.miner_ip.in_(ip_list))
         if active_only:
@@ -516,3 +572,17 @@ def events():
         } for e in rows])
     finally:
         s.close()
+
+
+@api_bp.route('/debug/routes')
+def debug_routes():
+    rules = []
+    for r in current_app.url_map.iter_rules():
+        rules.append({
+            "rule": str(r),
+            "methods": sorted(list(r.methods - {'HEAD', 'OPTIONS'})),
+            "endpoint": r.endpoint
+        })
+    # sort by rule for readability
+    rules.sort(key=lambda x: x["rule"])
+    return jsonify(rules)

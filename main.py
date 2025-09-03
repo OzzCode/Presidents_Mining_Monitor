@@ -11,7 +11,7 @@ from werkzeug.exceptions import HTTPException
 def create_app():
     app = Flask(__name__, static_url_path='/static', static_folder='static')
     CORS(app)
-    app.register_blueprint(api_bp)
+    app.register_blueprint(api_bp, url_prefix='/api')
 
     @app.route("/")
     def home():
