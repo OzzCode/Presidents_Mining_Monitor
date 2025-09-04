@@ -1,5 +1,6 @@
 // === Dashboard: supports both farm-wide and single-miner modes ===
-const POLL_INTERVAL = 30;
+const POLL_INTERVAL = 30; // seconds
+
 const qs = new URLSearchParams(location.search);
 const QS_IP = qs.get('ip'); // if set -> single-miner mode
 
@@ -13,6 +14,7 @@ const DEF_ACTIVE_ONLY = true;
 const DEF_FRESH_MINS = 30;
 const DEF_CHART_HOURS = 24;
 
+// ------------- helpers -------------
 function $(sel) {
     return typeof sel === 'string' && sel.startsWith('#')
         ? document.querySelector(sel)
@@ -39,7 +41,19 @@ function fmt0(n) {
     return Number.isFinite(v) ? Math.round(v).toString() : '0';
 }
 
-// ---- controls state ----
+function humanDuration(seconds) {
+    const s = Math.max(0, Math.floor(Number(seconds) || 0));
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (d) return `${d}d ${h}h ${m}m`;
+    if (h) return `${h}h ${m}m`;
+    if (m) return `${m}m ${sec}s`;
+    return `${sec}s`;
+}
+
+// ------------- controls state -------------
 function uiActiveOnly() {
     const el = document.getElementById('ctl-active-only');
     return el ? !!el.checked : DEF_ACTIVE_ONLY;
@@ -62,7 +76,7 @@ function loadPrefs() {
         const ao = localStorage.getItem(LS_ACTIVE_ONLY);
         const fm = localStorage.getItem(LS_FRESH_MINS);
         const ch = localStorage.getItem(LS_CHART_HOURS);
-        if (document.getElementById('ctl-active-only') && ao !== null) document.getElementById('ctl-active-only').checked = ao === '1';
+        if (document.getElementById('ctl-active-only') && ao !== null) document.getElementById('ctl-active-only').checked = (ao === '1');
         if (document.getElementById('ctl-fresh-mins') && fm) document.getElementById('ctl-fresh-mins').value = fm;
         if (document.getElementById('ctl-chart-hours') && ch) document.getElementById('ctl-chart-hours').value = ch;
     } catch {
@@ -78,19 +92,6 @@ function savePrefs() {
     }
 }
 
-// Humanize seconds as d h m s
-function humanDuration(seconds) {
-    const s = Math.max(0, Math.floor(Number(seconds) || 0));
-    const d = Math.floor(s / 86400);
-    const h = Math.floor((s % 86400) / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = s % 60;
-    if (d) return `${d}d ${h}h ${m}m`;
-    if (h) return `${h}h ${m}m`;
-    if (m) return `${m}m ${sec}s`;
-    return `${sec}s`;
-}
-
 function updateFiltersBadge() {
     const el = document.getElementById('filters-badge');
     if (!el) return;
@@ -104,7 +105,7 @@ function updateFiltersBadge() {
     }
 }
 
-// ----- Cards -----
+// ------------- cards -------------
 async function fillCards() {
     const url = QS_IP ? `/api/summary?ip=${encodeURIComponent(QS_IP)}` : '/api/summary';
     try {
@@ -126,30 +127,25 @@ async function fillCards() {
             const dt = new Date(s.last_updated);
             srv.textContent = `Server time: ${Number.isNaN(dt.getTime()) ? s.last_updated : dt.toLocaleString()}`;
         }
-
         const title = $('#page-title');
         if (title && QS_IP) title.textContent = `Miner ${QS_IP}`;
     } catch (e) {
         console.warn('summary failed', e);
         ['total-power', 'total-hashrate', 'total-uptime', 'avg-temp', 'avg-fan-speed', 'total-workers']
-            .forEach(id => {
-                const el = document.getElementById(id);
-                if (!el) console.warn(`Missing element: ${id}`);
-                setText(id, '—');
-            });
+            .forEach(id => setText(id, '—'));
     }
 }
 
-// ----- Charts -----
+// ------------- charts -------------
 let charts = {};
 
 function ensureCharts() {
-    const ctxHash = document.getElementById("chart-hashrate")?.getContext("2d");
-    const ctxPower = document.getElementById("chart-power")?.getContext("2d");
-    const ctxTempFan = document.getElementById("chart-tempfan")?.getContext("2d");
+    const elHash = $('#chart-hashrate');
+    const elPower = $('#chart-power');
+    const elTempFan = $('#chart-tempfan');
 
-    if (!charts.hash && ctxHash) {
-        charts.hash = new Chart(ctxHash, {
+    if (!charts.hash && elHash) {
+        charts.hash = new Chart(elHash, {
             type: 'line',
             data: {labels: [], datasets: [{label: 'TH/s', data: [], tension: 0.2, fill: false}]},
             options: {
@@ -160,8 +156,8 @@ function ensureCharts() {
             }
         });
     }
-    if (!charts.power && ctxPower) {
-        charts.power = new Chart(ctxPower, {
+    if (!charts.power && elPower) {
+        charts.power = new Chart(elPower, {
             type: 'line',
             data: {labels: [], datasets: [{label: 'W', data: [], tension: 0.2, fill: false}]},
             options: {
@@ -172,8 +168,8 @@ function ensureCharts() {
             }
         });
     }
-    if (!charts.tempfan && ctxTempFan) {
-        charts.tempfan = new Chart(ctxTempFan, {
+    if (!charts.tempfan && elTempFan) {
+        charts.tempfan = new Chart(elTempFan, {
             type: 'line',
             data: {
                 labels: [], datasets: [
@@ -205,7 +201,7 @@ async function fillCharts() {
     const since = new Date(Date.now() - uiChartHours() * 60 * 60 * 1000).toISOString();
     const params = new URLSearchParams({since, limit: '3000'});
     if (QS_IP) {
-        params.set('ip', QS_IP); // single-miner raw series
+        params.set('ip', QS_IP);
     } else {
         params.set('active_only', uiActiveOnly() ? 'true' : 'false');
         params.set('fresh_within', String(uiFreshMins()));
@@ -233,14 +229,13 @@ async function fillCharts() {
     }
 
     if (QS_IP) {
-        // single-miner: plot raw series
+        // single-miner: raw series
         const labels = rows.map(r => r.timestamp);
         const hash = rows.map(r => Number(r.hashrate_ths || 0));
         const power = rows.map(r => Number(r.power_w || 0));
         const temp = rows.map(r => Number(r.avg_temp_c || 0));
         const fan = rows.map(r => Number(r.avg_fan_rpm || 0));
 
-        // noinspection DuplicatedCode
         charts.hash.data.labels = labels;
         charts.hash.data.datasets[0].data = hash;
         charts.hash.update();
@@ -285,7 +280,6 @@ async function fillCharts() {
             return b.fc ? b.fan / b.fc : 0;
         });
 
-        // noinspection DuplicatedCode
         charts.hash.data.labels = labels;
         charts.hash.data.datasets[0].data = hash;
         charts.hash.update();
@@ -299,13 +293,13 @@ async function fillCharts() {
     }
 }
 
-// ----- Table -----
+// ------------- table -------------
 async function fillTable() {
     const tbody = $('#stats-log');
     if (!tbody) return;
 
     if (QS_IP) {
-        // single-miner: last ≤6h (keep table tight)
+        // single-miner: last ≤6h to keep table readable
         const hours = Math.min(uiChartHours(), 6);
         const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
         const params = new URLSearchParams({since, limit: '500', ip: QS_IP});
@@ -342,26 +336,22 @@ async function fillTable() {
             tbody.appendChild(tr);
         });
     } else {
-        // farm: one latest row per miner
-        async function fetchCurrent(activeOnly, freshMins) {
+        // farm: one latest row per miner (strictly follow UI window)
+        async function fetchCurrent(activeOnly, freshMinsVal) {
+            const min = Number.isFinite(Number(freshMinsVal)) ? Number(freshMinsVal) : 30;
             const params = new URLSearchParams({
                 active_only: activeOnly ? 'true' : 'false',
-                fresh_within: String(freshMins())
+                fresh_within: String(min)
             });
             const res = await fetch(`/api/miners/current?${params.toString()}`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const rows = await res.json();
-            return Array.isArray(rows) ? rows : [];
+            const data = await res.json();
+            return Array.isArray(data) ? data : [];
         }
 
         let rows = [];
         try {
-            // first, respect the UI window
             rows = await fetchCurrent(uiActiveOnly(), uiFreshMins());
-            // if nothing, relax active_only only (do NOT change the freshness text)
-            if (!rows.length && uiActiveOnly()) {
-                rows = await fetchCurrent(false, uiFreshMins());
-            }
         } catch (e) {
             console.warn('miners/current fetch failed', e);
             rows = [];
@@ -378,22 +368,23 @@ async function fillTable() {
         rows.forEach(r => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-      <td>${r.last_seen || '—'}</td>
-      <td><a href="/dashboard/?ip=${encodeURIComponent(r.ip)}" class="link-ip">${r.ip}</a></td>
-      <td>${fmt(r.hashrate_ths, 3)}</td>
-      <td>${fmt0(r.power_w)}</td>
-      <td>${fmt(r.avg_temp_c, 1)}</td>
-      <td>${fmt0(r.avg_fan_rpm)}</td> `;
+        <td>${r.last_seen || '—'}</td>
+        <td><a href="/dashboard/?ip=${encodeURIComponent(r.ip)}" class="link-ip">${r.ip}</a></td>
+        <td>${fmt(r.hashrate_ths, 3)}</td>
+        <td>${fmt0(r.power_w)}</td>
+        <td>${fmt(r.avg_temp_c, 1)}</td>
+        <td>${fmt0(r.avg_fan_rpm)}</td>
+      `;
             tbody.appendChild(tr);
         });
     }
 }
 
-// ----- Boot -----
+// ------------- boot -------------
 document.addEventListener('DOMContentLoaded', () => {
     loadPrefs();
 
-    // Hide farm-only controls on a single-miner page if you want
+    // Hide farm-only controls on single-miner page (optional)
     if (QS_IP) {
         const ao = document.getElementById('ctl-active-only');
         const fm = document.getElementById('ctl-fresh-mins');
@@ -401,13 +392,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (fm) fm.closest('label').style.display = 'none';
     }
 
-    // First render
-    fillCards();
-    fillCharts();
-    fillTable();
-    updateFiltersBadge();
-
-    // React to control changes
     const onChange = () => {
         savePrefs();
         fillCharts();
@@ -419,7 +403,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el) el.addEventListener('change', onChange);
     });
 
-    // Auto-refresh
+    fillCards();
+    fillCharts();
+    fillTable();
+    updateFiltersBadge();
+
     setInterval(() => {
         fillCards();
         fillCharts();

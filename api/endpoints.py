@@ -20,6 +20,16 @@ logger = logging.getLogger(__name__)
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
+@api_bp.after_app_request
+def api_cache_control(resp):
+    # Only touch API responses
+    if request.path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0, private"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+    return resp
+
+
 @api_bp.route("/api/debug/peek")
 def debug_peek():
     """Show last metric per miner, plus age in minutes."""
