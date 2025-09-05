@@ -1,8 +1,13 @@
 import os
-from dotenv import load_dotenv
+
+try:
+    from dotenv import load_dotenv  # optional
+except Exception:
+    load_dotenv = None
 from core.get_network_ip import get_auto_cidr
 
-load_dotenv()
+if load_dotenv:
+    load_dotenv()
 
 # Discovery & polling
 MINER_IP_RANGE = os.getenv('MINER_IP_RANGE', get_auto_cidr())

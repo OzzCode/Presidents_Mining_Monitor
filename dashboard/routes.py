@@ -9,7 +9,7 @@ def index():
     return render_template('dashboard.html', ip=ip)
 
 
-@dash_bp.route('miners')
+@dash_bp.route('/miners')
 def show_miners():
     return render_template('miners.html')
 

@@ -74,7 +74,7 @@ from sqlalchemy.dialects.sqlite import JSON as SQLITE_JSON
 # Database location (single source of truth)
 # -----------------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent
-DB_DIR = BASE_DIR / "/db_files"
+DB_DIR = BASE_DIR / "db_files"
 DB_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DB_DIR / "metrics.db"
 

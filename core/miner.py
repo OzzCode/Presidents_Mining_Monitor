@@ -2,6 +2,12 @@ import datetime as _dt
 from config import CGMINER_TIMEOUT, EFFICIENCY_J_PER_TH
 from helpers.utils import efficiency_for_model
 
+HASHRATE_KEYS = [
+    ("GHS 5s", "GHS"), ("GHS av", "GHS"),
+    ("GHS 1s", "GHS"), ("MHS 5s", "MHS"),
+    ("MHS av", "MHS"), ("MHS 1s", "MHS")
+]
+
 
 class MinerError(Exception):
     pass
@@ -57,7 +63,7 @@ class MinerClient:
                     return json.loads(line)
                 except Exception:
                     continue
-            raise MinerError(f"Unable to parse miner response: {text[:200]}")
+            raise ValueError(f"Unable to parse miner response: {text[:200]}")
         finally:
             try:
                 s.close()
@@ -88,22 +94,26 @@ class MinerClient:
           hashrate_ths (float), elapsed_s (int), avg_temp_c (float),
           avg_fan_rpm (float), power_w (float), when (ISO8601 string)
         """
-        summ = self.get_summary()  # {"SUMMARY":[{...}], "STATUS":[{...}]}
+        try:
+            summ = self.get_summary()  # {"SUMMARY":[{...}], "STATUS":[{...}]}
+        except Exception as e:
+            # Normalize any parsing/IO error to MinerError for callers that expect it
+            raise MinerError(str(e))
         try:
             stats = self.get_stats()  # {"STATS":[{...}, ...]}
-        except MinerError:
+        except Exception:
             stats = {}
 
         s0 = (summ.get("SUMMARY") or [{}])[0]
 
-        summary = self.get_summary()
+        # determine model
         model = summ.get("Model") or s0.get("Model")
-        if isinstance(summary, dict):
+        if isinstance(summ, dict):
             # Most firmwares expose 'Model' either in top-level or inside SUMMARY[0]
-            model = summary.get("Model")
-            if not model and summary.get("SUMMARY"):
+            model = summ.get("Model")
+            if not model and summ.get("SUMMARY"):
                 try:
-                    model = summary["SUMMARY"][0].get("Model")
+                    model = summ["SUMMARY"][0].get("Model")
                 except Exception:
                     pass
 

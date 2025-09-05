@@ -1,15 +1,18 @@
 import ipaddress
 import socket
+import time
+
 from flask import Blueprint, jsonify, request, current_app
 from sqlalchemy import func, and_
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dateutil import parser
+# removed top-level zeroconf import; it is imported lazily inside discover_miners
+
 from core.db import SessionLocal, Metric, Event, ErrorEvent
 from core.miner import MinerClient, MinerError
 from config import MINER_IP_RANGE, API_MAX_LIMIT, POLL_INTERVAL
 from datetime import datetime, timezone, timedelta
 import logging
-from flask import current_app
 
 # tune these if needed
 _PER_MINER_TIMEOUT = 4.0  # seconds for each miner fetch
@@ -30,9 +33,9 @@ def api_cache_control(resp):
     return resp
 
 
-@api_bp.route("/api/debug/peek")
+@api_bp.route("/debug/peek")
 def debug_peek():
-    """Show last metric per miner, plus age in minutes."""
+    """Show the last metric per miner, plus age in minutes."""
     fresh_within = int(request.args.get("fresh_within", 30))
     cutoff = datetime.utcnow() - timedelta(minutes=fresh_within)
 
@@ -67,7 +70,7 @@ def debug_peek():
         s.close()
 
 
-@api_bp.route("/api/debug/tail")
+@api_bp.route("/debug/tail")
 def debug_tail():
     """Return last N metrics (optionally for one miner)."""
     ip = request.args.get("ip")
@@ -88,9 +91,19 @@ def debug_tail():
         s.close()
 
 
-def discover_miners(timeout=1, workers=50):
+def discover_miners(timeout=1, workers=50, use_mdns=True, return_sources=False):
     """
-    Scan the configured CIDR for TCP/4028 and also browse mDNS _cgminer._tcp.
+    Scan the configured CIDR for TCP/4028 and optionally browse mDNS _cgminer._tcp.
+
+    Args:
+        timeout (int|float): socket timeout per probe in seconds
+        workers (int): concurrent threads for TCP scan
+        use_mdns (bool): whether to attempt Zeroconf discovery
+        return_sources (bool): when True, return dict[ip] -> {"tcp","mdns","both"}
+
+    Returns:
+        list[str] if return_sources is False
+        dict[str,str] if return_sources is True
     """
     network = ipaddress.ip_network(MINER_IP_RANGE)
 
@@ -104,24 +117,45 @@ def discover_miners(timeout=1, workers=50):
             except Exception:
                 return None
 
-    # hosts = [ip for ip in ThreadPoolExecutor(workers).map(scan, network.hosts()) if ip]
-    # zeroconf = Zeroconf()
-    # services = []
-    #
-    # def on_service(zc, type_, name):
-    #     info = zc.get_service_info(type_, name)
-    #     if info:
-    #         for addr in info.addresses:
-    #             services.append(socket.inet_ntoa(addr))
-    #
-    # ServiceBrowser(zeroconf, "_cgminer._tcp.local.", handlers=[on_service])
-    # time.sleep(2)
-    # zeroconf.close()
-
+    # TCP scan once using a single executor
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        return sorted(set([ip for ip in ex.map(scan, network.hosts()) if ip]))
+        tcp_hosts = {ip for ip in ex.map(scan, network.hosts()) if ip}
 
-    # return sorted(set(hosts + services))
+    mdns_hosts = set()
+    if use_mdns:
+        try:
+            from zeroconf import Zeroconf, ServiceBrowser
+            zeroconf = Zeroconf()
+            services = []
+
+            def on_service(zc, type_, name):
+                info = zc.get_service_info(type_, name)
+                if info:
+                    for addr in info.addresses:
+                        try:
+                            services.append(socket.inet_ntoa(addr))
+                        except OSError:
+                            # ignore non-IPv4 addresses
+                            pass
+
+            ServiceBrowser(zeroconf, "_cgminer._tcp.local.", handlers=[on_service])
+            time.sleep(2)
+            zeroconf.close()
+            mdns_hosts = set(services)
+        except Exception:
+            # zeroconf not installed or runtime error; ignore
+            mdns_hosts = set()
+
+    union = tcp_hosts | mdns_hosts
+    if not return_sources:
+        return sorted(union)
+
+    sources = {}
+    for ip in union:
+        in_tcp = ip in tcp_hosts
+        in_mdns = ip in mdns_hosts
+        sources[ip] = "both" if (in_tcp and in_mdns) else ("tcp" if in_tcp else "mdns")
+    return sources
 
 
 def _last_seen_for_ip(ip: str):
@@ -138,21 +172,31 @@ def _last_seen_for_ip(ip: str):
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
         age_sec = (datetime.now(timezone.utc) - ts).total_seconds()
-        return ts.isoformat(), int(age_sec)
+        return ts.isoformat().replace("+00:00", "Z"), int(age_sec)
     finally:
         session.close()
 
 
 def _normalize_since(value: str) -> datetime:
     """
-    Convert an ISO8601 string to a naive UTC datetime, per tests/plan expectations.
+    Convert an ISO8601 string to a naive UTC datetime (standard library only).
     - If input is naive: assume it's already UTC and return as-is (tzinfo=None)
     - If input is aware (Z or offset): convert to UTC and strip tzinfo
     Raises ValueError on parse errors or invalid type.
     """
     if not isinstance(value, str):
         raise ValueError("since must be a string")
-    dt = parser.isoparse(value)
+
+    s = value.strip()
+    # Accept trailing 'Z'
+    if s.endswith("Z") or s.endswith("z"):
+        s = s[:-1] + "+00:00"
+
+    try:
+        dt = datetime.fromisoformat(s)
+    except Exception as e:
+        raise ValueError(f"Invalid ISO datetime: {value}") from e
+
     if dt.tzinfo is None:
         # treat naive as UTC already
         return dt
@@ -174,95 +218,18 @@ def _to_naive_utc(dt):
     return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-# --------------------------
-# Normalization helper
-# --------------------------
-# noinspection PyBroadException
-def log_event(level: str, message: str, miner_ip: str | None = None, source: str = 'app'):
-    """Write a single event row; errors here are swallowed so logging never breaks requests."""
-    s = None
-    try:
-        s = SessionLocal()
-        s.add(Event(level=level.upper(), miner_ip=miner_ip, source=source, message=message))
-        s.commit()
-    except Exception:
-        try:
-            s and s.rollback()
-        except Exception:
-            pass
-    finally:
-        try:
-            s and s.close()
-        except Exception:
-            pass
-
-
-def _read_summary_fields(ip: str):
-    """
-    Query a miner and normalize cgminer/BMminer SUMMARY/STATS into a consistent
-    shape for our API: power, hash_ths, elapsed, temps[], fans[], when.
-    """
-    client = MinerClient(ip)
-
-    # --- SUMMARY (hashrate & uptime) ---
-    s = {}
-    try:
-        summary = client.get_summary()
-        if isinstance(summary, dict) and "SUMMARY" in summary and summary["SUMMARY"]:
-            s = summary["SUMMARY"][0]
-        else:
-            s = summary if isinstance(summary, dict) else {}
-    except Exception:
-        return {"power": 0.0, "hash_ths": 0.0, "elapsed": 0, "temps": [], "fans": [], "when": ""}
-
-    try:
-        mhs_5s = float(s.get("MHS 5s", 0.0))
-    except Exception:
-        mhs_5s = 0.0
-    try:
-        elapsed = int(s.get("Elapsed", 0))
-    except Exception:
-        elapsed = 0
-
-    # --- STATS (temps/fans) ---
-    temps, fans = [], []
-    try:
-        stats = client.get_stats()
-        if isinstance(stats, dict) and "STATS" in stats and stats["STATS"]:
-            st0 = stats["STATS"][0]
-            for k, v in st0.items():
-                if isinstance(v, (int, float)):
-                    lk = str(k).lower()
-                    if lk.startswith("temp"):
-                        temps.append(float(v))
-                    if lk.startswith("fan"):
-                        fans.append(float(v))
-    except Exception:
-        pass
-
-    when = s.get("When") or s.get("STIME") or ""
-
-    try:
-        power = float(s.get("Power", 0.0) or 0.0)
-    except Exception:
-        power = 0.0
-
-    return {
-        "power": power,
-        "hash_ths": round(mhs_5s / 1e6, 3),  # MHS -> TH/s
-        "elapsed": elapsed,
-        "temps": temps,
-        "fans": fans,
-        "when": when
-    }
-
-
 @api_bp.route('/summary')
 def summary():
     """Summarize current metrics and indicate a data source (live vs. DB fallback)."""
     ipf = request.args.get('ip')
-    miners = [ipf] if ipf else discover_miners()
+    mdns_flag = request.args.get('mdns', 'true').lower() == 'true'
 
+    if ipf:
+        miners = [ipf]
+        discovery_sources = {ipf: "manual"}
+    else:
+        discovery_sources = discover_miners(use_mdns=mdns_flag, return_sources=True)
+        miners = list(discovery_sources.keys())
     totals = {'power': 0.0, 'hash': 0.0, 'uptime': 0, 'temps': [], 'fans': []}
     data = []
     overall_srcs = set()
@@ -274,12 +241,9 @@ def summary():
             payload = MinerClient(ip).fetch_normalized()
             return ip, payload, 'live'
         except MinerError:
-            # logger.warning("summary_live_fetch_failed", extra={"component": "api", "miner_ip": ip})
             pass
         except Exception:
-            # logger.warning(f"summary_live_exception: {e}", extra={"component": "api", "miner_ip": ip})
             pass
-
         # 2) fallback: last DB metric
         s = SessionLocal()
         try:
@@ -303,16 +267,13 @@ def summary():
         finally:
             s.close()
 
-    # fetch all miners concurrently with hard per-future timeout
     with ThreadPoolExecutor(max_workers=min(_MAX_WORKERS, max(len(miners), 1))) as ex:
         futures = {ex.submit(_fetch_one, ip): ip for ip in miners}
         for fut in as_completed(futures, timeout=None):
             ip = futures[fut]
             try:
-                ip, payload, src = fut.result(timeout=_PER_MINER_TIMEOUT)
-            except Exception as e:
-                # includes per-future timeout or worker exception
-                # logger.warning(f"summary_future_failed: {e}", extra={"component":"api","miner_ip":ip})
+                ip, payload, src = fut.result()
+            except Exception:
                 continue
 
             if not payload:
@@ -330,16 +291,13 @@ def summary():
             if avg_fan_rpm:
                 totals['fans'].append(float(avg_fan_rpm))
 
-            ts = payload.get('when')
-            if not ts:
-                # fallback to now (UTC) if miner didn’t provide a 'when
-                ts = datetime.now(timezone.utc).isoformat()
-
+            ts = payload.get('when') or datetime.now(timezone.utc).isoformat()
             data.append({
                 'timestamp': ts,
                 'ip': ip,
                 'hash': payload.get('hashrate_ths', 0),
-                'source': src
+                'source': src,
+                'discovery': discovery_sources.get(ip, 'unknown')
             })
 
     overall_source = (
@@ -357,13 +315,10 @@ def summary():
         'avg_fan_speed': round(sum(totals['fans']) / len(totals['fans']), 0) if totals['fans'] else 0,
         'total_workers': len(miners),
         'log': data,
-        'last_updated': datetime.now(timezone.utc).isoformat()
+        'last_updated': datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     })
 
 
-# noinspection PyBroadException
-# @api_bp.route('/miners')
-# returns one row per miner with averages over a window
 @api_bp.route('/miners/summary')
 def miners_summary():
     """
@@ -373,37 +328,43 @@ def miners_summary():
       fresh_within (int, default 30) — freshness window in minutes
       ips (csv, optional) — restrict to a list of IPs
       since (ISO, optional) — overrides window_min if set
-    Response: [{ ip, last_seen, avg_ths, avg_power_w }]
+    Response: [{ ip, last_seen, hashrate_ths, power_w, avg_temp_c, avg_fan_rpm }]
     """
-    window_min = int(request.args.get('window_min', 30))
+    # Parse params safely
+    try:
+        window_min = int(request.args.get('window_min', 30))
+    except Exception:
+        window_min = 30
     active_only = request.args.get('active_only', 'true').lower() == 'true'
-    fresh_within = int(request.args.get('fresh_within', 30))
+    try:
+        fresh_within = int(request.args.get('fresh_within', 30))
+    except Exception:
+        fresh_within = 30
     ips_param = request.args.get('ips')
     since_param = request.args.get('since')
 
     now = _naive_utc_now()
     if since_param:
         try:
-            # if you already import dateutil.parser you can parse ISO here;
-            # otherwise, treat since_param as ISO UTC
-            from dateutil import parser
-            since_dt = _to_naive_utc(parser.isoparse(since_param))
+            since_dt = _normalize_since(since_param)
         except Exception:
             since_dt = now - timedelta(minutes=window_min)
     else:
         since_dt = now - timedelta(minutes=window_min)
-
     cutoff = now - timedelta(minutes=fresh_within)
-    ip_list = [i.strip() for i in ips_param.split(',')] if ips_param else None
+    ip_list = [i.strip() for i in ips_param.split(',') if i.strip()] if ips_param else None
 
     s = SessionLocal()
     try:
+        # Aggregate per miner over the window
         q = (
             s.query(
                 Metric.miner_ip.label('ip'),
                 func.max(Metric.timestamp).label('last_ts'),
-                func.avg(Metric.hashrate_ths).label('avg_ths'),
-                func.avg(Metric.power_w).label('avg_power_w'),
+                func.avg(Metric.hashrate_ths).label('hashrate_ths'),
+                func.avg(Metric.power_w).label('power_w'),
+                func.avg(Metric.avg_temp_c).label('avg_temp_c'),
+                func.avg(Metric.avg_fan_rpm).label('avg_fan_rpm'),
             )
             .filter(Metric.timestamp >= since_dt)
         )
@@ -423,8 +384,10 @@ def miners_summary():
             out.append({
                 "ip": r.ip,
                 "last_seen": (last_ts.isoformat() + "Z") if last_ts else "",
-                "avg_ths": float(r.avg_ths or 0.0),
-                "avg_power_w": float(r.avg_power_w or 0.0),
+                "hashrate_ths": float(r.hashrate_ths or 0.0),
+                "power_w": float(r.power_w or 0.0),
+                "avg_temp_c": float(r.avg_temp_c or 0.0),
+                "avg_fan_rpm": float(r.avg_fan_rpm or 0.0),
             })
         return jsonify(out)
     finally:
@@ -433,10 +396,23 @@ def miners_summary():
 
 @api_bp.route('/miners/current')
 def miners_current():
+    """
+    Returns the latest row per miner, optionally filtering by freshness.
+
+    Query params:
+      - active_only: 'true'/'false' (default 'true')
+      - fresh_within: minutes (int, default 30)
+      - ips: optional CSV to restrict to a set of IPs
+    """
+    # Parse params robustly
     active_only = request.args.get('active_only', 'true').lower() == 'true'
-    fresh_within = int(request.args.get('fresh_within', 30))
+    try:
+        fresh_within = int(request.args.get('fresh_within', 30))
+    except Exception:
+        fresh_within = 30
+
     ips_param = request.args.get('ips')
-    ip_list = [i.strip() for i in ips_param.split(',')] if ips_param else None
+    ip_list = [i.strip() for i in ips_param.split(',') if i.strip()] if ips_param else None
 
     cutoff = _naive_utc_now() - timedelta(minutes=fresh_within)
 
@@ -446,12 +422,16 @@ def miners_current():
             s.query(
                 Metric.miner_ip.label('ip'),
                 func.max(Metric.timestamp).label('last_ts')
-            ).group_by(Metric.miner_ip).subquery()
+            )
+            .group_by(Metric.miner_ip)
+            .subquery()
         )
 
-        q = (s.query(Metric)
-             .join(latest, and_(Metric.miner_ip == latest.c.ip,
-                                Metric.timestamp == latest.c.last_ts)))
+        q = (
+            s.query(Metric)
+            .join(latest, and_(Metric.miner_ip == latest.c.ip,
+                               Metric.timestamp == latest.c.last_ts))
+        )
 
         if ip_list:
             q = q.filter(Metric.miner_ip.in_(ip_list))
@@ -480,6 +460,9 @@ def metrics():
     active_only = request.args.get("active_only", "false").lower() == "true"
     fresh_within = int(request.args.get("fresh_within", 30))
 
+    # enforce a hard upper bound for safety
+    limit = max(1, min(limit, API_MAX_LIMIT))
+
     s = SessionLocal()
     try:
         q = s.query(Metric)
@@ -494,11 +477,11 @@ def metrics():
 
         if since:
             try:
-                dt = parser.isoparse(since)
+                dt = _normalize_since(since)
             except Exception:
                 dt = None
             if dt:
-                q = q.filter(Metric.timestamp >= _to_naive_utc(dt))
+                q = q.filter(Metric.timestamp >= dt)
 
         if active_only:
             cutoff = _naive_utc_now() - timedelta(minutes=fresh_within)
@@ -549,9 +532,11 @@ def error_logs():
     if level: q = q.filter(ErrorEvent.level == level.upper())
     if miner_ip: q = q.filter(ErrorEvent.miner_ip == miner_ip)
     if since:
-        dt = parser.isoparse(since)
-        if dt.tzinfo: dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-        q = q.filter(ErrorEvent.created_at >= dt)
+        try:
+            dt = _normalize_since(since)
+            q = q.filter(ErrorEvent.created_at >= dt)
+        except Exception:
+            pass
     rows = q.order_by(ErrorEvent.created_at.desc()).limit(limit).all()
     out = [{
         "id": r.id,
@@ -574,7 +559,7 @@ def events():
     try:
         rows = (s.query(Event).order_by(Event.timestamp.desc()).limit(500).all())
         return jsonify([{
-            "timestamp": e.timestamp.isoformat(),
+            "timestamp": e.timestamp.isoformat() + "Z",
             "miner_ip": e.miner_ip,
             "level": e.level,
             "source": e.source,
