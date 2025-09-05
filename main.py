@@ -1,12 +1,9 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify
 from api.endpoints import api_bp
-from core.db import init_db
-from dashboard.routes import dash_bp
 from scheduler import start_scheduler
 from flask_cors import CORS
-import os
+from dashboard.routes import dash_bp, get_miners
 from werkzeug.exceptions import HTTPException
-import logging
 
 
 def create_app():
@@ -19,6 +16,28 @@ def create_app():
         return render_template("home.html")
 
     app.register_blueprint(dash_bp)
+
+    @app.route("/api/miners")
+    def api_miners():
+        """
+        Return the current miners list.
+
+        The payload is a list[dict] with keys:
+          - is_stale (bool)
+          - age_sec (int)
+          - status (str)
+          - model (str)
+          - ip (str)
+          - last_seen (ISO string or timestamp)
+        """
+        try:
+            miners = get_miners()
+            if not isinstance(miners, list):
+                return jsonify({"error": "get_miners() must return a list"}), 500
+            return jsonify(miners), 200
+        except Exception as e:
+            # Avoid leaking internals; log in your real logger instead.
+            return jsonify({"error": "Failed to fetch miners", "detail": str(e)}), 500
 
     @app.route("/dashboard/logs")
     def logs():
@@ -43,8 +62,15 @@ def create_app():
 if __name__ == '__main__':
     app = create_app()
     # Ensure DB is initialized with app context
-    with app.app_context():
-        init_db()
+    if __name__ == "__main__":
+        # Ensure DB is initialized if your app relies on it.
+        try:
+            from core.db import init_db
+
+            init_db()
+        except Exception:
+            # Initialization may be optional depending on your routes
+            pass
 
     # Start background scheduler (no reloader in this config, so safe)
     start_scheduler()

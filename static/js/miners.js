@@ -22,6 +22,14 @@ async function fetchMiners() {
     const {miners} = payload;
     const tbody = document.getElementById('miner-table');
     tbody.innerHTML = '';
+//     if (Array.isArray(data?.miners)) {
+//     data.miners.forEach(miner => {
+//         // your logic here
+//     });
+// } else {
+//     console.error("Expected 'miners' to be an array but got:", data?.miners);
+// }
+
     miners.forEach(miner => {
         const tr = document.createElement('tr');
         if (miner.is_stale) tr.classList.add('stale');
