@@ -19,7 +19,9 @@ function saveFreshPrefs() {
     try {
         localStorage.setItem('ov_fresh_within', String(getFreshWithin()));
         localStorage.setItem('ov_active_only', getActiveOnly() ? '1' : '0');
-    } catch {
+    } catch (e) {
+        // Log error but don't break the app
+        console.warn('Failed to save preferences to localStorage:', e);
     }
 }
 
@@ -33,7 +35,8 @@ function loadFreshPrefs() {
         if (ao && document.getElementById('active-only')) {
             document.getElementById('active-only').checked = ao === '1';
         }
-    } catch {
+    } catch (e) {
+        console.warn('Failed to load preferences from localStorage:', e);
     }
 }
 
@@ -45,156 +48,58 @@ function updateActiveWindowBadge() {
 }
 
 function ensureOvCharts() {
+    // Check if charts already exist before creating new ones
     if (!ovCharts.hash) {
-        ovCharts.hash = new Chart(document.getElementById('overview-hash'), {
-            type: 'line',
-            data: {labels: [], datasets: [{label: 'TH/s', data: [], tension: 0.2, fill: false}]},
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: {x: {type: 'time', time: {unit: 'hour'}}, y: {beginAtZero: true}},
-                plugins: {legend: {display: false}}
-            }
-        });
+        const hashCtx = document.getElementById('overview-hash');
+        if (hashCtx) {
+            ovCharts.hash = new Chart(hashCtx, {
+                type: 'line',
+                data: {labels: [], datasets: [{label: 'TH/s', data: [], tension: 0.2, fill: false}]},
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {x: {type: 'time', time: {unit: 'hour'}}, y: {beginAtZero: true}},
+                    plugins: {legend: {display: false}}
+                }
+            });
+        }
     }
     if (!ovCharts.power) {
-        ovCharts.power = new Chart(document.getElementById('overview-power'), {
-            type: 'line',
-            data: {labels: [], datasets: [{label: 'W', data: [], tension: 0.2, fill: false}]},
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: {x: {type: 'time', time: {unit: 'hour'}}, y: {beginAtZero: true}},
-                plugins: {legend: {display: false}}
-            }
-        });
+        const powerCtx = document.getElementById('overview-power');
+        if (powerCtx) {
+            ovCharts.power = new Chart(powerCtx, {
+                type: 'line',
+                data: {labels: [], datasets: [{label: 'W', data: [], tension: 0.2, fill: false}]},
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {x: {type: 'time', time: {unit: 'hour'}}, y: {beginAtZero: true}},
+                    plugins: {legend: {display: false}}
+                }
+            });
+        }
     }
     if (!ovCharts.tempfan) {
-        ovCharts.tempfan = new Chart(document.getElementById('overview-tempfan'), {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [
-                    {label: 'Temp (°C)', data: [], yAxisID: 'y', tension: 0.2, fill: false},
-                    {label: 'Fan (RPM)', data: [], yAxisID: 'y1', tension: 0.2, fill: false}
-                ]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: {
-                    x: {type: 'time', time: {unit: 'hour'}},
-                    y: {beginAtZero: true, position: 'left'},
-                    y1: {beginAtZero: true, position: 'right', grid: {drawOnChartArea: false}}
+        const tempfanCtx = document.getElementById('overview-tempfan');
+        if (tempfanCtx) {
+            ovCharts.tempfan = new Chart(tempfanCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {label: 'Temp (°C)', data: [], yAxisID: 'y', tension: 0.2, fill: false},
+                        {label: 'Fan RPM', data: [], yAxisID: 'y', tension: 0.2, fill: false}
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        x: {type: 'time', time: {unit: 'hour'}},
+                        y: {beginAtZero: true}
+                    },
+                    plugins: {legend: {display: false}}
                 }
-            }
-        });
-    }
-}
-
-function binTs(ts, minutes = 5) {
-    const d = new Date(ts);
-    if (Number.isNaN(d.getTime())) return null;
-    const ms = minutes * 60 * 1000;
-    return new Date(Math.floor(d.getTime() / ms) * ms).toISOString();
-}
-
-async function loadSummaryKPIs() {
-    try {
-        const res = await fetch('/api/summary');
-        const s = await res.json();
-        const safeSetText = (id, text) => {
-            const el = document.getElementById(id);
-            if (!el) {
-                console.warn(`Missing KPI element: #${id}`);
-                return;
-            }
-            el.textContent = text;
-        };
-
-        safeSetText('kpi-hash', `${s.total_hashrate} TH/s`);
-        safeSetText('kpi-power', `${s.total_power} W (est.)`);
-        safeSetText('kpi-temp', `${s.avg_temp} °C`);
-        safeSetText('kpi-workers', s.total_workers);
-    } catch (e) {
-        console.warn('summary fetch failed', e);
-    } finally {
-        updateActiveWindowBadge();
-    }
-}
-
-async function loadAggregateSeries() {
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const freshWithin = getFreshWithin();
-    const activeOnly = getActiveOnly();
-
-    const url = `/api/metrics?since=${encodeURIComponent(since)}&limit=3000`
-        + `&active_only=${activeOnly ? 'true' : 'false'}`
-        + `&fresh_within=${encodeURIComponent(freshWithin)}`;
-
-    let rows = [];
-    try {
-        const res = await fetch(url);
-        rows = await res.json();
-        if (!Array.isArray(rows)) rows = [];
-    } catch (e) {
-        console.warn('metrics fetch failed', e);
-        rows = [];
-    }
-
-    if (!rows.length) {
-        ['hash', 'power', 'tempfan'].forEach(k => {
-            if (ovCharts[k]) {
-                ovCharts[k].data.labels = [];
-                ovCharts[k].data.datasets.forEach(d => d.data = []);
-                ovCharts[k].update();
-            }
-        });
-        return;
-    }
-
-    const bins = new Map();
-    rows.forEach(r => {
-        const key = binTs(r.timestamp, 5);
-        if (!key) return;
-        const obj = bins.get(key) || {hash: 0, power: 0, temp: 0, fan: 0, count: 0, temp_count: 0, fan_count: 0};
-        obj.hash += Number(r.hashrate_ths || 0);
-        obj.power += Number(r.power_w || 0);
-        const tv = Number(r.avg_temp_c || 0);
-        if (tv > 0) {
-            obj.temp += tv;
-            obj.temp_count += 1;
+            });
         }
-        const fv = Number(r.avg_fan_rpm || 0);
-        if (fv > 0) {
-            obj.fan += fv;
-            obj.fan_count += 1;
-        }
-        obj.count += 1;
-        bins.set(key, obj);
-    });
-
-    const labels = Array.from(bins.keys()).sort();
-    const hash = labels.map(k => bins.get(k).hash);
-    const power = labels.map(k => bins.get(k).power);
-    const temp = labels.map(k => {
-        const b = bins.get(k);
-        return b.temp_count ? b.temp / b.temp_count : 0;
-    });
-    const fan = labels.map(k => {
-        const b = bins.get(k);
-        return b.fan_count ? b.fan / b.fan_count : 0;
-    });
-
-    ovCharts.hash.data.labels = labels;
-    ovCharts.hash.data.datasets[0].data = hash;
-    ovCharts.hash.update();
-
-    ovCharts.power.data.labels = labels;
-    ovCharts.power.data.datasets[0].data = power;
-    ovCharts.power.update();
-
-    ovCharts.tempfan.data.labels = labels;
-    ovCharts.tempfan.data.datasets[0].data = temp;
-    ovCharts.tempfan.data.datasets[1].data = fan;
-    ovCharts.tempfan.update();
+    }
 }
 
 function fmt(n, d = 3) {
@@ -207,51 +112,185 @@ function fmt0(n) {
     return Number.isFinite(v) ? Math.round(v).toString() : '0';
 }
 
-async function fillMinersSummaryTable() {
-    const tbody = document.getElementById('stats-log');
-    if (!tbody) return;
-
-    const windowMin = Math.max(getFreshWithin(), 30);
-    const freshWithin = getFreshWithin();
-    const activeOnly = getActiveOnly();
-
-    const params = new URLSearchParams({
-        window_min: String(windowMin),
-        active_only: activeOnly ? 'true' : 'false',
-        fresh_within: String(freshWithin),
-    });
-
-    let rows = [];
+async function loadSummaryKPIs() {
     try {
-        const res = await fetch(`/api/miners/summary?${params.toString()}`);
-        rows = await res.json();
-        if (!Array.isArray(rows)) rows = [];
-    } catch (e) {
-        console.warn('miners/summary fetch failed', e);
-        rows = [];
-    }
+        const windowMin = Math.max(getFreshWithin(), 30);
+        const freshWithin = getFreshWithin();
+        const activeOnly = getActiveOnly();
 
-    tbody.innerHTML = '';
-    if (!rows.length) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="5">No miners in the selected window.</td>`;
-        tbody.appendChild(tr);
-        return;
-    }
+        const params = new URLSearchParams({
+            window_min: String(windowMin),
+            active_only: activeOnly ? 'true' : 'false',
+            fresh_within: String(freshWithin),
+        });
 
-    rows.forEach(r => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${r.last_seen || '—'}</td> <td><a href="/dashboard/?ip=${encodeURIComponent(r.ip)}" class="link-ip">${r.ip}</a></td> <td>${fmt(r.hashrate_ths, 3)}</td> <td>${fmt0(r.power_w)}</td> <td>${fmt(r.avg_temp_c, 1)}</td> <td>${fmt0(r.avg_fan_rpm)}</td> `;
-        tbody.appendChild(tr);
-    });
+        const response = await fetch(`/api/summary?${params.toString()}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+
+        // Update KPI values with proper validation
+        const elHash = document.getElementById('kpi-hashrate');
+        if (elHash) elHash.textContent = fmt(data.hashrate_ths);
+        const elPower = document.getElementById('kpi-power');
+        if (elPower) elPower.textContent = fmt0(data.power_w);
+        const elTemp = document.getElementById('kpi-temp');
+        if (elTemp) elTemp.textContent = fmt(data.avg_temp_c, 1);
+
+    } catch (error) {
+        console.warn('Failed to load summary KPIs:', error);
+        // Set default values or show an error message
+        const elHash = document.getElementById('kpi-hashrate');
+        if (elHash) elHash.textContent = '0';
+        const elPower = document.getElementById('kpi-power');
+        if (elPower) elPower.textContent = '0';
+        const elTemp = document.getElementById('kpi-temp');
+        if (elTemp) elTemp.textContent = '0';
+    }
 }
 
+async function loadAggregateSeries() {
+    try {
+        const windowMin = Math.max(getFreshWithin(), 30);
+        const freshWithin = getFreshWithin();
+        const activeOnly = getActiveOnly();
+
+        // Validate that we have chart elements before proceeding
+        if (!ovCharts.hash || !ovCharts.power || !ovCharts.tempfan) {
+            ensureOvCharts(); // Re-initialize charts if needed
+        }
+
+        const params = new URLSearchParams({
+            window_min: String(windowMin),
+            active_only: activeOnly ? 'true' : 'false',
+            fresh_within: String(freshWithin),
+        });
+
+        const response = await fetch(`/api/aggregate?${params.toString()}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Validate that we have data before updating charts
+        if (data && Array.isArray(data.timestamps)) {
+            // Update hash chart
+            if (ovCharts.hash) {
+                ovCharts.hash.data.labels = data.timestamps;
+                ovCharts.hash.data.datasets[0].data = data.hashrate_ths || [];
+                ovCharts.hash.update();
+            }
+
+            // Update power chart
+            if (ovCharts.power) {
+                ovCharts.power.data.labels = data.timestamps;
+                ovCharts.power.data.datasets[0].data = data.power_w || [];
+                ovCharts.power.update();
+            }
+
+            // Update temp/fan chart
+            if (ovCharts.tempfan) {
+                ovCharts.tempfan.data.labels = data.timestamps;
+                if (ovCharts.tempfan.data.datasets.length >= 2) {
+                    ovCharts.tempfan.data.datasets[0].data = data.avg_temp_c || [];
+                    ovCharts.tempfan.data.datasets[1].data = data.avg_fan_rpm || [];
+                }
+                ovCharts.tempfan.update();
+            }
+        }
+    } catch (error) {
+        console.warn('Failed to load aggregate series:', error);
+        // Clear charts if there's an error
+        if (ovCharts.hash) {
+            ovCharts.hash.data.labels = [];
+            ovCharts.hash.data.datasets[0].data = [];
+            ovCharts.hash.update();
+        }
+        if (ovCharts.power) {
+            ovCharts.power.data.labels = [];
+            ovCharts.power.data.datasets[0].data = [];
+            ovCharts.power.update();
+        }
+        if (ovCharts.tempfan) {
+            ovCharts.tempfan.data.labels = [];
+            if (ovCharts.tempfan.data.datasets.length >= 2) {
+                ovCharts.tempfan.data.datasets[0].data = [];
+                ovCharts.tempfan.data.datasets[1].data = [];
+            }
+            ovCharts.tempfan.update();
+        }
+    }
+}
+
+async function fillMinersSummaryTable() {
+    try {
+        const tbody = document.getElementById('stats-log');
+        if (!tbody) return;
+
+        const windowMin = Math.max(getFreshWithin(), 30);
+        const freshWithin = getFreshWithin();
+        const activeOnly = getActiveOnly();
+
+        const params = new URLSearchParams({
+            window_min: String(windowMin),
+            active_only: activeOnly ? 'true' : 'false',
+            fresh_within: String(freshWithin),
+        });
+
+        const response = await fetch(`/api/miners/summary?${params.toString()}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        let rows = [];
+        try {
+            const data = await response.json();
+            rows = Array.isArray(data) ? data : [];
+        } catch (jsonError) {
+            console.warn('Failed to parse miners summary JSON:', jsonError);
+            rows = [];
+        }
+
+        tbody.innerHTML = '';
+        if (!rows.length) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td colspan="6">No miners in the selected window.</td>`;
+            tbody.appendChild(tr);
+            return;
+        }
+
+        // Clear existing rows and add new ones
+        tbody.innerHTML = '';
+        rows.forEach(r => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${r.last_seen || '—'}</td> 
+                           <td><a href="/dashboard/?ip=${encodeURIComponent(r.ip)}" class="link-ip">${r.ip}</a></td> 
+                           <td>${fmt(r.hashrate_ths, 3)}</td> 
+                           <td>${fmt0(r.power_w)}</td> 
+                           <td>${fmt(r.avg_temp_c, 1)}</td> 
+                           <td>${fmt0(r.avg_fan_rpm)}</td>`;
+            tbody.appendChild(tr);
+        });
+    } catch (error) {
+        console.warn('Failed to fill miners summary table:', error);
+        const tbody = document.getElementById('stats-log');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="6">Error loading data</td></tr>';
+        }
+    }
+}
 
 async function initOverview() {
-    ensureOvCharts();
-    await loadSummaryKPIs();
-    await loadAggregateSeries();
-    await fillMinersSummaryTable();
+    try {
+        ensureOvCharts();
+        await loadSummaryKPIs();
+        await loadAggregateSeries();
+        await fillMinersSummaryTable();
+    } catch (error) {
+        console.error('Failed to initialize overview:', error);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -276,6 +315,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     initOverview();
+
     setInterval(() => {
         loadSummaryKPIs();
         loadAggregateSeries();
