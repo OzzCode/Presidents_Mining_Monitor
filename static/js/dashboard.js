@@ -137,6 +137,63 @@ async function fillCards() {
 }
 
 // ------------- charts -------------
+let lastMetricsTimestamp = null;
+
+async function pollAndUpdateCharts() {
+    // Use single-miner mode if QS_IP is set
+    const url = QS_IP ? `/api/metrics?ip=${encodeURIComponent(QS_IP)}&limit=1` : '/api/summary';
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        let newPoint;
+        if (QS_IP && Array.isArray(data) && data.length > 0) {
+            newPoint = data[data.length - 1];
+        } else if (data && data.log && data.log.length > 0) {
+            newPoint = data.log[data.log.length - 1];
+        }
+
+        if (newPoint && newPoint.timestamp !== lastMetricsTimestamp) {
+            lastMetricsTimestamp = newPoint.timestamp;
+
+            // Push new data point to each chart
+            if (charts.hash) {
+                charts.hash.data.labels.push(newPoint.timestamp);
+                charts.hash.data.datasets[0].data.push(Number(newPoint.hashrate_ths || newPoint.hash || 0));
+                if (charts.hash.data.labels.length > 120) { // limit to 120 points
+                    charts.hash.data.labels.shift();
+                    charts.hash.data.datasets[0].data.shift();
+                }
+                charts.hash.update('none');
+            }
+            if (charts.power) {
+                charts.power.data.labels.push(newPoint.timestamp);
+                charts.power.data.datasets[0].data.push(Number(newPoint.power_w || 0));
+                if (charts.power.data.labels.length > 120) {
+                    charts.power.data.labels.shift();
+                    charts.power.data.datasets[0].data.shift();
+                }
+                charts.power.update('none');
+            }
+            if (charts.tempfan) {
+                charts.tempfan.data.labels.push(newPoint.timestamp);
+                charts.tempfan.data.datasets[0].data.push(Number(newPoint.avg_temp_c || 0));
+                charts.tempfan.data.datasets[1].data.push(Number(newPoint.avg_fan_rpm || 0));
+                if (charts.tempfan.data.labels.length > 120) {
+                    charts.tempfan.data.labels.shift();
+                    charts.tempfan.data.datasets[0].data.shift();
+                    charts.tempfan.data.datasets[1].data.shift();
+                }
+                charts.tempfan.update('none');
+            }
+        }
+    } catch (e) {
+        console.warn('Live update failed:', e);
+    }
+}
+
 let charts = {};
 
 function ensureCharts() {
@@ -380,9 +437,22 @@ async function fillTable() {
     }
 }
 
+
+// ------------- live -------------
+function pulseLiveIndicator() {
+    const el = document.getElementById('live-indicator');
+    if (el) {
+        el.style.opacity = 1;
+        setTimeout(() => {
+            el.style.opacity = 0.5;
+        }, 400);
+    }
+}
+
 // ------------- boot -------------
 document.addEventListener('DOMContentLoaded', () => {
     loadPrefs();
+    pulseLiveIndicator();
 
     // Hide farm-only controls on single-miner page (optional)
     if (QS_IP) {
@@ -408,6 +478,9 @@ document.addEventListener('DOMContentLoaded', () => {
     fillTable();
     updateFiltersBadge();
 
+
+    setInterval(pollAndUpdateCharts,
+        POLL_INTERVAL * 1000);
     setInterval(() => {
         fillCards();
         fillCharts();

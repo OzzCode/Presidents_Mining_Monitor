@@ -22,7 +22,9 @@
     <a href="{{ url_for('dashboard.show_miners') }}">Miners</a>
 </nav>
 <div class="container">
-    <h1>Dashboard{% if ip %} — {{ ip }}{% endif %}</h1>
+    <h1>Dashboard{% if ip %} — {{ ip }}{% endif %}      <span id="live-indicator"
+                                                              style="color:#16a34a; font-weight:bold;">● LIVE</span>
+    </h1>
     <div class="metrics">
         <div class="card"><h2>Total Power</h2>
             <p id="total-power">-- W</p></div>
