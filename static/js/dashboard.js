@@ -356,7 +356,7 @@ async function fillTable() {
     if (!tbody) return;
 
     if (QS_IP) {
-        // single-miner: last ≤6h to keep table readable
+        // single-miner: last ≤6h to keep the table readable
         const hours = Math.min(uiChartHours(), 6);
         const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
         const params = new URLSearchParams({since, limit: '500', ip: QS_IP});
@@ -448,6 +448,39 @@ function pulseLiveIndicator() {
         }, 400);
     }
 }
+
+
+(function () {
+  const KEY = 'theme';
+  const root = document.documentElement;
+  const getOSPref = () => (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  const apply = (t) => {
+    if (t) root.setAttribute('data-theme', t);
+    else root.removeAttribute('data-theme'); // fall back to OS
+  };
+
+  // Initialize from localStorage or OS
+  const saved = localStorage.getItem(KEY);
+  apply(saved || null);
+
+  // Keep in sync with OS if user hasn’t chosen
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  mq.addEventListener?.('change', () => {
+    if (!localStorage.getItem(KEY)) apply(null);
+  });
+
+  // Toggle handler
+  const btn = document.getElementById('themeToggle');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      const current = root.getAttribute('data-theme') || (saved ? saved : null) || getOSPref();
+      const next = current === 'dark' ? 'light' : 'dark';
+      localStorage.setItem(KEY, next);
+      apply(next);
+    });
+  }
+})();
+
 
 // ------------- boot -------------
 document.addEventListener('DOMContentLoaded', () => {
