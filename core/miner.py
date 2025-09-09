@@ -29,7 +29,7 @@ def _avg(seq):
 class MinerClient:
     """CGMiner/BMminer API client for Antminer devices."""
 
-    def __init__(self, ip, port=4028, timeout=8):
+    def __init__(self, ip, port=4028, timeout: float = None):
         self.ip = ip
         self.port = port
         self.timeout = timeout if timeout is not None else CGMINER_TIMEOUT
@@ -69,22 +69,6 @@ class MinerClient:
                 s.close()
             except Exception:
                 pass
-
-    def get_summary(self) -> dict:
-        return self._send_command("summary")
-
-    def get_stats(self) -> dict:
-        return self._send_command("stats")
-
-    def get_pools(self) -> dict:
-        return self._send_command("pools")
-
-    def get_notify(self) -> dict:
-        return self._send_command("notify")
-
-    def get_log(self) -> dict:
-        # some firmwares expose 'log' or 'readlog'; try 'log' first
-        return self._send_command("log")
 
     # ---- Normalized view across SUMMARY/STATS ----
     def fetch_normalized(self) -> dict:
@@ -159,3 +143,19 @@ class MinerClient:
             "when": when_iso,
             "model": model or "",
         }
+
+    def get_summary(self) -> dict:
+        return self._send_command("summary")
+
+    def get_stats(self) -> dict:
+        return self._send_command("stats")
+
+    def get_pools(self) -> dict:
+        return self._send_command("pools")
+
+    def get_notify(self) -> dict:
+        return self._send_command("notify")
+
+    def get_log(self) -> dict:
+        # some firmwares expose 'log' or 'readlog'; try 'log' first
+        return self._send_command("log")

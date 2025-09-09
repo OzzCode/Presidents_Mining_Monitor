@@ -9,13 +9,13 @@ from werkzeug.exceptions import HTTPException
 def create_app():
     app = Flask(__name__, static_url_path='/static', static_folder='static')
     CORS(app)
+
+    app.register_blueprint(dash_bp, url_prefix="/dashboard")
     app.register_blueprint(api_bp, url_prefix='/api')
 
     @app.route("/")
     def home():
         return render_template("home.html")
-
-    app.register_blueprint(dash_bp)
 
     @app.route("/api/miners")
     def api_miners():

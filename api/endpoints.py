@@ -1,13 +1,9 @@
 import ipaddress
 import socket
 import time
-
 from flask import Blueprint, jsonify, request, current_app
 from sqlalchemy import func, and_
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dateutil import parser
-# removed top-level zeroconf import; it is imported lazily inside discover_miners
-
 from core.db import SessionLocal, Metric, Event, ErrorEvent
 from core.miner import MinerClient, MinerError
 from config import MINER_IP_RANGE, API_MAX_LIMIT, POLL_INTERVAL
@@ -21,6 +17,7 @@ _MAX_WORKERS = 16  # threads for concurrent fetches
 logger = logging.getLogger(__name__)
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
+dash_bp = Blueprint('dashboard', __name__, url_prefix='/dashboard')
 
 
 @api_bp.after_app_request
@@ -90,7 +87,7 @@ def debug_tail():
     finally:
         s.close()
 
-
+@dash_bp.route("/dashboard/miners")
 def discover_miners(timeout=1, workers=50, use_mdns=True, return_sources=False):
     """
     Scan the configured CIDR for TCP/4028 and optionally browse mDNS _cgminer._tcp.
@@ -319,7 +316,7 @@ def summary():
     })
 
 
-@api_bp.route('/miners/summary')
+# @api_bp.route('/miners/summary')
 def miners_summary():
     """
     Query params:

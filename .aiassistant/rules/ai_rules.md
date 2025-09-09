@@ -1,5 +1,6 @@
 ---
-apply: always
+apply: by model decision
+instructions: if reference or follow-up is needed
 ---
 
 # General Code Review Guidelines

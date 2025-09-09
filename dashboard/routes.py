@@ -1,8 +1,8 @@
 from flask import Blueprint, render_template, request, jsonify
 
-dash_bp = Blueprint('dashboard', __name__, url_prefix='/dashboard')
+dash_bp = Blueprint('dashboard', __name__)
 
-api_bp = Blueprint("api", __name__, url_prefix="/api")
+api_bp = Blueprint("api", __name__)
 
 
 def get_miners():
