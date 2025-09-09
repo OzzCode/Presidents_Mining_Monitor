@@ -5,11 +5,16 @@
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
     <title>Discovered Miners</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
 </head>
 <body>
 <nav>
-    <a href="{{ url_for('home') }}">Home</a> |
-    <a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+    <h1><a href="{{ url_for('home') }}" style="text-decoration:none;color:inherit;">Antminer Monitor</a></h1>
+    <ul class="nav-list">
+        <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
+    </ul>
+    <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme"><span aria-hidden="true">🌓</span> Theme</button>
 </nav>
 <div class="container">
     <h1>Discovered Miners</h1>

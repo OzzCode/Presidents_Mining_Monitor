@@ -6,6 +6,7 @@
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>Antminer Monitor Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 </head>
@@ -18,8 +19,12 @@
     {% endif %}
 </div>
 <nav>
-    <a href="{{ url_for('home') }}">Home</a> |
-    <a href="{{ url_for('dashboard.show_miners') }}">Miners</a>
+    <h1><a href="{{ url_for('home') }}" style="text-decoration:none;color:inherit;">Antminer Monitor</a></h1>
+    <ul class="nav-list">
+        <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
+    </ul>
+    <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme"><span aria-hidden="true">🌓</span> Theme</button>
 </nav>
 <div class="container">
     <h1>Dashboard{% if ip %} — {{ ip }}{% endif %}      <span id="live-indicator"
@@ -68,7 +73,6 @@
             </select>
         </label>
 
-        <span id="filters-badge" class="filters-badge"></span>
     </div>
 
     <h2>Hashrate (recent)</h2>
