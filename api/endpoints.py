@@ -100,7 +100,7 @@ def discover_miners(timeout=1, workers=50, use_mdns=True, return_sources=False):
 
     Returns:
         list[str] if return_sources is False
-        dict[str,str] if return_sources is True
+        dict[str, str] if return_sources is True
     """
     network = ipaddress.ip_network(MINER_IP_RANGE)
 
@@ -316,7 +316,7 @@ def summary():
     })
 
 
-# @api_bp.route('/miners/summary')
+@api_bp.route('/miners/summary')
 def miners_summary():
     """
     Query params:

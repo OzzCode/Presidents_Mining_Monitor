@@ -1,5 +1,5 @@
 // === Dashboard: supports both farm-wide and single-miner modes ===
-const POLL_INTERVAL = 30; // seconds
+const POLL_INTERVAL = 15; // seconds
 
 const qs = new URLSearchParams(location.search);
 const QS_IP = qs.get('ip'); // if set -> single-miner mode
