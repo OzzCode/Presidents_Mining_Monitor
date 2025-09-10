@@ -383,6 +383,7 @@ async function fillTable() {
         rows.slice(-200).forEach(r => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
+        <td>${r.model}</td>
         <td>${r.timestamp}</td>
         <td>${r.ip || QS_IP}</td>
         <td>${fmt(r.hashrate_ths, 3)}</td>
@@ -417,7 +418,7 @@ async function fillTable() {
         tbody.textContent = '';
         if (!rows.length) {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="6">No miners found in the selected window.</td>`;
+            tr.innerHTML = `<td colspan="7">No miners found in the selected window.</td>`;
             tbody.appendChild(tr);
             return;
         }
@@ -425,6 +426,7 @@ async function fillTable() {
         rows.forEach(r => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
+        <td>${r.model || '—'}</td>
         <td>${r.last_seen || '—'}</td>
         <td><a href="/dashboard/?ip=${encodeURIComponent(r.ip)}" class="link-ip">${r.ip}</a></td>
         <td>${fmt(r.hashrate_ths, 3)}</td>

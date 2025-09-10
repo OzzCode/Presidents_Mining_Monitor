@@ -13,6 +13,7 @@
 <body>
 <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
     <div><strong>Miner:</strong> <code>{{ ip }}</code></div>
+    <div id="miner-model" style="font-size:0.95rem;color:#333;"><strong>Model:</strong> <span id="model-name">—</span></div>
     <div id="last-update" style="font-size:0.9rem;color:#555;">Last update: —</div>
     {% if ip %}
         <a class="btn" href="http://{{ ip }}/" target="_blank" rel="noopener">Open Miner Firmware UI</a>
@@ -102,6 +103,7 @@
     <table>
         <thead>
         <tr>
+            <th>Model</th>
             <th>Last Seen</th>
             <th>IP</th>
             <th>Hash (TH/s)</th>

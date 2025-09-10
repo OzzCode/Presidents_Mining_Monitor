@@ -87,19 +87,81 @@ class MinerClient:
             stats = self.get_stats()  # {"STATS":[{...}, ...]}
         except Exception:
             stats = {}
+        try:
+            ver = self.get_version()  # {"VERSION":[{...}], "STATUS":[{...}]}, varies by FW
+        except Exception:
+            ver = {}
 
         s0 = (summ.get("SUMMARY") or [{}])[0]
 
-        # determine model
-        model = summ.get("Model") or s0.get("Model")
-        if isinstance(summ, dict):
-            # Most firmwares expose 'Model' either in top-level or inside SUMMARY[0]
-            model = summ.get("Model")
-            if not model and summ.get("SUMMARY"):
-                try:
-                    model = summ["SUMMARY"][0].get("Model")
-                except Exception:
-                    pass
+        # determine model (robust across firmware variants)
+        def _norm_model(m):
+            if not m:
+                return ""
+            m = str(m).strip()
+            # common cleanup
+            m = " ".join(m.split())
+            return m
+
+        def _walk_for_model(obj):
+            # Look for common keys across SUMMARY/STATS/VERSION
+            MODEL_KEYS = {
+                "model", "type", "miner type", "minertype",
+                "modelname", "miner name", "product type", "product", "hw type"
+            }
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    if isinstance(v, (dict, list)):
+                        res = _walk_for_model(v)
+                        if res:
+                            return res
+                    key = str(k).strip().lower()
+                    if key in MODEL_KEYS:
+                        if isinstance(v, str) and v.strip():
+                            return v
+                return None
+            if isinstance(obj, list):
+                for it in obj:
+                    res = _walk_for_model(it)
+                    if res:
+                        return res
+                return None
+            return None
+
+        # Try explicit places first, then recursive scan:
+        candidates = []
+
+        # some firmwares expose 'Model' at top-level or inside SUMMARY[0]
+        candidates.append(summ.get("Model"))
+        candidates.append(s0.get("Model"))
+        candidates.append(s0.get("Type"))  # SUMMARY sometimes has "Type": "Antminer S19 Pro"
+
+        # stats blocks sometimes have "Type"/"Model"/"ModelName"
+        for entry in (stats.get("STATS") or []):
+            candidates.append(entry.get("Model"))
+            candidates.append(entry.get("ModelName"))
+            candidates.append(entry.get("Type"))
+            # Some expose with spaces/case differences
+            candidates.append(entry.get("Miner Name"))
+            candidates.append(entry.get("MinerType"))
+            candidates.append(entry.get("Product Type"))
+
+        # version often has "Type" or similar in VERSION[0]
+        v0 = (ver.get("VERSION") or [{}])[0] if isinstance(ver, dict) else {}
+        candidates.append(ver.get("Model"))
+        candidates.append(v0.get("Model"))
+        candidates.append(v0.get("Type"))
+        candidates.append(v0.get("MinerType"))
+        candidates.append(v0.get("Miner Name"))
+
+        # fallback: recursively walk for common model keys
+        if not any(candidates):
+            candidates.append(_walk_for_model(summ))
+            candidates.append(_walk_for_model(stats))
+            candidates.append(_walk_for_model(ver))
+
+        model = next((m for m in candidates if isinstance(m, str) and m.strip()), "")
+        model = _norm_model(model)
 
         # Hashrate: prefer GHS, fallback to MHS
         ths = 0.0
@@ -159,3 +221,6 @@ class MinerClient:
     def get_log(self) -> dict:
         # some firmwares expose 'log' or 'readlog'; try 'log' first
         return self._send_command("log")
+
+    def get_version(self) -> dict:
+        return self._send_command("version")
