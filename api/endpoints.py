@@ -436,6 +436,24 @@ def miners_current():
             q = q.filter(Metric.timestamp >= cutoff)
 
         rows = q.order_by(Metric.miner_ip.asc()).all()
+
+        # Attempt to enrich with model by fetching live model per IP (best-effort)
+        models = {}
+        try:
+            ips = [m.miner_ip for m in rows]
+            if ips:
+                def _fetch(ip):
+                    try:
+                        return ip, MinerClient(ip).fetch_normalized().get('model', '')
+                    except Exception:
+                        return ip, ''
+                with ThreadPoolExecutor(max_workers=min(_MAX_WORKERS, len(ips))) as ex:
+                    for fut in as_completed([ex.submit(_fetch, ip) for ip in ips]):
+                        ip, model = fut.result()
+                        models[ip] = model
+        except Exception:
+            models = {}
+
         return jsonify([{
             "ip": m.miner_ip,
             "last_seen": m.timestamp.isoformat() + "Z",
@@ -443,6 +461,7 @@ def miners_current():
             "power_w": float(m.power_w or 0.0),
             "avg_temp_c": float(m.avg_temp_c or 0.0),
             "avg_fan_rpm": float(m.avg_fan_rpm or 0.0),
+            "model": models.get(m.miner_ip, ''),
         } for m in rows])
     finally:
         s.close()
@@ -501,7 +520,8 @@ def metrics():
             q = q.filter(Metric.miner_ip.in_(active_ips))
 
         rows = q.order_by(Metric.timestamp.asc()).limit(limit).all()
-        return jsonify([
+
+        out = [
             {
                 "timestamp": (m.timestamp.isoformat() + "Z"),  # return ISO+Z
                 "ip": m.miner_ip,
@@ -511,7 +531,18 @@ def metrics():
                 "avg_fan_rpm": m.avg_fan_rpm,
             }
             for m in rows
-        ])
+        ]
+
+        # For single-miner queries, best-effort include model once
+        if ip_filter:
+            try:
+                model = MinerClient(ip_filter).fetch_normalized().get('model', '')
+            except Exception:
+                model = ''
+            if model:
+                for rec in out:
+                    rec['model'] = model
+        return jsonify(out)
     finally:
         s.close()
 

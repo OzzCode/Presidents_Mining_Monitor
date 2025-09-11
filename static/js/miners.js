@@ -1,4 +1,4 @@
-const REFRESH_INTERVAL = 30;
+const REFRESH_INTERVAL = 15;
 
 function freshnessDot(ageSec) {
     if (ageSec == null) return '<span class="dot dot-gray" title="No data"></span>';
