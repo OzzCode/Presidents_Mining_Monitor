@@ -597,6 +597,180 @@ def events():
         s.close()
 
 
+@api_bp.post('/miners/<ip>/pools')
+def add_pool(ip):
+    """Add or replace mining pools for the specified miner.
+
+    POST behaviors:
+      - Single pool body: {stratum, username, password?, overwrite?}
+        If overwrite is true (default), existing pools will be fetched and removed before adding this one.
+        If overwrite is false, this single pool will be appended.
+      - Multiple pools body: {pools: [{stratum, username, password?}, ...]}
+        Always treated as overwrite unless query param append=true is set.
+    """
+    data = request.get_json(silent=True) or {}
+    append_qs = request.args.get("append", "false").lower() in ("1", "true", "yes")
+    overwrite_flag = data.get("overwrite")
+    overwrite = (not append_qs) if overwrite_flag is None else bool(overwrite_flag)
+
+    # Normalize to a list of pools
+    pools_body = data.get("pools")
+    ops_log = []
+
+    def _norm_pool(p):
+        return {
+            "stratum": (p.get("stratum") or p.get("url") or "").strip(),
+            "username": (p.get("username") or p.get("user") or "").strip(),
+            "password": p.get("password") or "",
+        }
+
+    if isinstance(pools_body, list) and pools_body:
+        pools_to_set = [_norm_pool(p) for p in pools_body]
+    else:
+        pools_to_set = [_norm_pool(data)]
+
+    # Basic validation of at least first pool
+    for p in pools_to_set:
+        if not p["stratum"] or not p["username"]:
+            return jsonify({"ok": False, "error": "Each pool requires stratum and username"}), 400
+
+    client = MinerClient(ip)
+
+    prev_pools = None
+    final_pools = None
+
+    try:
+        # If overwrite requested, remove existing pools first
+        if overwrite:
+            try:
+                prev_pools = client.get_pools()
+            except Exception as e:
+                prev_pools = {"error": f"failed to fetch pools: {e}"}
+            # attempt to list and remove by indices
+            try:
+                ids = client.list_pool_ids()
+            except Exception as e:
+                ids = []
+                ops_log.append({"step": "list_pool_ids", "ok": False, "error": str(e)})
+            for pid in sorted(ids, reverse=True):
+                try:
+                    r = client.remove_pool(pid)
+                    ops_log.append({"step": "remove_pool", "id": pid, "ok": True, "result": r})
+                except Exception as e:
+                    ops_log.append({"step": "remove_pool", "id": pid, "ok": False, "error": str(e)})
+
+        # Add the requested pools
+        add_results = []
+        for p in pools_to_set:
+            r = client.add_pool(p["stratum"], p["username"], p.get("password") or "")
+            add_results.append({"url": p["stratum"], "user": p["username"], "ok": True, "result": r})
+        ops_log.append({"step": "add_pools", "count": len(add_results), "details": add_results})
+
+        # Set priorities in declared order if more than one pool
+        if len(pools_to_set) > 1:
+            try:
+                pr = client.pool_priority(list(range(len(pools_to_set))))
+                ops_log.append({"step": "pool_priority", "ok": True, "result": pr})
+            except Exception as e:
+                ops_log.append({"step": "pool_priority", "ok": False, "error": str(e)})
+
+        try:
+            final_pools = client.get_pools()
+        except Exception:
+            final_pools = None
+
+        return jsonify({
+            "ok": True,
+            "overwrite": overwrite,
+            "previous": prev_pools,
+            "operations": ops_log,
+            "pools": final_pools,
+        }), 200
+
+    except MinerError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.exception("add/replace pool(s) failed for %s", ip)
+        return jsonify({"ok": False, "error": "Failed to update pools", "detail": str(e)}), 500
+
+
+@api_bp.put('/miners/<ip>/pools')
+def replace_pools(ip):
+    """Replace all pools with the provided list.
+    Body: {pools:[{stratum,username,password?}, ...]}
+    """
+    data = request.get_json(silent=True) or {}
+    pools_body = data.get("pools")
+    if not isinstance(pools_body, list) or not pools_body:
+        return jsonify({"ok": False, "error": "Body must include non-empty 'pools' array"}), 400
+
+    # Reuse POST handler with forced overwrite
+    with current_app.test_request_context():
+        request.args = request.args.copy()
+    # Construct a fake request-like object by calling the function directly with prepared data
+    # Instead, inline logic to avoid context mutation
+
+    client = MinerClient(ip)
+    ops_log = []
+
+    def _norm_pool(p):
+        return {
+            "stratum": (p.get("stratum") or p.get("url") or "").strip(),
+            "username": (p.get("username") or p.get("user") or "").strip(),
+            "password": p.get("password") or "",
+        }
+
+    pools_to_set = [_norm_pool(p) for p in pools_body]
+    for p in pools_to_set:
+        if not p["stratum"] or not p["username"]:
+            return jsonify({"ok": False, "error": "Each pool requires stratum and username"}), 400
+
+    try:
+        prev = None
+        try:
+            prev = client.get_pools()
+        except Exception:
+            prev = None
+
+        # remove existing
+        try:
+            ids = client.list_pool_ids()
+        except Exception as e:
+            ids = []
+            ops_log.append({"step": "list_pool_ids", "ok": False, "error": str(e)})
+        for pid in sorted(ids, reverse=True):
+            try:
+                r = client.remove_pool(pid)
+                ops_log.append({"step": "remove_pool", "id": pid, "ok": True, "result": r})
+            except Exception as e:
+                ops_log.append({"step": "remove_pool", "id": pid, "ok": False, "error": str(e)})
+
+        add_results = []
+        for p in pools_to_set:
+            r = client.add_pool(p["stratum"], p["username"], p.get("password") or "")
+            add_results.append({"url": p["stratum"], "user": p["username"], "ok": True, "result": r})
+        ops_log.append({"step": "add_pools", "count": len(add_results), "details": add_results})
+
+        if len(pools_to_set) > 1:
+            try:
+                pr = client.pool_priority(list(range(len(pools_to_set))))
+                ops_log.append({"step": "pool_priority", "ok": True, "result": pr})
+            except Exception as e:
+                ops_log.append({"step": "pool_priority", "ok": False, "error": str(e)})
+
+        try:
+            final = client.get_pools()
+        except Exception:
+            final = None
+
+        return jsonify({"ok": True, "previous": prev, "operations": ops_log, "pools": final}), 200
+    except MinerError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.exception("replace_pools failed for %s", ip)
+        return jsonify({"ok": False, "error": "Failed to replace pools", "detail": str(e)}), 500
+
+
 @api_bp.route('/debug/routes')
 def debug_routes():
     rules = []

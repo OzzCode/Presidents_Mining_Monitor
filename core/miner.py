@@ -224,3 +224,67 @@ class MinerClient:
 
     def get_version(self) -> dict:
         return self._send_command("version")
+
+    # ---- Pool management ----
+    def add_pool(self, url: str, username: str, password: str = "") -> dict:
+        """
+        Add a new pool via CGMiner/BMminer API.
+        Equivalent to: {"command":"addpool","parameter":"url,user,pass"}
+        Password may be empty for pools that don't require it.
+        """
+        import json
+        url = (url or "").strip()
+        username = (username or "").strip()
+        password = "" if password is None else str(password)
+        if not url or not username:
+            raise MinerError("url and username are required to add a pool")
+        # The API expects a single string parameter: "url,user,pass"
+        param = f"{url},{username},{password}"
+        payload = json.dumps({"command": "addpool", "parameter": param})
+        return self._send_command(payload)
+
+    def pool_priority(self, priority_list: list[int]) -> dict:
+        """
+        Optionally set pool priorities. Expects a list like [0,1,2].
+        Maps to command: {"command":"poolpriority","parameter":"0,1,2"}
+        """
+        import json
+        if not priority_list:
+            raise MinerError("priority_list cannot be empty")
+        param = ",".join(str(int(i)) for i in priority_list)
+        payload = json.dumps({"command": "poolpriority", "parameter": param})
+        return self._send_command(payload)
+
+
+    def remove_pool(self, pool_id: int) -> dict:
+        """
+        Remove a pool by its index/id as reported by the miner (CGMiner/BMminer).
+        Example payload: {"command":"removepool","parameter":"0"}
+        """
+        import json
+        try:
+            pid = int(pool_id)
+        except Exception:
+            raise MinerError("pool_id must be an integer")
+        payload = json.dumps({"command": "removepool", "parameter": str(pid)})
+        return self._send_command(payload)
+
+    def list_pool_ids(self) -> list[int]:
+        """Return a list of current pool indices as integers, best-effort across firmwares."""
+        try:
+            resp = self.get_pools() or {}
+        except Exception as e:
+            raise MinerError(f"failed to get pools: {e}")
+        pools = resp.get("POOLS") or resp.get("pools") or []
+        ids = []
+        for p in pools if isinstance(pools, list) else []:
+            for key in ("POOL", "Index", "POOL#", "ID", "id"):
+                if key in p:
+                    try:
+                        ids.append(int(p[key]))
+                        break
+                    except Exception:
+                        continue
+        # de-dup and sort
+        ids = sorted({i for i in ids if isinstance(i, int)})
+        return ids

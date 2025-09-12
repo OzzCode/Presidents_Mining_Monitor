@@ -110,6 +110,11 @@ def show_miners():
     return render_template('miners.html')
 
 
+@dash_bp.route('/pools')
+def pools_page():
+    return render_template('pools.html')
+
+
 @dash_bp.route("/logs")
 def logs_page():
     return render_template("logs.html")
