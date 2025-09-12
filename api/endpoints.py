@@ -783,3 +783,66 @@ def debug_routes():
     # sort by rule for readability
     rules.sort(key=lambda x: x["rule"])
     return jsonify(rules)
+
+
+# --- Braiins OS (BOS) REST helpers & endpoints ---
+try:
+    from core.bos import BosRest
+except Exception:
+    BosRest = None  # optional, endpoints will guard
+
+
+def _bos_from_request(ip: str):
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or data.get("user") or "").strip()
+    password = data.get("password") or ""
+    try:
+        timeout = int(data.get("timeout", 5))
+    except Exception:
+        timeout = 5
+    if not BosRest:
+        raise RuntimeError("BOS client not available on server")
+    if not username:
+        raise ValueError("username is required")
+    return BosRest(ip, username, password, timeout=timeout)
+
+
+@api_bp.post('/bos/<ip>/details')
+def bos_details(ip):
+    """Fetch BOS miner details. Body: {username, password?, timeout?}"""
+    try:
+        bos = _bos_from_request(ip)
+        payload = bos.details()
+        return jsonify({"ok": True, "details": payload}), 200
+    except Exception as e:
+        logger.exception("BOS details failed for %s", ip)
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
+@api_bp.post('/bos/<ip>/pause')
+def bos_pause(ip):
+    """Pause the miner via BOS. Body: {username, password?, timeout?}"""
+    try:
+        bos = _bos_from_request(ip)
+        res = bos.pause()
+        return jsonify({"ok": True, "result": res}), 200
+    except Exception as e:
+        logger.exception("BOS pause failed for %s", ip)
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
+@api_bp.put('/bos/<ip>/power-target')
+def bos_power_target(ip):
+    """Set BOS power target. Body: {username, password?, watt, timeout?}"""
+    data = request.get_json(silent=True) or {}
+    try:
+        watt = int(data.get('watt'))
+    except Exception:
+        return jsonify({"ok": False, "error": "watt (int) is required"}), 400
+    try:
+        bos = _bos_from_request(ip)
+        res = bos.set_power_target(watt)
+        return jsonify({"ok": True, "result": res}), 200
+    except Exception as e:
+        logger.exception("BOS set power target failed for %s", ip)
+        return jsonify({"ok": False, "error": str(e)}), 400
