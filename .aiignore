@@ -10,3 +10,9 @@
 dist/
 build/
 out/
+.idea
+.venv
+.gitignore
+logs/
+img/
+db_files

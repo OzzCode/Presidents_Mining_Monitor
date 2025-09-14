@@ -226,10 +226,42 @@ def summary():
         discovery_sources = {ipf: "manual"}
     else:
         discovery_sources = discover_miners(use_mdns=mdns_flag, return_sources=True)
-        miners = list(discovery_sources.keys())
+        # Be resilient to patched/mocked discover_miners that return a list
+        if isinstance(discovery_sources, list):
+            miners = list(discovery_sources)
+            discovery_sources = {ip: 'unknown' for ip in miners}
+        else:
+            miners = list(discovery_sources.keys())
     totals = {'power': 0.0, 'hash': 0.0, 'uptime': 0, 'temps': [], 'fans': []}
     data = []
     overall_srcs = set()
+
+    # Prefetch latest DB metric per miner once to avoid per-thread queries
+    prefetch = {}
+    if miners:
+        s_pref = SessionLocal()
+        try:
+            latest_subq = (
+                s_pref.query(
+                    Metric.miner_ip.label('ip'),
+                    func.max(Metric.timestamp).label('last_ts')
+                )
+                .filter(Metric.miner_ip.in_(miners))
+                .group_by(Metric.miner_ip)
+                .subquery()
+            )
+            rows = (
+                s_pref.query(Metric)
+                .join(latest_subq, and_(Metric.miner_ip == latest_subq.c.ip,
+                                        Metric.timestamp == latest_subq.c.last_ts))
+                .all()
+            )
+            for m in rows:
+                prefetch[m.miner_ip] = m
+        except Exception:
+            prefetch = {}
+        finally:
+            s_pref.close()
 
     # worker that returns (ip, payload, src) or (ip, None, None)
     def _fetch_one(ip: str):
@@ -241,28 +273,19 @@ def summary():
             pass
         except Exception:
             pass
-        # 2) fallback: last DB metric
-        s = SessionLocal()
-        try:
-            last = (
-                s.query(Metric)
-                .filter(Metric.miner_ip == ip)
-                .order_by(Metric.timestamp.desc())
-                .first()
-            )
-            if last:
-                return ip, {
-                    'hashrate_ths': last.hashrate_ths,
-                    'elapsed_s': last.elapsed_s,
-                    'avg_temp_c': last.avg_temp_c,
-                    'avg_fan_rpm': last.avg_fan_rpm,
-                    'power_w': last.power_w,
-                    'when': last.timestamp.isoformat() + 'Z',
-                }, 'db_fallback'
-            else:
-                return ip, None, None
-        finally:
-            s.close()
+        # 2) fallback: last prefetched DB metric
+        last = prefetch.get(ip)
+        if last:
+            return ip, {
+                'hashrate_ths': last.hashrate_ths,
+                'elapsed_s': last.elapsed_s,
+                'avg_temp_c': last.avg_temp_c,
+                'avg_fan_rpm': last.avg_fan_rpm,
+                'power_w': last.power_w,
+                'when': last.timestamp.isoformat() + 'Z',
+            }, 'db_fallback'
+        else:
+            return ip, None, None
 
     with ThreadPoolExecutor(max_workers=min(_MAX_WORKERS, max(len(miners), 1))) as ex:
         futures = {ex.submit(_fetch_one, ip): ip for ip in miners}
