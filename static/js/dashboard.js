@@ -440,6 +440,54 @@ async function fillTable() {
 }
 
 
+// ------------- pools (single-miner) -------------
+async function loadPools() {
+    if (!QS_IP) return;
+    const tbody = document.getElementById('pools-tbody');
+    const statusEl = document.getElementById('pools-status');
+    if (!tbody) return;
+    try {
+        if (statusEl) statusEl.textContent = 'Loading…';
+        const res = await fetch(`/api/miners/${encodeURIComponent(QS_IP)}/pools`);
+        const data = await res.json().catch(() => ({}));
+        tbody.textContent = '';
+        if (!res.ok || !data || !Array.isArray(data.pools)) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td colspan="6" style="color:#dc2626;">Failed to load pools.</td>`;
+            tbody.appendChild(tr);
+            if (statusEl) statusEl.textContent = 'Error';
+            return;
+        }
+        if (data.pools.length === 0) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td colspan="6" style="color:#888;">No pools configured.</td>`;
+            tbody.appendChild(tr);
+        } else {
+            data.pools.forEach(p => {
+                const tr = document.createElement('tr');
+                const pr = (p.prio !== undefined && p.prio !== null) ? p.prio : '';
+                const sa = (p.stratum_active === true) ? 'Active' : (p.stratum_active === false ? '—' : '');
+                tr.innerHTML = `
+                    <td>${p.id ?? ''}</td>
+                    <td>${p.url ? `<code>${p.url}</code>` : ''}</td>
+                    <td>${p.user ? `<code>${p.user}</code>` : ''}</td>
+                    <td>${p.status || ''}</td>
+                    <td>${pr}</td>
+                    <td>${sa}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        if (statusEl) statusEl.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    } catch (e) {
+        tbody.textContent = '';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="6" style="color:#dc2626;">${String(e)}</td>`;
+        tbody.appendChild(tr);
+        if (statusEl) statusEl.textContent = 'Error';
+    }
+}
+
 // ------------- live -------------
 function pulseLiveIndicator() {
     const el = document.getElementById('live-indicator');
@@ -513,6 +561,14 @@ document.addEventListener('DOMContentLoaded', () => {
     fillTable();
     updateFiltersBadge();
 
+    // Pools UI
+    if (QS_IP) {
+        const btn = document.getElementById('btn-refresh-pools');
+        if (btn) btn.addEventListener('click', () => loadPools());
+        loadPools();
+        // Optional: refresh pools periodically along with charts/cards
+        setInterval(loadPools, POLL_INTERVAL * 2000); // every 30s if POLL_INTERVAL=15
+    }
 
     setInterval(pollAndUpdateCharts,
         POLL_INTERVAL * 1000);

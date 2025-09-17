@@ -620,6 +620,58 @@ def events():
         s.close()
 
 
+@api_bp.get('/miners/<ip>/pools')
+def get_pools_for_miner(ip):
+    """Return current mining pools for the specified miner.
+
+    Response shape:
+      { ok: true, pools: [ {id, url, user, status, prio, stratum_active}...], raw: <miner response> }
+    """
+    try:
+        client = MinerClient(ip)
+        resp = client.get_pools() or {}
+        pools = resp.get("POOLS") or resp.get("pools") or []
+        norm = []
+        for p in pools if isinstance(pools, list) else []:
+            # id/index across variants
+            pid = None
+            for k in ("POOL", "Index", "POOL#", "ID", "id"):
+                if k in p:
+                    try:
+                        pid = int(p[k])
+                        break
+                    except Exception:
+                        continue
+            # url/user/status/priority across variants
+            url = p.get("URL") or p.get("Url") or p.get("Stratum URL") or p.get("Stratum") or ""
+            user = p.get("User") or p.get("USER") or p.get("Username") or p.get("user") or ""
+            status = p.get("Status") or p.get("STATUS") or p.get("status") or ""
+            prio = p.get("Priority") or p.get("Prio") or p.get("PRIO") or p.get("priority")
+            # detect stratum active flags commonly used
+            sa = p.get("Stratum Active")
+            if sa is None:
+                sa = p.get("StratumActive")
+            if sa is None:
+                sa = p.get("Stratum") if isinstance(p.get("Stratum"), bool) else None
+            # normalize boolean if present
+            if isinstance(sa, str):
+                sa = sa.strip().lower() in ("1", "true", "yes", "y")
+            norm.append({
+                "id": pid,
+                "url": url,
+                "user": user,
+                "status": status,
+                "prio": prio,
+                "stratum_active": sa,
+            })
+        return jsonify({"ok": True, "pools": norm, "raw": resp}), 200
+    except MinerError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.exception("get pools failed for %s", ip)
+        return jsonify({"ok": False, "error": "Failed to fetch pools", "detail": str(e)}), 500
+
+
 @api_bp.post('/miners/<ip>/pools')
 def add_pool(ip):
     """Add or replace mining pools for the specified miner.

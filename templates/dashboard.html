@@ -114,6 +114,29 @@
         </thead>
         <tbody id="stats-log"></tbody>
     </table>
+
+    {% if ip %}
+    <h2 style="margin-top:20px;">Current Mining Pools</h2>
+    <div id="pools-controls" style="margin:8px 0; display:flex; gap:8px; align-items:center;">
+        <button id="btn-refresh-pools" class="btn" type="button">Refresh Pools</button>
+        <span id="pools-status" style="font-size:0.9rem;color:#6b7280;">—</span>
+    </div>
+    <table id="pools-table" class="table" style="width:100%;">
+        <thead>
+        <tr>
+            <th>#</th>
+            <th>URL</th>
+            <th>User</th>
+            <th>Status</th>
+            <th>Priority</th>
+            <th>Stratum</th>
+        </tr>
+        </thead>
+        <tbody id="pools-tbody">
+        <tr><td colspan="6" style="text-align:center;color:#888;">Loading…</td></tr>
+        </tbody>
+    </table>
+    {% endif %}
 </div>
 
 <!-- just inside the <body> after your Overview section -->
