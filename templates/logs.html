@@ -1,25 +1,26 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8"/>
     <title>Error Logs</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-<nav><a href="{{ url_for('home') }}">Home</a></nav>
-<h1>Error Logs</h1>
+<nav><a href="{{ url_for('home') }}">Home</a> · <a href="{{ url_for('dashboard.index') }}">Dashboard</a></nav>
+<h1>Error Logs <span id="live-dot" style="color:#16a34a;">● LIVE</span></h1>
 
-<div class="controls">
+<div class="controls" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+    <label for="level">Level</label>
     <select id="level">
-        <option value="">All levels</option>
+        <option value="">All</option>
         <option>ERROR</option>
         <option>WARNING</option>
         <option>INFO</option>
         <option>DEBUG</option>
     </select>
+    <label for="ip">IP</label>
     <input id="ip" placeholder="IP (optional)"/>
-    <input id="since" type="datetime-local"/>
-    <button id="load">Load</button>
+    <span id="status" style="font-size:0.9rem;color:#6b7280;">Auto-updating…</span>
 </div>
 
 <table class="table">
@@ -36,27 +37,127 @@
 </table>
 
 <script>
-    async function loadLogs() {
+    const tbody = document.getElementById('tbody');
+    const levelEl = document.getElementById('level');
+    const ipEl = document.getElementById('ip');
+    const statusEl = document.getElementById('status');
+
+    let pollTimer = null;
+    let lastTs = null; // ISO string of the newest seen created_at
+    const seenIds = new Set();
+
+    function showEmptyRow() {
+        if (!document.getElementById('empty-row')) {
+            const tr = document.createElement('tr');
+            tr.id = 'empty-row';
+            const td = document.createElement('td');
+            td.colSpan = 5;
+            td.style.textAlign = 'center';
+            td.style.color = '#888';
+            td.textContent = 'No logs to display at this time.';
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+        }
+    }
+
+    function removeEmptyRow() {
+        const el = document.getElementById('empty-row');
+        if (el) el.remove();
+    }
+
+    function buildUrl(incremental = false) {
         let url = '/api/error-logs?limit=200';
-        const lvl = document.getElementById('level').value;
-        const ip = document.getElementById('ip').value.trim();
-        const s = document.getElementById('since').value;
+        const lvl = levelEl.value;
+        const ip = ipEl.value.trim();
         if (lvl) url += `&level=${encodeURIComponent(lvl)}`;
         if (ip) url += `&ip=${encodeURIComponent(ip)}`;
-        if (s) url += `&since=${new Date(s).toISOString()}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        const tb = document.getElementById('tbody');
-        tb.innerHTML = '';
-        data.forEach(r => {
+        if (incremental && lastTs) url += `&since=${encodeURIComponent(lastTs)}`;
+        return url;
+    }
+
+    function renderRows(rows, {prepend = false} = {}) {
+        // rows are from API in desc order (newest first)
+        // We want to maintain newest at top. When prepending, process oldest->newest and insertBefore firstChild.
+        const toProcess = prepend ? [...rows].reverse() : rows;
+        if (toProcess.length) removeEmptyRow();
+        toProcess.forEach(r => {
+            if (seenIds.has(r.id)) return;
+            seenIds.add(r.id);
             const tr = document.createElement('tr');
             tr.innerHTML = `<td>${r.created_at}</td><td>${r.level}</td><td>${r.component}</td><td>${r.miner_ip || ''}</td><td>${r.message}</td>`;
-            tb.appendChild(tr);
+            if (prepend) {
+                tbody.insertBefore(tr, tbody.firstChild);
+            } else {
+                tbody.appendChild(tr);
+            }
+            // track latest timestamp
+            if (!lastTs || r.created_at > lastTs) lastTs = r.created_at;
         });
     }
 
-    document.getElementById('load').addEventListener('click', loadLogs);
-    window.addEventListener('DOMContentLoaded', loadLogs);
+    async function initialLoad() {
+        statusEl.textContent = 'Loading…';
+        try {
+            const res = await fetch(buildUrl(false));
+            const data = await res.json();
+            tbody.innerHTML = '';
+            seenIds.clear();
+            lastTs = null;
+            // Show newest first as returned
+            renderRows(data, {prepend: false});
+            // compute lastTs
+            data.forEach(r => {
+                if (!lastTs || r.created_at > lastTs) lastTs = r.created_at;
+            });
+            if (Array.isArray(data) && data.length === 0) {
+                showEmptyRow();
+            }
+            statusEl.textContent = 'Auto-updating…';
+        } catch (e) {
+            statusEl.textContent = 'Failed to load';
+        }
+    }
+
+    async function pollOnce() {
+        try {
+            const res = await fetch(buildUrl(true));
+            const data = await res.json();
+            if (Array.isArray(data) && data.length) {
+                renderRows(data, {prepend: true});
+            }
+        } catch (e) {
+            // transient errors ignored
+        }
+    }
+
+    function startPolling() {
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(pollOnce, 3000);
+    }
+
+    function resetAndReload() {
+        tbody.innerHTML = '';
+        seenIds.clear();
+        lastTs = null;
+        initialLoad();
+    }
+
+    // react to filter changes
+    levelEl.addEventListener('change', resetAndReload);
+    let ipDebounce;
+    ipEl.addEventListener('input', () => {
+        clearTimeout(ipDebounce);
+        ipDebounce = setTimeout(resetAndReload, 400);
+    });
+
+    window.addEventListener('DOMContentLoaded', async () => {
+        await initialLoad();
+        startPolling();
+    });
+
+    window.addEventListener('beforeunload', () => {
+        if (pollTimer) clearInterval(pollTimer);
+    });
 </script>
 </body>
 </html>
