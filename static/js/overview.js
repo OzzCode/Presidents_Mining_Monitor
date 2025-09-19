@@ -58,7 +58,7 @@ function ensureOvCharts() {
         if (hashCtx) {
             ovCharts.hash = new Chart(hashCtx, {
                 type: 'line',
-                data: {labels: [], datasets: [{label: 'TH/s', data: [], tension: 0.2, fill: false}]},
+                data: {labels: [], datasets: [{label: 'TH/s', data: [], stepped: 'before', tension: 0.2, fill: false}]},
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     scales: {x: {type: 'time', time: {unit: 'hour'}}, y: {beginAtZero: true}},
@@ -183,7 +183,7 @@ async function loadAggregateSeries() {
 
         // Build series from /api/metrics (client-side aggregation)
         const sinceIso = new Date(Date.now() - windowMin * 60 * 1000).toISOString();
-        const q = new URLSearchParams({ since: sinceIso, limit: '3000' });
+        const q = new URLSearchParams({since: sinceIso, limit: '3000'});
         if (!getActiveOnly()) {
             q.set('active_only', 'false');
         } else {
@@ -195,9 +195,13 @@ async function loadAggregateSeries() {
         const rows = await resp.json();
         const list = Array.isArray(rows) ? rows : [];
 
-        // Aggregate into 5-minute bins: sum hash/power, avg temp/fan
+        // Aggregate into 5-minute bins:
+        // For each bin:
+        //  - compute per-miner average within the bin
+        //  - sum per-miner averages for hashrate/power (farm total)
+        //  - average per-miner averages for temp/fan (farm average)
         const BIN_MIN = 5;
-        const bins = new Map();
+        const bins = new Map(); // key -> { miners: Map<ip, {h_sum, h_cnt, p_sum, p_cnt, t_sum, t_cnt, f_sum, f_cnt}> }
         const binKey = (ts) => {
             const d = new Date(ts);
             if (Number.isNaN(d.getTime())) return null;
@@ -207,20 +211,81 @@ async function loadAggregateSeries() {
         for (const r of list) {
             const key = binKey(r.timestamp);
             if (!key) continue;
-            const cur = bins.get(key) || { hash: 0, power: 0, temp: 0, fan: 0, tc: 0, fc: 0 };
-            cur.hash += Number(r.hashrate_ths || 0);
-            cur.power += Number(r.power_w || 0);
-            const t = Number(r.avg_temp_c || 0);
-            if (Number.isFinite(t) && t > 0) { cur.temp += t; cur.tc++; }
-            const f = Number(r.avg_fan_rpm || 0);
-            if (Number.isFinite(f) && f > 0) { cur.fan += f; cur.fc++; }
-            bins.set(key, cur);
+            const ip = r.ip || r.miner_ip || 'unknown';
+            let entry = bins.get(key);
+            if (!entry) {
+                entry = {miners: new Map()};
+                bins.set(key, entry);
+            }
+            let m = entry.miners.get(ip);
+            if (!m) {
+                m = {h_sum: 0, h_cnt: 0, p_sum: 0, p_cnt: 0, t_sum: 0, t_cnt: 0, f_sum: 0, f_cnt: 0};
+                entry.miners.set(ip, m);
+            }
+            const h = Number(r.hashrate_ths);
+            if (Number.isFinite(h) && h >= 0) {
+                m.h_sum += h;
+                m.h_cnt++;
+            }
+            const p = Number(r.power_w);
+            if (Number.isFinite(p) && p >= 0) {
+                m.p_sum += p;
+                m.p_cnt++;
+            }
+            const t = Number(r.avg_temp_c);
+            if (Number.isFinite(t) && t > 0) {
+                m.t_sum += t;
+                m.t_cnt++;
+            }
+            const f = Number(r.avg_fan_rpm);
+            if (Number.isFinite(f) && f > 0) {
+                m.f_sum += f;
+                m.f_cnt++;
+            }
         }
         const timestamps = Array.from(bins.keys()).sort();
-        const hash = timestamps.map(k => bins.get(k).hash);
-        const power = timestamps.map(k => bins.get(k).power);
-        const temp = timestamps.map(k => { const b = bins.get(k); return b.tc ? b.temp / b.tc : 0; });
-        const fan = timestamps.map(k => { const b = bins.get(k); return b.fc ? b.fan / b.fc : 0; });
+        const hash = timestamps.map(k => {
+            const entry = bins.get(k);
+            let total = 0;
+            entry.miners.forEach(m => {
+                const h_avg = m.h_cnt ? m.h_sum / m.h_cnt : 0;
+                total += h_avg;
+            });
+            return total;
+        });
+        const power = timestamps.map(k => {
+            const entry = bins.get(k);
+            let total = 0;
+            entry.miners.forEach(m => {
+                const p_avg = m.p_cnt ? m.p_sum / m.p_cnt : 0;
+                total += p_avg;
+            });
+            return total;
+        });
+        const temp = timestamps.map(k => {
+            const entry = bins.get(k);
+            let sum = 0, cnt = 0;
+            entry.miners.forEach(m => {
+                const t_avg = m.t_cnt ? m.t_sum / m.t_cnt : 0;
+                if (t_avg > 0) {
+                    sum += t_avg;
+                    cnt++;
+                }
+            });
+            return cnt ? (sum / cnt) : 0;
+        });
+        const fan = timestamps.map(k => {
+            const entry = bins.get(k);
+            let sum = 0, cnt = 0;
+            entry.miners.forEach(m => {
+                const f_avg = m.f_cnt ? m.f_sum / m.f_cnt : 0;
+                if (f_avg > 0) {
+                    sum += f_avg;
+                    cnt++;
+                }
+            });
+            return cnt ? (sum / cnt) : 0;
+        });
 
         // Update charts
         if (ovCharts.hash) {
@@ -358,12 +423,145 @@ async function fillMinersSummaryTable() {
     }
 }
 
+async function loadOverviewPools() {
+    const container = document.getElementById('overview-pools');
+    const statusEl = document.getElementById('overview-pools-status');
+    if (!container) return;
+    try {
+        if (statusEl) statusEl.textContent = 'Loading…';
+        container.textContent = '';
+
+        // fetch current miners (respect controls)
+        const params = new URLSearchParams({
+            active_only: getActiveOnly() ? 'true' : 'false',
+            fresh_within: String(getFreshWithin())
+        });
+        const res = await fetch(`/api/miners/current?${params.toString()}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const miners = await res.json().then(d => Array.isArray(d) ? d : []);
+        if (!miners.length) {
+            container.innerHTML = '<div style="color:#6b7280;">No miners in the selected window.</div>';
+            if (statusEl) statusEl.textContent = '';
+            return;
+        }
+
+        // Limit concurrency to avoid hammering API
+        const maxConc = 6;
+        const out = [];
+
+        async function fetchPools(ip) {
+            try {
+                const pr = await fetch(`/api/miners/${encodeURIComponent(ip)}/pools`);
+                const data = await pr.json().catch(() => ({}));
+                return (data && Array.isArray(data.pools)) ? data.pools : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        let idx = 0;
+
+        async function runBatch() {
+            const batch = [];
+            for (let k = 0; k < maxConc && idx < miners.length; k++, idx++) {
+                const m = miners[idx];
+                batch.push((async () => ({miner: m, pools: await fetchPools(m.ip)}))());
+            }
+            const results = await Promise.all(batch);
+            out.push(...results);
+        }
+
+        while (idx < miners.length) {
+            // eslint-disable-next-line no-await-in-loop
+            await runBatch();
+        }
+
+        // Render
+        const frag = document.createDocumentFragment();
+        out.forEach(({miner, pools}) => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.style.padding = '10px';
+            card.style.background = 'var(--surface)';
+            card.style.border = '1px solid var(--border)';
+            card.style.borderRadius = '8px';
+
+            const header = document.createElement('div');
+            header.style.display = 'flex';
+            header.style.justifyContent = 'space-between';
+            header.style.alignItems = 'center';
+            const left = document.createElement('div');
+            const a = document.createElement('a');
+            a.href = `/dashboard/?ip=${encodeURIComponent(miner.ip)}`;
+            a.textContent = miner.ip;
+            a.className = 'link-ip';
+            left.appendChild(a);
+            if (miner.model) {
+                const span = document.createElement('span');
+                span.textContent = ` · ${miner.model}`;
+                span.style.color = 'var(--muted)';
+                span.style.fontSize = '0.9rem';
+                left.appendChild(span);
+            }
+            header.appendChild(left);
+            const kpi = document.createElement('div');
+            kpi.style.color = 'var(--muted)';
+            kpi.style.fontSize = '0.9rem';
+            kpi.textContent = `${fmt(miner.hashrate_ths, 3)} TH/s · ${fmt0(miner.power_w)} W`;
+            header.appendChild(kpi);
+            card.appendChild(header);
+
+            const list = document.createElement('ul');
+            list.style.listStyle = 'none';
+            list.style.margin = '8px 0 0 0';
+            list.style.padding = '0';
+            if (!pools.length) {
+                const li = document.createElement('li');
+                li.style.color = 'var(--muted)';
+                li.textContent = 'No pools configured';
+                list.appendChild(li);
+            } else {
+                pools.forEach(p => {
+                    const li = document.createElement('li');
+                    li.style.display = 'flex';
+                    li.style.alignItems = 'center';
+                    li.style.gap = '6px';
+                    const dot = document.createElement('span');
+                    dot.textContent = '●';
+                    const active = (p.stratum_active === true) || (String(p.status || '').toLowerCase().includes('alive'));
+                    dot.style.color = active ? '#22c55e' : '#9ca3af';
+                    const text = document.createElement('span');
+                    const url = p.url ? String(p.url) : '';
+                    const user = p.user ? String(p.user) : '';
+                    const pr = (p.prio !== undefined && p.prio !== null) ? ` (prio ${p.prio})` : '';
+                    text.innerHTML = `${url ? `<code>${url}</code>` : ''} ${user ? `<code>${user}</code>` : ''}${pr}`;
+                    li.appendChild(dot);
+                    li.appendChild(text);
+                    list.appendChild(li);
+                });
+            }
+            card.appendChild(list);
+            frag.appendChild(card);
+        });
+        container.textContent = '';
+        container.appendChild(frag);
+        if (statusEl) statusEl.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    } catch (e) {
+        console.warn('loadOverviewPools failed', e);
+        if (statusEl) statusEl.textContent = 'Error';
+        if (container && !container.childElementCount) {
+            container.innerHTML = '<div style="color:#dc2626;">Failed to load pools.</div>';
+        }
+    }
+}
+
 async function initOverview() {
     try {
         ensureOvCharts();
         await loadSummaryKPIs();
         await loadAggregateSeries();
         await fillMinersSummaryTable();
+        await loadOverviewPools();
     } catch (error) {
         console.error('Failed to initialize overview:', error);
     }
@@ -381,6 +579,7 @@ document.addEventListener('DOMContentLoaded', () => {
             loadSummaryKPIs();
             loadAggregateSeries();
             fillMinersSummaryTable();
+            loadOverviewPools();
         }, 150); // debounce rapid changes
     };
     if (sel) sel.addEventListener('change', () => {
@@ -400,6 +599,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loadSummaryKPIs();
         loadAggregateSeries();
         fillMinersSummaryTable();
+        loadOverviewPools();
     }, OV_REFRESH * 1000);
 });
 

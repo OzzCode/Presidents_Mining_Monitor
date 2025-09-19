@@ -1,5 +1,5 @@
 // Auto-refresh interval (ms)
-const HISTORY_INTERVAL_MS = 30000;
+const HISTORY_INTERVAL_MS = 15000;
 
 let historyChart;
 let historyTimer = null;

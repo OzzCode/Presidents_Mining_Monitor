@@ -580,8 +580,13 @@ def error_logs():
     session = SessionLocal()
     q = session.query(ErrorEvent)
 
-    if level: q = q.filter(ErrorEvent.level == level.upper())
-    if miner_ip: q = q.filter(ErrorEvent.miner_ip == miner_ip)
+    # Treat empty or 'ALL' (any case) as no level filter
+    if level:
+        lvl = level.strip().upper()
+        if lvl and lvl != 'ALL' and lvl != 'ANY':
+            q = q.filter(ErrorEvent.level == lvl)
+    if miner_ip:
+        q = q.filter(ErrorEvent.miner_ip == miner_ip)
     if since:
         try:
             dt = _normalize_since(since)
@@ -667,7 +672,31 @@ def get_pools_for_miner(ip):
         return jsonify({"ok": True, "pools": norm, "raw": resp}), 200
     except MinerError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
+    # Handle expected network failures explicitly so the UI can degrade gracefully
     except Exception as e:
+        import socket, errno as _errno
+        # socket.timeout is a subclass of OSError in some versions; check robustly
+        if isinstance(e, (socket.timeout, TimeoutError)):
+            # Timeouts are expected when miners are offline/unreachable
+            logger.warning("get pools timeout for %s", ip)
+            return jsonify({"ok": False, "error": "Miner API timed out"}), 504
+        if isinstance(e, ConnectionRefusedError):
+            logger.warning("get pools connection refused for %s", ip)
+            return jsonify({"ok": False, "error": "Miner refused connection"}), 502
+        if isinstance(e, OSError):
+            # Map common network errno to a 502/503
+            code = getattr(e, "errno", None)
+            if code in {
+                _errno.EHOSTUNREACH,  # 113 (Linux)
+                _errno.ENETUNREACH,   # 101
+                _errno.ECONNREFUSED,  # 111/10061
+                _errno.ETIMEDOUT,     # 110/10060
+            }:
+                logger.warning("get pools network error for %s: %s", ip, getattr(e, "strerror", str(e)))
+                # Use 503 for unreachable/timeout to indicate temporary unavailability
+                status = 503 if code in {_errno.EHOSTUNREACH, _errno.ENETUNREACH, _errno.ETIMEDOUT} else 502
+                msg = "Network unreachable or timed out" if status == 503 else "Connection refused"
+                return jsonify({"ok": False, "error": msg}), status
         logger.exception("get pools failed for %s", ip)
         return jsonify({"ok": False, "error": "Failed to fetch pools", "detail": str(e)}), 500
 

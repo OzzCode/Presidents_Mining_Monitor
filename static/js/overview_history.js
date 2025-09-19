@@ -1,7 +1,7 @@
 // Render 3 small hashrate charts on the Overview tab: 10m, 1h, 1d
 // Requires Chart.js and a global MINER_IP (can be null for all miners)
 
-const OVERVIEW_HISTORY_REFRESH_MS = 60000; // refresh every 60s
+const OVERVIEW_HISTORY_REFRESH_MS = 30000; // refresh every 60s
 const INTERVALS = [
     {id: 'chart-10m', label: 'Hashrate (TH/s)', seconds: 600, limit: 200},
     {id: 'chart-1h', label: 'Hashrate (TH/s)', seconds: 3600, limit: 1000},

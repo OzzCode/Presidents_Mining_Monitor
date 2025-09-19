@@ -22,7 +22,9 @@
 
 <!-- Quick actions -->
 <div style="margin:12px 0;">
-    <a href="/dashboard/pools" style="display:inline-block; background:#2a6df4; color:#fff; padding:8px 12px; border-radius:6px; text-decoration:none;">Add Mining Pool</a>
+    <a href="/dashboard/pools"
+       style="display:inline-block; background:#2a6df4; color:#fff; padding:8px 12px; border-radius:6px; text-decoration:none;">Add
+        Mining Pool</a>
 </div>
 
 <!-- Include Chart.js once if not already present anywhere -->
@@ -70,7 +72,11 @@
             <canvas id="overview-tempfan"></canvas>
         </div>
     </div>
-    <div id="kpi-hash">Loading...</div>
+    <div class="chart-card" style="grid-column: 1 / -1;">
+        <h3>Active Pools (by miner)</h3>
+        <div id="overview-pools" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; margin-top:8px;"></div>
+        <div id="overview-pools-status" style="font-size:0.9rem;color:#6b7280; margin-top:6px;"></div>
+    </div>
 </div>
 
 <div class="controls-bar" style="margin:12px 0; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
