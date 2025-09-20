@@ -15,4 +15,4 @@ out/
 .gitignore
 logs/
 img/
-db_files
+db_files/
