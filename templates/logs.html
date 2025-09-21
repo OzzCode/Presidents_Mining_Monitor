@@ -36,6 +36,22 @@
     <tbody id="tbody"></tbody>
 </table>
 
+<h2 style="margin-top:24px;">Live Miner Logs</h2>
+<p style="color:#6b7280;font-size:0.9rem;">Enter a miner IP above and click "Load Live Miner Logs" to fetch logs directly from the device.</p>
+<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+    <button id="load-live">Load Live Miner Logs</button>
+</div>
+<table class="table">
+    <thead>
+    <tr>
+        <th>Time</th>
+        <th>Level</th>
+        <th>Message</th>
+    </tr>
+    </thead>
+    <tbody id="live-body"></tbody>
+</table>
+
 <script>
     const tbody = document.getElementById('tbody');
     const levelEl = document.getElementById('level');
@@ -149,6 +165,50 @@
         clearTimeout(ipDebounce);
         ipDebounce = setTimeout(resetAndReload, 400);
     });
+
+    // --- Live Miner Logs (direct from device) ---
+    const liveBtn = document.getElementById('load-live');
+    const liveBody = document.getElementById('live-body');
+
+    async function loadLive() {
+        const ip = ipEl.value.trim();
+        liveBody.innerHTML = '';
+        if (!ip) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td colspan="3">Enter an IP above to fetch live miner logs.</td>`;
+            liveBody.appendChild(tr);
+            return;
+        }
+        try {
+            const res = await fetch(`/api/miner/${encodeURIComponent(ip)}/logs`);
+            const payload = await res.json();
+            if (!payload.ok) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="3">Error: ${payload.error || 'Failed to fetch logs'}</td>`;
+                liveBody.appendChild(tr);
+                return;
+            }
+            const entries = Array.isArray(payload.entries) ? payload.entries : [];
+            if (!entries.length) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="3">No live log entries returned.</td>`;
+                liveBody.appendChild(tr);
+                return;
+            }
+            entries.forEach(e => {
+                const level = String(e.level || 'INFO').toUpperCase();
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${e.ts || '—'}</td><td>${level}</td><td>${e.message || ''}</td>`;
+                liveBody.appendChild(tr);
+            });
+        } catch (e) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td colspan="3">Request failed.</td>`;
+            liveBody.appendChild(tr);
+        }
+    }
+
+    liveBtn.addEventListener('click', loadLive);
 
     window.addEventListener('DOMContentLoaded', async () => {
         await initialLoad();

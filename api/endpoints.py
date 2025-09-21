@@ -87,6 +87,7 @@ def debug_tail():
     finally:
         s.close()
 
+
 @dash_bp.route("/dashboard/miners")
 def discover_miners(timeout=1, workers=50, use_mdns=True, return_sources=False):
     """
@@ -470,6 +471,7 @@ def miners_current():
                         return ip, MinerClient(ip).fetch_normalized().get('model', '')
                     except Exception:
                         return ip, ''
+
                 with ThreadPoolExecutor(max_workers=min(_MAX_WORKERS, len(ips))) as ex:
                     for fut in as_completed([ex.submit(_fetch, ip) for ip in ips]):
                         ip, model = fut.result()
@@ -688,9 +690,9 @@ def get_pools_for_miner(ip):
             code = getattr(e, "errno", None)
             if code in {
                 _errno.EHOSTUNREACH,  # 113 (Linux)
-                _errno.ENETUNREACH,   # 101
+                _errno.ENETUNREACH,  # 101
                 _errno.ECONNREFUSED,  # 111/10061
-                _errno.ETIMEDOUT,     # 110/10060
+                _errno.ETIMEDOUT,  # 110/10060
             }:
                 logger.warning("get pools network error for %s: %s", ip, getattr(e, "strerror", str(e)))
                 # Use 503 for unreachable/timeout to indicate temporary unavailability
@@ -701,10 +703,61 @@ def get_pools_for_miner(ip):
         return jsonify({"ok": False, "error": "Failed to fetch pools", "detail": str(e)}), 500
 
 
+def _normalize_pool(p: dict) -> dict:
+    return {
+        "stratum": (p.get("stratum") or p.get("url") or "").strip(),
+        "username": (p.get("username") or p.get("user") or "").strip(),
+        "password": p.get("password") or "",
+    }
+
+
+def _validate_pools(pools: list[dict]):
+    for p in pools:
+        if not p["stratum"] or not p["username"]:
+            return "Each pool requires stratum and username"
+    return None
+
+
+def _remove_all_pools(client, ops_log: list) -> dict | None:
+    """Best-effort: fetch previous pools, then remove all existing pools by id."""
+    previous = None
+    try:
+        previous = client.get_pools()
+    except Exception as e:
+        previous = {"error": f"failed to fetch pools: {e}"}
+    try:
+        ids = client.list_pool_ids()
+    except Exception as e:
+        ids = []
+        ops_log.append({"step": "list_pool_ids", "ok": False, "error": str(e)})
+    for pid in sorted(ids, reverse=True):
+        try:
+            r = client.remove_pool(pid)
+            ops_log.append({"step": "remove_pool", "id": pid, "ok": True, "result": r})
+        except Exception as e:
+            ops_log.append({"step": "remove_pool", "id": pid, "ok": False, "error": str(e)})
+    return previous
+
+
+def _add_pools_and_prioritize(client, pools: list[dict], ops_log: list):
+    """Add pools, then set priority if multiple pools provided."""
+    add_results = []
+    for p in pools:
+        r = client.add_pool(p["stratum"], p["username"], p.get("password") or "")
+        add_results.append({"url": p["stratum"], "user": p["username"], "ok": True, "result": r})
+    ops_log.append({"step": "add_pools", "count": len(add_results), "details": add_results})
+
+    if len(pools) > 1:
+        try:
+            pr = client.pool_priority(list(range(len(pools))))
+            ops_log.append({"step": "pool_priority", "ok": True, "result": pr})
+        except Exception as e:
+            ops_log.append({"step": "pool_priority", "ok": False, "error": str(e)})
+
+
 @api_bp.post('/miners/<ip>/pools')
 def add_pool(ip):
     """Add or replace mining pools for the specified miner.
-
     POST behaviors:
       - Single pool body: {stratum, username, password?, overwrite?}
         If overwrite is true (default), existing pools will be fetched and removed before adding this one.
@@ -713,70 +766,32 @@ def add_pool(ip):
         Always treated as overwrite unless query param append=true is set.
     """
     data = request.get_json(silent=True) or {}
-    append_qs = request.args.get("append", "false").lower() in ("1", "true", "yes")
+    append_query = request.args.get("append", "false").lower() in ("1", "true", "yes")
     overwrite_flag = data.get("overwrite")
-    overwrite = (not append_qs) if overwrite_flag is None else bool(overwrite_flag)
+    overwrite = (not append_query) if overwrite_flag is None else bool(overwrite_flag)
 
     # Normalize to a list of pools
     pools_body = data.get("pools")
     ops_log = []
 
-    def _norm_pool(p):
-        return {
-            "stratum": (p.get("stratum") or p.get("url") or "").strip(),
-            "username": (p.get("username") or p.get("user") or "").strip(),
-            "password": p.get("password") or "",
-        }
-
     if isinstance(pools_body, list) and pools_body:
-        pools_to_set = [_norm_pool(p) for p in pools_body]
+        pools_to_set = [_normalize_pool(p) for p in pools_body]
     else:
-        pools_to_set = [_norm_pool(data)]
+        pools_to_set = [_normalize_pool(data)]
 
-    # Basic validation of at least first pool
-    for p in pools_to_set:
-        if not p["stratum"] or not p["username"]:
-            return jsonify({"ok": False, "error": "Each pool requires stratum and username"}), 400
+    # Basic validation
+    err = _validate_pools(pools_to_set)
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
 
     client = MinerClient(ip)
-
     prev_pools = None
-    final_pools = None
 
     try:
-        # If overwrite requested, remove existing pools first
         if overwrite:
-            try:
-                prev_pools = client.get_pools()
-            except Exception as e:
-                prev_pools = {"error": f"failed to fetch pools: {e}"}
-            # attempt to list and remove by indices
-            try:
-                ids = client.list_pool_ids()
-            except Exception as e:
-                ids = []
-                ops_log.append({"step": "list_pool_ids", "ok": False, "error": str(e)})
-            for pid in sorted(ids, reverse=True):
-                try:
-                    r = client.remove_pool(pid)
-                    ops_log.append({"step": "remove_pool", "id": pid, "ok": True, "result": r})
-                except Exception as e:
-                    ops_log.append({"step": "remove_pool", "id": pid, "ok": False, "error": str(e)})
+            prev_pools = _remove_all_pools(client, ops_log)
 
-        # Add the requested pools
-        add_results = []
-        for p in pools_to_set:
-            r = client.add_pool(p["stratum"], p["username"], p.get("password") or "")
-            add_results.append({"url": p["stratum"], "user": p["username"], "ok": True, "result": r})
-        ops_log.append({"step": "add_pools", "count": len(add_results), "details": add_results})
-
-        # Set priorities in declared order if more than one pool
-        if len(pools_to_set) > 1:
-            try:
-                pr = client.pool_priority(list(range(len(pools_to_set))))
-                ops_log.append({"step": "pool_priority", "ok": True, "result": pr})
-            except Exception as e:
-                ops_log.append({"step": "pool_priority", "ok": False, "error": str(e)})
+        _add_pools_and_prioritize(client, pools_to_set, ops_log)
 
         try:
             final_pools = client.get_pools()
@@ -808,71 +823,170 @@ def replace_pools(ip):
     if not isinstance(pools_body, list) or not pools_body:
         return jsonify({"ok": False, "error": "Body must include non-empty 'pools' array"}), 400
 
-    # Reuse POST handler with forced overwrite
-    with current_app.test_request_context():
-        request.args = request.args.copy()
-    # Construct a fake request-like object by calling the function directly with prepared data
-    # Instead, inline logic to avoid context mutation
-
     client = MinerClient(ip)
     ops_log = []
 
-    def _norm_pool(p):
-        return {
-            "stratum": (p.get("stratum") or p.get("url") or "").strip(),
-            "username": (p.get("username") or p.get("user") or "").strip(),
-            "password": p.get("password") or "",
-        }
-
-    pools_to_set = [_norm_pool(p) for p in pools_body]
-    for p in pools_to_set:
-        if not p["stratum"] or not p["username"]:
-            return jsonify({"ok": False, "error": "Each pool requires stratum and username"}), 400
+    pools_to_set = [_normalize_pool(p) for p in pools_body]
+    err = _validate_pools(pools_to_set)
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
 
     try:
-        prev = None
-        try:
-            prev = client.get_pools()
-        except Exception:
-            prev = None
+        previous = _remove_all_pools(client, ops_log)
 
-        # remove existing
-        try:
-            ids = client.list_pool_ids()
-        except Exception as e:
-            ids = []
-            ops_log.append({"step": "list_pool_ids", "ok": False, "error": str(e)})
-        for pid in sorted(ids, reverse=True):
-            try:
-                r = client.remove_pool(pid)
-                ops_log.append({"step": "remove_pool", "id": pid, "ok": True, "result": r})
-            except Exception as e:
-                ops_log.append({"step": "remove_pool", "id": pid, "ok": False, "error": str(e)})
-
-        add_results = []
-        for p in pools_to_set:
-            r = client.add_pool(p["stratum"], p["username"], p.get("password") or "")
-            add_results.append({"url": p["stratum"], "user": p["username"], "ok": True, "result": r})
-        ops_log.append({"step": "add_pools", "count": len(add_results), "details": add_results})
-
-        if len(pools_to_set) > 1:
-            try:
-                pr = client.pool_priority(list(range(len(pools_to_set))))
-                ops_log.append({"step": "pool_priority", "ok": True, "result": pr})
-            except Exception as e:
-                ops_log.append({"step": "pool_priority", "ok": False, "error": str(e)})
+        _add_pools_and_prioritize(client, pools_to_set, ops_log)
 
         try:
             final = client.get_pools()
         except Exception:
             final = None
 
-        return jsonify({"ok": True, "previous": prev, "operations": ops_log, "pools": final}), 200
+        return jsonify({"ok": True, "previous": previous, "operations": ops_log, "pools": final}), 200
     except MinerError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
         logger.exception("replace_pools failed for %s", ip)
         return jsonify({"ok": False, "error": "Failed to replace pools", "detail": str(e)}), 500
+
+
+@api_bp.get('/miner/<ip>/logs')
+def miner_logs(ip):
+    """Fetch live logs from a miner via CGMiner/BMminer API.
+
+    Query params:
+      - limit: max number of entries to return (default 200)
+      - since: ISO8601 or epoch seconds; if provided, filter to entries newer than this
+    Response shape: { ok: true, entries: [ {ts, level, message} ... ], raw?: object }
+    """
+    try:
+        try:
+            limit = int(request.args.get('limit', 200))
+        except Exception:
+            limit = 200
+        since_param = request.args.get('since')
+        since_ts = None
+        if since_param:
+            try:
+                # accept ISO or epoch
+                try:
+                    since_ts = int(float(since_param))
+                except Exception:
+                    dt = _normalize_since(since_param)
+                    from datetime import timezone
+                    since_ts = int(dt.replace(tzinfo=timezone.utc).timestamp())
+            except Exception:
+                since_ts = None
+
+        client = MinerClient(ip)
+
+        # Try the standard 'log' command first
+        resp = None
+        try:
+            resp = client.get_log() or {}
+        except Exception:
+            resp = None
+
+        # Fallbacks: 'readlog' raw command, then 'notify'
+        if not resp:
+            try:
+                import json as _json
+                resp = client._send_command(_json.dumps({"command": "readlog"})) or {}
+            except Exception:
+                resp = None
+        used_notify = False
+        if not resp:
+            try:
+                resp = client.get_notify() or {}
+                used_notify = True
+            except Exception:
+                resp = None
+
+        if resp is None:
+            return jsonify({"ok": False, "error": "Miner did not return logs"}), 502
+
+        entries = []
+        import math
+        # Normalize LOG-style responses
+        log_arrays = None
+        for k in ("LOG", "log", "READLOG", "ReadLog", "readlog"):
+            if isinstance(resp, dict) and k in resp and isinstance(resp[k], list):
+                log_arrays = resp[k]
+                break
+        if log_arrays is None and used_notify:
+            log_arrays = resp.get("NOTIFY") or resp.get("Notify") or resp.get("notify") or []
+
+        def _sev_from(it):
+            lv = (it.get('Level') or it.get('level') or it.get('Code') or it.get('Severity') or '').strip()
+            lvu = lv.upper()
+            if any(x in lvu for x in ("ERR", "ERROR", "FATAL", "CRIT")):
+                return 'ERROR'
+            if any(x in lvu for x in ("WARN", "WARNING")):
+                return 'WARN'
+            return 'INFO'
+
+        def _ts_from(it):
+            w = it.get('When') or it.get('when') or it.get('Timestamp') or it.get('ts')
+            if isinstance(w, (int, float)) and not math.isnan(float(w)):
+                try:
+                    return datetime.fromtimestamp(int(w), tz=timezone.utc).isoformat().replace('+00:00', 'Z')
+                except Exception:
+                    pass
+            if isinstance(w, str) and w:
+                return w
+            # if notify had 'When' in seconds since start, fall back to now
+            return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+        from datetime import datetime, timezone
+        for it in (log_arrays or []):
+            if not isinstance(it, dict):
+                # treat as plain line
+                msg = str(it)
+                entries.append({"ts": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+                                "level": 'INFO', "message": msg})
+                continue
+            ts = _ts_from(it)
+            # Optional since filter
+            if since_ts is not None:
+                try:
+                    ts_epoch = int(datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp())
+                    if ts_epoch < since_ts:
+                        continue
+                except Exception:
+                    pass
+            msg = it.get('Msg') or it.get('Message') or it.get('Log') or it.get('msg') or ''
+            if not msg:
+                # concatenate remaining fields as best-effort message
+                try:
+                    msg = ' '.join(
+                        str(v) for k, v in it.items() if k not in {'When', 'Level', 'Code', 'Msg', 'Message', 'Log'})
+                except Exception:
+                    msg = ''
+            entries.append({
+                'ts': ts,
+                'level': _sev_from(it),
+                'message': msg,
+            })
+
+        # Enforce limit keeping most recent entries
+        if isinstance(entries, list) and len(entries) > limit:
+            entries = entries[-limit:]
+
+        return jsonify({"ok": True, "entries": entries, "raw": resp})
+
+    except MinerError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        import socket, errno as _errno
+        if isinstance(e, (socket.timeout, TimeoutError)):
+            return jsonify({"ok": False, "error": "Miner API timed out"}), 504
+        if isinstance(e, ConnectionRefusedError):
+            return jsonify({"ok": False, "error": "Miner refused connection"}), 502
+        if isinstance(e, OSError):
+            code = getattr(e, 'errno', None)
+            if code in {_errno.EHOSTUNREACH, _errno.ENETUNREACH, _errno.ETIMEDOUT}:
+                return jsonify({"ok": False, "error": "Network unreachable or timed out"}), 503
+        logger.exception("miner logs failed for %s", ip)
+        return jsonify({"ok": False, "error": "Failed to fetch miner logs", "detail": str(e)}), 500
 
 
 @api_bp.route('/debug/routes')
