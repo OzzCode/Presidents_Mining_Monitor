@@ -663,6 +663,19 @@ def get_pools_for_miner(ip):
             # normalize boolean if present
             if isinstance(sa, str):
                 sa = sa.strip().lower() in ("1", "true", "yes", "y")
+            # share stats
+            def _num(v):
+                try:
+                    if v is None or v == "":
+                        return None
+                    return int(float(v))
+                except Exception:
+                    return None
+            acc = _num(p.get("Accepted") or p.get("ACCEPTED") or p.get("accepted")) or 0
+            rej = _num(p.get("Rejected") or p.get("REJECTED") or p.get("rejected")) or 0
+            stl = _num(p.get("Stale") or p.get("STALE") or p.get("stale")) or 0
+            total_shares = acc + rej + stl
+            reject_percent = (rej / total_shares * 100.0) if total_shares > 0 else 0.0
             norm.append({
                 "id": pid,
                 "url": url,
@@ -670,6 +683,10 @@ def get_pools_for_miner(ip):
                 "status": status,
                 "prio": prio,
                 "stratum_active": sa,
+                "accepted": acc,
+                "rejected": rej,
+                "stale": stl,
+                "reject_percent": round(reject_percent, 2),
             })
         return jsonify({"ok": True, "pools": norm, "raw": resp}), 200
     except MinerError as e:
@@ -856,6 +873,7 @@ def miner_logs(ip):
     Query params:
       - limit: max number of entries to return (default 200)
       - since: ISO8601 or epoch seconds; if provided, filter to entries newer than this
+      - raw: include raw miner response when 'true' (default false)
     Response shape: { ok: true, entries: [ {ts, level, message} ... ], raw?: object }
     """
     try:
@@ -863,7 +881,12 @@ def miner_logs(ip):
             limit = int(request.args.get('limit', 200))
         except Exception:
             limit = 200
+        # Enforce bounds for safety
+        if limit <= 0:
+            return jsonify({"ok": False, "error": "limit must be >= 1"}), 400
+        limit = min(limit, API_MAX_LIMIT)
         since_param = request.args.get('since')
+        include_raw = (request.args.get('raw', 'false').lower() in ('1', 'true', 'yes'))
         since_ts = None
         if since_param:
             try:
@@ -871,9 +894,10 @@ def miner_logs(ip):
                 try:
                     since_ts = int(float(since_param))
                 except Exception:
-                    dt = _normalize_since(since_param)
-                    from datetime import timezone
-                    since_ts = int(dt.replace(tzinfo=timezone.utc).timestamp())
+                    dt = _normalize_since(since_param)  # returns naive UTC
+                    from datetime import timezone, datetime
+                    since_ts = int(datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
+                                            tzinfo=timezone.utc).timestamp())
             except Exception:
                 since_ts = None
 
@@ -915,8 +939,11 @@ def miner_logs(ip):
         if log_arrays is None and used_notify:
             log_arrays = resp.get("NOTIFY") or resp.get("Notify") or resp.get("notify") or []
 
+        from datetime import datetime, timezone
+
         def _sev_from(it):
-            lv = (it.get('Level') or it.get('level') or it.get('Code') or it.get('Severity') or '').strip()
+            lv = (it.get('Level') or it.get('level') or it.get('Code') or it.get('Severity') or '')
+            lv = str(lv).strip()
             lvu = lv.upper()
             if any(x in lvu for x in ("ERR", "ERROR", "FATAL", "CRIT")):
                 return 'ERROR'
@@ -926,17 +953,30 @@ def miner_logs(ip):
 
         def _ts_from(it):
             w = it.get('When') or it.get('when') or it.get('Timestamp') or it.get('ts')
+            # numeric (epoch seconds)
             if isinstance(w, (int, float)) and not math.isnan(float(w)):
                 try:
                     return datetime.fromtimestamp(int(w), tz=timezone.utc).isoformat().replace('+00:00', 'Z')
                 except Exception:
                     pass
+            # try numeric string, then ISO normalization
             if isinstance(w, str) and w:
-                return w
+                ws = w.strip()
+                try:
+                    sec = float(ws)
+                    return datetime.fromtimestamp(int(sec), tz=timezone.utc).isoformat().replace('+00:00', 'Z')
+                except Exception:
+                    pass
+                try:
+                    # normalize ISO-ish strings to UTC Z
+                    dt = _normalize_since(ws)  # naive UTC
+                    return dt.replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
+                except Exception:
+                    # fall through: return as-is
+                    return ws
             # if notify had 'When' in seconds since start, fall back to now
             return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
-        from datetime import datetime, timezone
         for it in (log_arrays or []):
             if not isinstance(it, dict):
                 # treat as plain line
@@ -955,10 +995,10 @@ def miner_logs(ip):
                     pass
             msg = it.get('Msg') or it.get('Message') or it.get('Log') or it.get('msg') or ''
             if not msg:
-                # concatenate remaining fields as best-effort message
+                # concatenate remaining fields as best-effort message (case-insensitive key filter)
                 try:
-                    msg = ' '.join(
-                        str(v) for k, v in it.items() if k not in {'When', 'Level', 'Code', 'Msg', 'Message', 'Log'})
+                    exclude = {'when', 'level', 'code', 'msg', 'message', 'log'}
+                    msg = ' '.join(str(v) for k, v in it.items() if str(k).lower() not in exclude)
                 except Exception:
                     msg = ''
             entries.append({
@@ -971,7 +1011,10 @@ def miner_logs(ip):
         if isinstance(entries, list) and len(entries) > limit:
             entries = entries[-limit:]
 
-        return jsonify({"ok": True, "entries": entries, "raw": resp})
+        payload = {"ok": True, "entries": entries}
+        if include_raw:
+            payload["raw"] = resp
+        return jsonify(payload)
 
     except MinerError as e:
         return jsonify({"ok": False, "error": str(e)}), 400

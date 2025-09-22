@@ -453,20 +453,24 @@ async function loadPools() {
         tbody.textContent = '';
         if (!res.ok || !data || !Array.isArray(data.pools)) {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="6" style="color:#dc2626;">Failed to load pools.</td>`;
+            tr.innerHTML = `<td colspan="10" style="color:#dc2626;">Failed to load pools.</td>`;
             tbody.appendChild(tr);
             if (statusEl) statusEl.textContent = 'Error';
             return;
         }
         if (data.pools.length === 0) {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="6" style="color:#888;">No pools configured.</td>`;
+            tr.innerHTML = `<td colspan="10" style="color:#888;">No pools configured.</td>`;
             tbody.appendChild(tr);
         } else {
             data.pools.forEach(p => {
                 const tr = document.createElement('tr');
                 const pr = (p.prio !== undefined && p.prio !== null) ? p.prio : '';
                 const sa = (p.stratum_active === true) ? 'Active' : (p.stratum_active === false ? '—' : '');
+                const acc = (typeof p.accepted === 'number') ? p.accepted : (p.accepted ? Number(p.accepted) : 0);
+                const rej = (typeof p.rejected === 'number') ? p.rejected : (p.rejected ? Number(p.rejected) : 0);
+                const stl = (typeof p.stale === 'number') ? p.stale : (p.stale ? Number(p.stale) : 0);
+                const rp = (typeof p.reject_percent === 'number') ? p.reject_percent : (p.reject_percent ? Number(p.reject_percent) : 0);
                 tr.innerHTML = `
                     <td>${p.id ?? ''}</td>
                     <td>${p.url ? `<code>${p.url}</code>` : ''}</td>
@@ -474,6 +478,10 @@ async function loadPools() {
                     <td>${p.status || ''}</td>
                     <td>${pr}</td>
                     <td>${sa}</td>
+                    <td>${acc}</td>
+                    <td>${rej}</td>
+                    <td>${stl}</td>
+                    <td>${rp.toFixed ? rp.toFixed(2) : Number(rp).toFixed(2)}%</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -482,7 +490,7 @@ async function loadPools() {
     } catch (e) {
         tbody.textContent = '';
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="6" style="color:#dc2626;">${String(e)}</td>`;
+        tr.innerHTML = `<td colspan="10" style="color:#dc2626;">${String(e)}</td>`;
         tbody.appendChild(tr);
         if (statusEl) statusEl.textContent = 'Error';
     }
