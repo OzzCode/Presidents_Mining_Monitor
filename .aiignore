@@ -10,7 +10,7 @@
 dist/
 build/
 out/
-.idea
+.idea/
 .venv
 .gitignore
 logs/
