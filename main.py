@@ -13,6 +13,7 @@ def create_app():
     app.register_blueprint(dash_bp, url_prefix="/dashboard")
     app.register_blueprint(api_bp, url_prefix='/api')
 
+
     @app.route("/")
     def home():
         return render_template("home.html")
@@ -76,4 +77,4 @@ if __name__ == '__main__':
     start_scheduler()
 
     # On Windows, disable the reloader to avoid socket close races causing WinError 10038
-    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
