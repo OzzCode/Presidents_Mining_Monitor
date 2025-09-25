@@ -663,6 +663,7 @@ def get_pools_for_miner(ip):
             # normalize boolean if present
             if isinstance(sa, str):
                 sa = sa.strip().lower() in ("1", "true", "yes", "y")
+
             # share stats
             def _num(v):
                 try:
@@ -671,6 +672,7 @@ def get_pools_for_miner(ip):
                     return int(float(v))
                 except Exception:
                     return None
+
             acc = _num(p.get("Accepted") or p.get("ACCEPTED") or p.get("accepted")) or 0
             rej = _num(p.get("Rejected") or p.get("REJECTED") or p.get("rejected")) or 0
             stl = _num(p.get("Stale") or p.get("STALE") or p.get("stale")) or 0
@@ -1107,3 +1109,55 @@ def bos_power_target(ip):
     except Exception as e:
         logger.exception("BOS set power target failed for %s", ip)
         return jsonify({"ok": False, "error": str(e)}), 400
+
+
+@api_bp.get('/btc/history')
+def btc_history():
+    """Return 14-day BTC/USD price history points via server-side proxy.
+    Response: { ok: true, points: [{x: epoch_ms, y: price}], last: float, updated: ISO8601Z }
+    """
+    import requests
+    from datetime import datetime, timezone
+
+    # Try CoinGecko first
+    points = []
+    try:
+        cg_url = 'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart'
+        params = {'vs_currency': 'usd', 'days': '14', 'interval': 'daily'}
+        r = requests.get(cg_url, params=params, timeout=6)
+        if r.ok:
+            data = r.json() or {}
+            prices = data.get('prices') or []
+            for it in prices:
+                try:
+                    ts, price = it[0], it[1]
+                    points.append({'x': int(ts), 'y': float(price)})
+                except Exception:
+                    continue
+        else:
+            raise RuntimeError(f'CoinGecko HTTP {r.status_code}')
+    except Exception:
+        # Fallback to CoinCap
+        try:
+            end_ms = int(time.time() * 1000)
+            start_ms = end_ms - 14 * 24 * 60 * 60 * 1000
+            cc_url = 'https://api.coincap.io/v2/assets/bitcoin/history'
+            params = {'interval': 'd1', 'start': str(start_ms), 'end': str(end_ms)}
+            r2 = requests.get(cc_url, params=params, timeout=6)
+            if r2.ok:
+                payload = r2.json() or {}
+                arr = payload.get('data') or []
+                for p in arr:
+                    try:
+                        points.append({'x': int(p.get('time')), 'y': float(p.get('priceUsd'))})
+                    except Exception:
+                        continue
+        except Exception:
+            points = []
+
+    if not points:
+        return jsonify({'ok': False, 'error': 'No data'}), 502
+
+    last = points[-1]['y']
+    updated = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    return jsonify({'ok': True, 'points': points, 'last': last, 'updated': updated})

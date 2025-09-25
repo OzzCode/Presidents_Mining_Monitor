@@ -7,7 +7,7 @@
     <title>Antminer Monitor Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 </head>
 <body>
@@ -26,7 +26,18 @@
         <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
         <li><a href="{{ url_for('logs') }}">Logs</a></li>
     </ul>
-    <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme"><span aria-hidden="true">🌓</span> Theme</button>
+    <div style="display:flex; align-items:center; gap:12px;">
+        <div id="btc-header-widget" style="display:flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid var(--border); background: var(--surface-2); border-radius:8px;">
+            <div style="display:flex; flex-direction:column; line-height:1;">
+                <div id="btc-price" style="font-weight:600;">—</div>
+                <div id="btc-updated" style="font-size:0.75rem; color: var(--muted);">—</div>
+            </div>
+            <div style="width:110px; height:28px;">
+                <canvas id="btc-chart" height="28"></canvas>
+            </div>
+        </div>
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme"><span aria-hidden="true">🌓</span> Theme</button>
+    </div>
 </nav>
 <div class="container">
     <h1>Dashboard{% if ip %} — {{ ip }}{% endif %}      <span id="live-indicator"
@@ -187,7 +198,7 @@
 <script src="{{ url_for('static', filename='js/history.js') }}"></script>
 <script src="{{ url_for('static', filename='js/overview_history.js') }}"></script>
 <script src="{{ url_for('static', filename='js/overview.js') }}"></script>
-
+<script src="{{ url_for('static', filename='js/btc_widget.js') }}?v=4"></script>
 
 <footer style="text-align:center; margin:20px;">
     <a href="{{ url_for('home') }}">Back to Home</a>

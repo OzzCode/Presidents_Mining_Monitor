@@ -6,7 +6,26 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-<nav><a href="{{ url_for('home') }}">Home</a> · <a href="{{ url_for('dashboard.index') }}">Dashboard</a></nav>
+<nav>
+    <h1><a href="{{ url_for('home') }}" style="text-decoration:none;color:inherit;">Antminer Monitor</a></h1>
+    <ul class="nav-list">
+        <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
+        <li><a href="{{ url_for('logs') }}">Logs</a></li>
+    </ul>
+    <div style="display:flex; align-items:center; gap:12px;">
+        <div id="btc-header-widget" style="display:flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid var(--border); background: var(--surface-2); border-radius:8px;">
+            <div style="display:flex; flex-direction:column; line-height:1;">
+                <div id="btc-price" style="font-weight:600;">—</div>
+                <div id="btc-updated" style="font-size:0.75rem; color: var(--muted);">—</div>
+            </div>
+            <div style="width:110px; height:28px;">
+                <canvas id="btc-chart" height="28"></canvas>
+            </div>
+        </div>
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme"><span aria-hidden="true">🌓</span> Theme</button>
+    </div>
+</nav>
 <h1>Error Logs <span id="live-dot" style="color:#16a34a;">● LIVE</span></h1>
 
 <div class="controls" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
@@ -51,9 +70,14 @@
     </thead>
     <tbody id="live-body"></tbody>
 </table>
-
-<script>
-    const tbody = document.getElementById('tbody');
+ 
+ <!-- Include Chart.js and time adapter for the BTC header widget -->
+ <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+ <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+ <script src="{{ url_for('static', filename='js/btc_widget.js') }}?v=4"></script>
+ 
+ <script>
+     const tbody = document.getElementById('tbody');
     const levelEl = document.getElementById('level');
     const ipEl = document.getElementById('ip');
     const statusEl = document.getElementById('status');

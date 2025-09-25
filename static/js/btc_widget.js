@@ -18,29 +18,21 @@
             while (!window.Chart) {
                 await new Promise(r => setTimeout(r, 50));
                 if (Date.now() - start > timeoutMs) {
-                    throw new Error('Chart.js not loaded');
+                    return false; // Don't throw; allow price text without chart
                 }
             }
+            return true;
         }
 
-        async function getFromCoinGecko() {
-            const url = 'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=14&interval=daily';
-            const resp = await fetch(url, {cache: 'no-store'});
-            if (!resp.ok) throw new Error('CoinGecko HTTP ' + resp.status);
-            const data = await resp.json();
-            const prices = Array.isArray(data.prices) ? data.prices : [];
-            return prices.map(([ts, price]) => ({x: ts, y: price}));
-        }
-
-        async function getFromCoinCap() {
-            const end = Date.now();
-            const start = end - 14 * 24 * 60 * 60 * 1000;
-            const url = `https://api.coincap.io/v2/assets/bitcoin/history?interval=d1&start=${start}&end=${end}`;
-            const resp = await fetch(url, {cache: 'no-store'});
-            if (!resp.ok) throw new Error('CoinCap HTTP ' + resp.status);
-            const payload = await resp.json();
-            const arr = Array.isArray(payload.data) ? payload.data : [];
-            return arr.map(p => ({x: p.time, y: parseFloat(p.priceUsd)}));
+        async function getHistory() {
+            const resp = await fetch('/api/btc/history', {cache: 'no-store'});
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || !data || data.ok === false) {
+                throw new Error('History API failed');
+            }
+            const points = Array.isArray(data.points) ? data.points : [];
+            const last = (typeof data.last === 'number') ? data.last : (points.length ? points[points.length - 1].y : null);
+            return {points, last, updated: data.updated};
         }
 
         async function load() {
@@ -70,7 +62,14 @@
                     chart.data.datasets[0].borderColor = lineColor;
                     chart.update();
                 } else {
-                    await waitForChart();
+                    const hasChart = await waitForChart();
+                    if (!hasChart) {
+                        // No Chart.js available; just show price text, skip chart
+                        if (canvas && canvas.parentElement) {
+                            canvas.parentElement.style.display = 'none';
+                        }
+                        return; // price text already updated above
+                    }
                     chart = new Chart(ctx, {
                         type: 'line',
                         data: {
