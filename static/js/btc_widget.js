@@ -11,7 +11,8 @@
         if (!priceEl || !canvas) return; // widget not present
         const ctx = canvas.getContext('2d');
         let chart;
-        const nf = new Intl.NumberFormat(undefined, {style: 'currency', currency: 'USD', maximumFractionDigits: 0});
+        const nf = new Intl.NumberFormat(undefined,
+            {style: 'currency', currency: 'USD', maximumFractionDigits: 0});
 
         async function waitForChart(timeoutMs = 5000) {
             const start = Date.now();
@@ -31,29 +32,26 @@
                 throw new Error('History API failed');
             }
             const points = Array.isArray(data.points) ? data.points : [];
-            const last = (typeof data.last === 'number') ? data.last : (points.length ? points[points.length - 1].y : null);
+            const last = (typeof data.last === 'number') ? data.last :
+                (points.length ? points[points.length - 1].y : null);
             return {points, last, updated: data.updated};
         }
 
         async function load() {
             try {
-                let points = [];
-                try {
-                    points = await getFromCoinGecko();
-                } catch (e1) {
-                    console.warn('CoinGecko failed, falling back to CoinCap:', e1);
-                    points = await getFromCoinCap();
-                }
-                if (!points || points.length === 0) throw new Error('No data');
+                const { points, last, updated } = await getHistory();
+                if (!points || points.length === 0 || typeof last !== 'number') throw new Error('No data');
 
-                const last = points[points.length - 1].y;
                 priceEl.textContent = nf.format(last);
-                updatedEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
+                const upd = updated ? new Date(updated) : new Date();
+                updatedEl.textContent = 'Updated ' + upd.toLocaleTimeString();
 
                 const styles = getComputedStyle(document.documentElement);
                 const axisColor = (styles.getPropertyValue('--muted').trim() || '#6b7280');
                 const gridColor = (styles.getPropertyValue('--border').trim() || '#e2e8f0');
-                const lineColor = (styles.getPropertyValue('--primary').trim() || '#3b82f6');
+                // Prefer a darker line that adapts to theme, with sensible fallback
+                const lineColor = (styles.getPropertyValue('--text').trim() ||
+                    styles.getPropertyValue('--foreground').trim() || '#1f2937');
 
                 if (chart) {
                     chart.data.datasets[0].data = points;

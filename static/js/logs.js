@@ -25,7 +25,8 @@ async function loadEvents() {
     data.forEach((e) => {
         const tr = document.createElement("tr");
         tr.innerHTML =
-            `<td>${e.timestamp}</td> <td>${e.miner_ip || "—"}</td> <td class="log-level">${e.level}</td> <td>${e.source}</td> <td>${e.message}</td>`;
+            `<td>${e.timestamp}</td> <td>${e.miner_ip ||
+            "—"}</td> <td class="log-level">${e.level}</td> <td>${e.source}</td> <td>${e.message}</td>`;
 
         tr.classList.add("log-row");
         if (e.level === "ERROR") tr.classList.add("log-error");

@@ -77,4 +77,4 @@ if __name__ == '__main__':
     start_scheduler()
 
     # On Windows, disable the reloader to avoid socket close races causing WinError 10038
-    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=5050, debug=True, use_reloader=False)
