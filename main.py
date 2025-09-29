@@ -13,7 +13,6 @@ def create_app():
     app.register_blueprint(dash_bp, url_prefix="/dashboard")
     app.register_blueprint(api_bp, url_prefix='/api')
 
-
     @app.route("/")
     def home():
         return render_template("home.html")
@@ -56,6 +55,12 @@ def create_app():
         except Exception:
             pass
         return {"ok": False, "error": "Internal Server Error"}, 500
+
+    # Graceful fallback for miner pools timeouts to avoid 504s at the proxy
+    @app.errorhandler(TimeoutError)
+    def handle_timeout_error(e):
+        # Return empty pools quickly with 200 so the UI can render
+        return jsonify({"pools": [], "error": "timeout"}), 200
 
     return app
 
