@@ -1,0 +1,19 @@
+Model,Hashrate (TH/s),Efficiency (J/TH)
+Bitmain Antminer S21,200,17.5
+Bitmain Antminer S21 Pro,234,15
+Bitmain Antminer S19 XP,140,21
+Bitmain Antminer S19j Pro+,122,27.5
+Bitmain Antminer S19j Pro,100,30.5
+Bitmain Antminer S19,95,34.5
+Bitmain Antminer S19,110,29.5
+Bitmain Antminer S17 Pro,53,45
+Bitmain Antminer S9,14,95
+MicroBT Whatsminer M66S,240,18.5
+MicroBT Whatsminer M63S Hydro,226,19
+MicroBT Whatsminer M60S,186,19.9
+MicroBT Whatsminer M50S,126,26
+MicroBT Whatsminer M30S++,112,31
+MicroBT Whatsminer M20S,68,46
+Canaan Avalon A1466,150,25
+Canaan Avalon A1366,130,25
+Canaan Avalon A1246,90,38

@@ -39,7 +39,7 @@ async function fetchMiners() {
 
         if (!Array.isArray(miners)) {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="5">Failed to load miners list.</td>`;
+            tr.innerHTML = `<td colspan="6">Failed to load miners list.</td>`;
             tbody.appendChild(tr);
             console.error("Unexpected /api/miners payload:", payload);
             return;
@@ -47,7 +47,7 @@ async function fetchMiners() {
 
         if (!miners.length) {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="5">No miners found.</td>`;
+            tr.innerHTML = `<td colspan="6">No miners found.</td>`;
             tbody.appendChild(tr);
             return;
         }
@@ -57,7 +57,7 @@ async function fetchMiners() {
         });
     } catch (e) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="5">Error loading miners.</td>`;
+        tr.innerHTML = `<td colspan="6">Error loading miners.</td>`;
         tbody.appendChild(tr);
         console.warn('fetchMiners failed:', e);
     }
@@ -70,12 +70,16 @@ function createMinerRow(tbody, miner) {
     const model = miner.model && String(miner.model).trim() ? miner.model : '—';
     const status = miner.status || '—';
     const lastSeen = fmtLastSeen(miner.last_seen);
+    const power = (typeof miner.est_power_w === 'number' && isFinite(miner.est_power_w))
+        ? miner.est_power_w.toLocaleString(undefined, {maximumFractionDigits: 1})
+        : '—';
 
     tr.innerHTML = `
       <td>${freshnessDot(miner.age_sec)} ${status}</td>
       <td>${model}</td>
       <td><a href="/dashboard/?ip=${encodeURIComponent(ip)}">${ip}</a></td>
       <td>${lastSeen}</td>
+      <td>${power}</td>
       <td><a href="http://${ip}/" target="_blank" rel="noopener">Web UI</a></td>
     `;
     tbody.appendChild(tr);

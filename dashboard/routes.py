@@ -16,12 +16,14 @@ def get_miners():
       - model (str)
       - ip (str)
       - last_seen (ISO8601 string with Z)
+      - est_power_w (float)  # estimated using CSV J/TH and hashrate
     """
     from datetime import datetime, timezone
     from sqlalchemy import func, and_
     from core.db import SessionLocal, Metric
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from core.miner import MinerClient
+    from helpers.utils import csv_efficiency_for_model, efficiency_for_model
 
     # Freshness thresholds (seconds). Keep in sync with static/js/miners.js
     # REFRESH_INTERVAL in JS is 15s; JS marks:
@@ -79,13 +81,35 @@ def get_miners():
             else:
                 status = 'Stale'
 
+            # Estimate power using CSV efficiency and hashrate
+            model_name = models.get(m.miner_ip, '')
+            nominal_ths, csv_eff = csv_efficiency_for_model(model_name)
+            # Prefer latest measured hashrate if available; otherwise CSV nominal
+            hr_ths = None
+            try:
+                if m.hashrate_ths is not None:
+                    hr_ths = float(m.hashrate_ths)
+            except Exception:
+                hr_ths = None
+            if not hr_ths or hr_ths <= 0:
+                hr_ths = nominal_ths if nominal_ths > 0 else None
+            # Choose efficiency: CSV first, else config mapping, else default
+            eff_j_per_th = csv_eff if (csv_eff and csv_eff > 0) else efficiency_for_model(model_name)
+            est_power = None
+            if hr_ths and eff_j_per_th:
+                try:
+                    est_power = round(hr_ths * eff_j_per_th, 1)
+                except Exception:
+                    est_power = None
+
             out.append({
                 'is_stale': age > LAGGING,
                 'age_sec': age,
                 'status': status,
-                'model': models.get(m.miner_ip, ''),
+                'model': model_name,
                 'ip': m.miner_ip,
                 'last_seen': ts.isoformat().replace('+00:00', 'Z'),
+                'est_power_w': est_power,
             })
         return out
     finally:
