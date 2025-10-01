@@ -33,7 +33,9 @@
 </nav>
 <div class="container">
     <h1>Discovered Miners</h1>
-    <table class="miners-table">
+
+    <h2 style="margin-top:10px;">Live Miners</h2>
+    <table class="miners-table" id="active-miners">
         <thead>
         <tr>
             <th>Status</th>
@@ -46,12 +48,58 @@
         </thead>
         <tbody id="miner-table"></tbody>
     </table>
+
+    <div id="stale-wrapper" style="margin-top:16px;">
+        <button id="toggle-stale" type="button" class="btn" style="margin-bottom:8px;">
+            Show Stale Miners (<span id="stale-count">0</span>)
+        </button>
+        <div id="stale-section" style="display:none;">
+            <table class="miners-table" id="stale-miners">
+                <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Model</th>
+                    <th>IP</th>
+                    <th>Last Seen</th>
+                    <th>Est. Power (W)</th>
+                    <th>Firmware Link</th>
+                </tr>
+                </thead>
+                <tbody id="stale-table"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <h2 style="margin-top:20px;">Active Miner Metadata</h2>
+    <div style="overflow:auto;">
+        <table class="miners-table" id="metadata-table">
+            <thead>
+            <tr>
+                <th>IP</th>
+                <th>Model</th>
+                <th>Vendor</th>
+                <th>Hostname</th>
+                <th>Rack</th>
+                <th>Row</th>
+                <th>Location</th>
+                <th>Room</th>
+                <th>Owner</th>
+                <th>Notes</th>
+                <th>Nominal TH/s</th>
+                <th>Nominal J/TH</th>
+                <th>Power $/kWh</th>
+                <th>Tags</th>
+            </tr>
+            </thead>
+            <tbody id="metadata-body"></tbody>
+        </table>
+    </div>
 </div>
 <!-- Include Chart.js and time adapter for the BTC header widget -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 <script src="{{ url_for('static', filename='js/btc_widget.js') }}?v=5"></script>
-<script src="{{ url_for('static', filename='js/miners.js') }}"></script>
+<script src="{{ url_for('static', filename='js/miners.js') }}?v=2"></script>
 <footer style="text-align:center; margin:20px;">
     <a href="{{ url_for('home') }}">Back to Home</a>
 </footer>
