@@ -22,19 +22,26 @@ def create_app():
         """
         Return the current miners list.
 
-        The payload is a list[dict] with keys:
+        Response contract:
+          { "miners": list[dict] }
+
+        Each miner dict contains keys like:
           - is_stale (bool)
           - age_sec (int)
           - status (str)
           - model (str)
           - ip (str)
-          - last_seen (ISO string or timestamp)
+          - last_seen (ISO string with Z)
+          - est_power_w (float|None)
+          - vendor, hostname, rack, row, location, room, owner, notes, nominal_ths,
+            nominal_efficiency_j_per_th, power_price_usd_per_kwh, tags (optional)
         """
         try:
             miners = get_miners()
             if not isinstance(miners, list):
                 return jsonify({"error": "get_miners() must return a list"}), 500
-            return jsonify(miners), 200
+            # Prefer a stable object payload to ease client integrations.
+            return jsonify({"miners": miners}), 200
         except Exception as e:
             # Avoid leaking internals; log in your real logger instead.
             return jsonify({"error": "Failed to fetch miners", "detail": str(e)}), 500
