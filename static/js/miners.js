@@ -71,9 +71,6 @@ async function fetchMiners() {
     const staleCount = document.getElementById('stale-count');
     const metadataBody = document.getElementById('metadata-body');
     if (!activeTbody) return;
-    activeTbody.innerHTML = '';
-    if (staleTbody) staleTbody.innerHTML = '';
-    if (metadataBody) metadataBody.innerHTML = '';
 
     try {
         const res = await fetch('/api/miners');
@@ -82,9 +79,8 @@ async function fetchMiners() {
         const miners = Array.isArray(payload) ? payload : (Array.isArray(payload?.miners) ? payload.miners : null);
 
         if (!Array.isArray(miners)) {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="6">Failed to load miners list.</td>`;
-            activeTbody.appendChild(tr);
+            // Keep existing content; optionally show a non-destructive inline status
+            console.warn('Failed to load miners list: unexpected payload shape');
             return;
         }
 
@@ -94,21 +90,26 @@ async function fetchMiners() {
 
         if (staleCount) staleCount.textContent = String(stale.length);
 
+        // Build fragments off-DOM for atomic swap (prevents blanking during refresh)
+        const activeFrag = document.createDocumentFragment();
+        const staleFrag = document.createDocumentFragment();
+        const metaFrag = document.createDocumentFragment();
+
         if (!active.length) {
             const tr = document.createElement('tr');
             tr.innerHTML = `<td colspan="6">No live miners.</td>`;
-            activeTbody.appendChild(tr);
+            activeFrag.appendChild(tr);
         } else {
-            active.forEach(m => activeTbody.appendChild(renderMinerRow(m)));
+            active.forEach(m => activeFrag.appendChild(renderMinerRow(m)));
         }
 
         if (staleTbody) {
             if (!stale.length) {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `<td colspan="6">No stale miners.</td>`;
-                staleTbody.appendChild(tr);
+                staleFrag.appendChild(tr);
             } else {
-                stale.forEach(m => staleTbody.appendChild(renderMinerRow(m)));
+                stale.forEach(m => staleFrag.appendChild(renderMinerRow(m)));
             }
         }
 
@@ -116,25 +117,18 @@ async function fetchMiners() {
             if (!active.length) {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `<td colspan="14">No metadata to display.</td>`;
-                metadataBody.appendChild(tr);
+                metaFrag.appendChild(tr);
             } else {
-                active.forEach(m => metadataBody.appendChild(renderMetadataRow(m)));
+                active.forEach(m => metaFrag.appendChild(renderMetadataRow(m)));
             }
         }
+
+        // Atomically replace content so users never see a blank table
+        activeTbody.replaceChildren(activeFrag);
+        if (staleTbody) staleTbody.replaceChildren(staleFrag);
+        if (metadataBody) metadataBody.replaceChildren(metaFrag);
     } catch (e) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="6">Error loading miners.</td>`;
-        activeTbody.appendChild(tr);
-        if (staleTbody) {
-            const tr2 = document.createElement('tr');
-            tr2.innerHTML = `<td colspan="6">Error loading miners.</td>`;
-            staleTbody.appendChild(tr2);
-        }
-        if (metadataBody) {
-            const tr3 = document.createElement('tr');
-            tr3.innerHTML = `<td colspan="14">Error loading metadata.</td>`;
-            metadataBody.appendChild(tr3);
-        }
+        // Preserve existing data on error to avoid blanking the UI
         console.warn('fetchMiners failed:', e);
     }
 }
