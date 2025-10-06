@@ -39,7 +39,7 @@
 
         async function load() {
             try {
-                const { points, last, updated } = await getHistory();
+                const {points, last, updated} = await getHistory();
                 if (!points || points.length === 0 || typeof last !== 'number') throw new Error('No data');
 
                 priceEl.textContent = nf.format(last);
