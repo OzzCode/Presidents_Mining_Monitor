@@ -54,3 +54,4 @@ def start_scheduler():
     scheduler.start()
 
     print(f"Polling every {POLL_INTERVAL}s...")
+    return scheduler

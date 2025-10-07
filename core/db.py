@@ -1,6 +1,7 @@
 from __future__ import annotations
 import datetime as _dt
 from pathlib import Path
+import sqlite3
 from sqlalchemy import (
     create_engine, event, Column, Integer, Float, String, DateTime, Text, Boolean
 )
@@ -11,7 +12,7 @@ from sqlalchemy.dialects.sqlite import JSON as SQLITE_JSON
 # Database location (single source of truth)
 # -----------------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent
-DB_DIR = BASE_DIR / "../db_files"
+DB_DIR = (BASE_DIR / "../db_files").resolve()
 DB_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DB_DIR / "metrics.db"
 
@@ -33,6 +34,7 @@ def _set_sqlite_pragmas(dbapi_connection, connection_record):
     try:
         cur.execute("PRAGMA journal_mode=WAL;")
         cur.execute("PRAGMA synchronous=NORMAL;")
+        cur.execute("PRAGMA busy_timeout=5000;")
         # Optional: reduce page cache misses a bit
         # cur.execute("PRAGMA cache_size=-20000;")  # ~20MB cache
     finally:
@@ -156,6 +158,59 @@ class ErrorEvent(Base):
 # -----------------------------------------------------------------------------
 # Utility
 # -----------------------------------------------------------------------------
+
+def _quick_check(db_path: Path) -> bool:
+    try:
+        con = sqlite3.connect(str(db_path))
+        cur = con.execute("PRAGMA quick_check;")
+        res = cur.fetchone()
+        con.close()
+        return bool(res) and res[0] == "ok"
+    except Exception:
+        return False
+
+
+def _quarantine_corrupt_files(db_path: Path) -> None:
+    ts = _dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    base = db_path.with_suffix("")  # path without extension
+    files = [
+        db_path,
+        db_path.with_name(db_path.name + "-wal"),
+        db_path.with_name(db_path.name + "-shm"),
+    ]
+    for f in files:
+        if f.exists():
+            new_name = f.with_name(f.name + f".corrupt-{ts}")
+            try:
+                f.rename(new_name)
+            except Exception:
+                pass
+
+
 def init_db():
-    """Create tables if they do not exist."""
+    """Create tables; auto-recover if the existing DB appears corrupt.
+
+    If PRAGMA quick_check fails or the file raises an error, the existing DB and
+    its WAL/SHM siblings are renamed with a .corrupt-<timestamp> suffix, and a
+    fresh database is created at the original path.
+    """
+    # If the file exists but quick_check fails, quarantine and recreate
+    try:
+        if DB_PATH.exists() and not _quick_check(DB_PATH):
+            # Dispose current connections before file ops
+            try:
+                engine.dispose()
+            except Exception:
+                pass
+            _quarantine_corrupt_files(DB_PATH)
+    except Exception:
+        # On any unexpected check error, fail open by attempting to recreate
+        try:
+            engine.dispose()
+        except Exception:
+            pass
+        _quarantine_corrupt_files(DB_PATH)
+
+    # Ensure directory exists and create tables
+    DB_DIR.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)

@@ -13,7 +13,8 @@
 <body>
 <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
     <div><strong>Miner:</strong> <code>{{ ip }}</code></div>
-    <div id="miner-model" style="font-size:0.95rem;color:#333;"><strong>Model:</strong> <span id="model-name">—</span></div>
+    <div id="miner-model" style="font-size:0.95rem;color:#333;"><strong>Model:</strong> <span id="model-name">—</span>
+    </div>
     <div id="last-update" style="font-size:0.9rem;color:#555;">Last update: —</div>
     {% if ip %}
         <a class="btn" href="http://{{ ip }}/" target="_blank" rel="noopener">Open Miner Firmware UI</a>
@@ -27,7 +28,8 @@
         <li><a href="{{ url_for('logs') }}">Logs</a></li>
     </ul>
     <div style="display:flex; align-items:center; gap:12px;">
-        <div id="btc-header-widget" style="display:flex; align-items:center; gap:12px; padding:8px 12px; border:1px solid var(--border); background: var(--surface-2); border-radius:10px; flex:1 1 420px; max-width:640px;">
+        <div id="btc-header-widget"
+             style="display:flex; align-items:center; gap:12px; padding:8px 12px; border:1px solid var(--border); background: var(--surface-2); border-radius:10px; flex:1 1 420px; max-width:640px;">
             <div style="display:flex; flex-direction:column; line-height:1.1; flex:0 0 auto;">
                 <div style="font-size:0.8rem; color: var(--muted); margin-bottom:2px;">Current BTC Price</div>
                 <div id="btc-price" style="font-weight:700; font-size:1.15rem;">—</div>
@@ -37,7 +39,9 @@
                 <canvas id="btc-chart" height="44"></canvas>
             </div>
         </div>
-        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme"><span aria-hidden="true">🌓</span> Theme</button>
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme"><span
+                aria-hidden="true">🌓</span> Theme
+        </button>
     </div>
 </nav>
 <div class="container">
@@ -133,65 +137,67 @@
     </details>
 
     {% if ip %}
-    <h2 style="margin-top:20px;">Current Mining Pools</h2>
-    <div id="pools-controls" style="margin:8px 0; display:flex; gap:8px; align-items:center;">
-        <button id="btn-refresh-pools" class="btn" type="button">Refresh Pools</button>
-        <span id="pools-status" style="font-size:0.9rem;color:#6b7280;">—</span>
-    </div>
-    <table id="pools-table" class="table" style="width:100%;">
-        <thead>
-        <tr>
-            <th>#</th>
-            <th>URL</th>
-            <th>User</th>
-            <th>Status</th>
-            <th>Priority</th>
-            <th>Stratum</th>
-            <th>Accepted</th>
-            <th>Rejected</th>
-            <th>Stale</th>
-            <th>Reject %</th>
-        </tr>
-        </thead>
-        <tbody id="pools-tbody">
-        <tr><td colspan="10" style="text-align:center;color:#888;">Loading…</td></tr>
-        </tbody>
-    </table>
+        <h2 style="margin-top:20px;">Current Mining Pools</h2>
+        <div id="pools-controls" style="margin:8px 0; display:flex; gap:8px; align-items:center;">
+            <button id="btn-refresh-pools" class="btn" type="button">Refresh Pools</button>
+            <span id="pools-status" style="font-size:0.9rem;color:#6b7280;">—</span>
+        </div>
+        <table id="pools-table" class="table" style="width:100%;">
+            <thead>
+            <tr>
+                <th>#</th>
+                <th>URL</th>
+                <th>User</th>
+                <th>Status</th>
+                <th>Priority</th>
+                <th>Stratum</th>
+                <th>Accepted</th>
+                <th>Rejected</th>
+                <th>Stale</th>
+                <th>Reject %</th>
+            </tr>
+            </thead>
+            <tbody id="pools-tbody">
+            <tr>
+                <td colspan="10" style="text-align:center;color:#888;">Loading…</td>
+            </tr>
+            </tbody>
+        </table>
     {% endif %}
 </div>
 
 <!-- just inside the <body> after your Overview section -->
-<ul class="tabs">
-    <li class="tab active" data-tab="overview">Overview</li>
-    <li class="tab" data-tab="history">History</li>
-</ul>
-
-<div id="history" class="tab-content hidden">
-    <h2>Historical Metrics</h2>
-    <div class="controls">
-        <label>Since:
-            <input type="datetime-local" id="since-input"/>
-        </label>
-        <button id="load-history">Load</button>
-    </div>
-    <canvas id="history-chart"></canvas>
-</div>
-
-<!-- In the History tab controls area -->
-<div class="controls">
-    <label>Since: <input type="datetime-local" id="since-input"></label>
-    <button id="load-history">Load</button>
-    <label style="margin-left:1rem;">
-        <input type="checkbox" id="auto-refresh-history"> Auto refresh
-    </label>
-    <select id="quick-range" aria-label="Quick range">
-        <option value="">Quick range…</option>
-        <option value="3600">Last 1h</option>
-        <option value="21600">Last 6h</option>
-        <option value="86400">Last 24h</option>
-    </select>
-</div>
-<canvas id="history-chart"></canvas>
+{#<ul class="tabs">#}
+{#    <li class="tab active" data-tab="overview">Overview</li>#}
+{#    <li class="tab" data-tab="history">History</li>#}
+{#</ul>#}
+{##}
+{#<div id="history" class="tab-content hidden">#}
+{#    <h2>Historical Metrics</h2>#}
+{#    <div class="controls">#}
+{#        <label>Since:#}
+{#            <input type="datetime-local" id="since-input"/>#}
+{#        </label>#}
+{#        <button id="load-history">Load</button>#}
+{#    </div>#}
+{#    <canvas id="history-chart"></canvas>#}
+{#</div>#}
+{##}
+{#<!-- In the History tab controls area -->#}
+{#<div class="controls">#}
+{#    <label>Since: <input type="datetime-local" id="since-input"></label>#}
+{#    <button id="load-history">Load</button>#}
+{#    <label style="margin-left:1rem;">#}
+{#        <input type="checkbox" id="auto-refresh-history"> Auto refresh#}
+{#    </label>#}
+{#    <select id="quick-range" aria-label="Quick range">#}
+{#        <option value="">Quick range…</option>#}
+{#        <option value="3600">Last 1h</option>#}
+{#        <option value="21600">Last 6h</option>#}
+{#        <option value="86400">Last 24h</option>#}
+{#    </select>#}
+{#</div>#}
+{#<canvas id="history-chart"></canvas>#}
 
 <script>const MINER_IP = {{ '\"'+ip+'\"' if ip else 'null' }};</script>
 <script src="{{ url_for('static', filename='js/tabs.js') }}"></script>

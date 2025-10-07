@@ -5,6 +5,9 @@ from flask_cors import CORS
 from dashboard.routes import dash_bp, get_miners
 from werkzeug.exceptions import HTTPException
 
+# Expose scheduler instance for readiness checks in tests/runtime
+SCHEDULER = None
+
 
 def create_app():
     app = Flask(__name__, static_url_path='/static', static_folder='static')
@@ -50,6 +53,29 @@ def create_app():
     def logs():
         return render_template("logs.html")
 
+    # Lightweight health endpoints
+    @app.route('/healthz')
+    def healthz():
+        return jsonify({"ok": True}), 200
+
+    @app.route('/readyz')
+    def readyz():
+        # DB check: try to open and close a session
+        try:
+            from core.db import SessionLocal
+            s = SessionLocal()
+            s.execute("SELECT 1")
+            s.close()
+            db_ok = True
+        except Exception:
+            db_ok = False
+        # Scheduler check: running attribute if available
+        try:
+            scheduler_ok = bool(getattr(SCHEDULER, 'running', False))
+        except Exception:
+            scheduler_ok = False
+        return jsonify({"ok": True, "db_ok": db_ok, "scheduler_ok": scheduler_ok}), 200
+
     # noinspection PyBroadException
     @app.errorhandler(Exception)
     def handle_exception(e):
@@ -86,7 +112,10 @@ if __name__ == '__main__':
             pass
 
     # Start background scheduler (no reloader in this config, so safe)
-    start_scheduler()
+    try:
+        SCHEDULER = start_scheduler()
+    except Exception:
+        SCHEDULER = None
 
     # On Windows, disable the reloader to avoid socket close races causing WinError 10038
     app.run(host='0.0.0.0', port=5050, debug=True, use_reloader=False)
