@@ -9,7 +9,11 @@
 </head>
 <body>
 <nav>
-    <h1 href="{{ url_for('home') }}">Antminer Monitor</h1>
+    <h1 style="display:flex;align-items:center;gap:10px;margin:0;">
+        <img src="{{ url_for('static', filename='img/LogoImg.png') }}" alt="Company Logo"
+             style="height:36px;width:auto;">
+        <a href="{{ url_for('home') }}" style="text-decoration:none;color:inherit;">Antminer Monitor</a>
+    </h1>
     <ul class="nav-list">
         <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
         <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
@@ -33,6 +37,9 @@
         </button>
     </div>
 </nav>
+{#<div class="header-banner" style="margin:12px 0;">#}
+{#    <img src="{{ url_for('static', filename='img/Presidents_Mining_DashHeader.png') }}" alt="Dashboard Header" style="max-width:100%; height:auto; display:block; border-radius:8px;">#}
+{#</div>#}
 
 <!-- Quick actions -->
 <div style="margin:12px 0;">

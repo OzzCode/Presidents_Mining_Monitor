@@ -1,8 +1,59 @@
 from flask import Blueprint, Response, current_app
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Gauge
 from sqlalchemy import func, and_
 from core.db import SessionLocal, Metric
 from datetime import timedelta
+
+# Prometheus client (optional dependency). Provide a lightweight fallback.
+try:  # pragma: no cover - behavior exercised via tests
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Gauge  # type: ignore
+except Exception:  # pragma: no cover
+    CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
+
+    class _SimpleGauge:
+        def __init__(self, name, description, labelnames=None):
+            self.name = name
+            self.description = description
+            self.labelnames = list(labelnames or [])
+            self._samples = {}
+
+        def labels(self, **kwargs):
+            key = tuple((ln, str(kwargs.get(ln, ""))) for ln in self.labelnames)
+
+            class _Setter:
+                def __init__(self, outer, k):
+                    self._outer = outer
+                    self._k = k
+
+                def set(self, value: float):
+                    self._outer._samples[self._k] = float(value)
+
+            return _Setter(self, key)
+
+        def clear(self):
+            self._samples.clear()
+
+        def render(self):
+            lines = [f"# HELP {self.name} {self.description}", f"# TYPE {self.name} gauge"]
+            for key, value in self._samples.items():
+                if self.labelnames:
+                    labels = ",".join(f'{ln}="{val}"' for ln, val in key)
+                    labelstr = f"{{{labels}}}"
+                else:
+                    labelstr = ""
+                lines.append(f"{self.name}{labelstr} {value}")
+            return "\n".join(lines)
+
+    class _Registry:
+        gauges = []
+
+    def Gauge(name, desc, labelnames=None):  # type: ignore
+        g = _SimpleGauge(name, desc, labelnames)
+        _Registry.gauges.append(g)
+        return g
+
+    def generate_latest():  # type: ignore
+        text = "\n".join(g.render() for g in _Registry.gauges)
+        return text.encode("utf-8")
 
 # Expose Prometheus metrics at /metrics
 metrics_bp = Blueprint('metrics_exporter', __name__)
