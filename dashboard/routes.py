@@ -61,6 +61,7 @@ def get_miners():
                     return ip, MinerClient(ip).fetch_normalized().get('model', '')
                 except Exception:
                     return ip, ''
+
             with ThreadPoolExecutor(max_workers=min(8, len(ips))) as ex:
                 for fut in as_completed([ex.submit(_fetch, ip) for ip in ips]):
                     ip, model = fut.result()
@@ -156,7 +157,8 @@ def get_miners():
                 'owner': getattr(miner_meta, 'owner', None) if miner_meta else None,
                 'notes': getattr(miner_meta, 'notes', None) if miner_meta else None,
                 'nominal_ths': getattr(miner_meta, 'nominal_ths', None) if miner_meta else nominal_ths,
-                'nominal_efficiency_j_per_th': getattr(miner_meta, 'nominal_efficiency_j_per_th', None) if miner_meta else csv_eff,
+                'nominal_efficiency_j_per_th': getattr(miner_meta, 'nominal_efficiency_j_per_th',
+                                                       None) if miner_meta else csv_eff,
                 'power_price_usd_per_kwh': getattr(miner_meta, 'power_price_usd_per_kwh', None) if miner_meta else None,
                 'tags': getattr(miner_meta, 'tags', None) if miner_meta else None,
             })
@@ -197,3 +199,12 @@ def logs_page():
 def returns_page():
     return render_template('returns.html')
 
+
+@dash_bp.route('/alerts')
+def alerts_page():
+    return render_template('alerts.html')
+
+
+@dash_bp.route('/profitability')
+def profitability_page():
+    return render_template('profitability.html')

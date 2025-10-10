@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profitability - Mining Monitor</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        .profitability-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .btc-price-banner {
+            background: linear-gradient(135deg, #f7931a 0%, #ffa726 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .btc-price-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .btc-price-main {
+            font-size: 48px;
+            font-weight: bold;
+        }
+
+        .btc-price-label {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        .network-diff {
+            text-align: right;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .metric-card {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .metric-card.profit {
+            border-left: 4px solid #28a745;
+        }
+
+        .metric-card.revenue {
+            border-left: 4px solid #007bff;
+        }
+
+        .metric-card.cost {
+            border-left: 4px solid #dc3545;
+        }
+
+        .metric-card.hashrate {
+            border-left: 4px solid #6f42c1;
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: #666;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .metric-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .metric-sub {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .metric-positive {
+            color: #28a745;
+        }
+
+        .metric-negative {
+            color: #dc3545;
+        }
+
+        .chart-container {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #007bff;
+            border-bottom-color: #007bff;
+        }
+
+        .tab:hover {
+            color: #007bff;
+        }
+
+        .breakdown-table {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead th {
+            text-align: left;
+            padding: 12px;
+            background: #f8f9fa;
+            font-size: 13px;
+            font-weight: 600;
+            color: #666;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        tbody td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .period-selector {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-bottom: 15px;
+        }
+
+        .period-btn {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+
+        .period-btn.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .period-btn:hover {
+            border-color: #007bff;
+        }
+    </style>
+</head>
+<body>
+<div class="profitability-container">
+    <h1>Profitability Dashboard</h1>
+
+    <!-- BTC Price Banner -->
+    <div class="btc-price-banner">
+        <div class="btc-price-content">
+            <div>
+                <div class="btc-price-label">Bitcoin Price (USD)</div>
+                <div class="btc-price-main" id="btc-price">Loading...</div>
+            </div>
+            <div class="network-diff">
+                <div class="btc-price-label">Network Difficulty</div>
+                <div style="font-size: 24px; font-weight: 600;" id="network-diff">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Metrics -->
+    <div class="metrics-grid" id="metrics-grid">
+        <div class="metric-card profit">
+            <div class="metric-label">Daily Profit</div>
+            <div class="metric-value" id="daily-profit">-</div>
+            <div class="metric-sub">
+                <span id="monthly-profit">-</span> / month
+                <span style="margin-left: 10px;" id="yearly-profit">-</span> / year
+            </div>
+        </div>
+
+        <div class="metric-card revenue">
+            <div class="metric-label">Daily Revenue</div>
+            <div class="metric-value" id="daily-revenue">-</div>
+            <div class="metric-sub">
+                <span id="daily-btc">-</span> BTC/day
+            </div>
+        </div>
+
+        <div class="metric-card cost">
+            <div class="metric-label">Daily Power Cost</div>
+            <div class="metric-value" id="daily-cost">-</div>
+            <div class="metric-sub">
+                <span id="daily-kwh">-</span> kWh/day
+            </div>
+        </div>
+
+        <div class="metric-card hashrate">
+            <div class="metric-label">Fleet Hashrate</div>
+            <div class="metric-value" id="fleet-hashrate">-</div>
+            <div class="metric-sub">
+                <span id="fleet-power">-</span> power
+                • <span id="efficiency">-</span> J/TH
+            </div>
+        </div>
+    </div>
+
+    <!-- Additional Metrics -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-label">Profit Margin</div>
+            <div class="metric-value" id="profit-margin">-</div>
+            <div class="metric-sub">Profit / Revenue</div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-label">Break-Even BTC Price</div>
+            <div class="metric-value" id="break-even">-</div>
+            <div class="metric-sub">Price at which profit = $0</div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-label">Active Miners</div>
+            <div class="metric-value" id="miner-count">-</div>
+            <div class="metric-sub">Fleet size</div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-label">Power Cost Rate</div>
+            <div class="metric-value" id="power-rate">-</div>
+            <div class="metric-sub">Average USD per kWh</div>
+        </div>
+    </div>
+
+    <!-- Profitability Chart -->
+    <div class="chart-container">
+        <div class="chart-title">Profitability Trend</div>
+        <div class="period-selector">
+            <button class="period-btn" onclick="loadHistory(1)">24h</button>
+            <button class="period-btn active" onclick="loadHistory(7)">7 days</button>
+            <button class="period-btn" onclick="loadHistory(30)">30 days</button>
+        </div>
+        <canvas id="profitChart" style="max-height: 400px;"></canvas>
+    </div>
+</div>
+
+<script>
+    let profitChart = null;
+
+    async function loadBTCPrice() {
+        try {
+            const response = await fetch('/api/profitability/btc-price');
+            const data = await response.json();
+
+            if (data.ok) {
+                document.getElementById('btc-price').textContent =
+                    '$' + data.btc_price_usd.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    });
+            }
+        } catch (error) {
+            console.error('Failed to load BTC price:', error);
+            document.getElementById('btc-price').textContent = 'Error';
+        }
+    }
+
+    async function loadNetworkDifficulty() {
+        try {
+            const response = await fetch('/api/profitability/network-difficulty');
+            const data = await response.json();
+
+            if (data.ok && data.network_difficulty) {
+                const diff = data.network_difficulty;
+                document.getElementById('network-diff').textContent = diff > 1e12 ? (diff / 1e12).toFixed(2) + 'T' : diff.toLocaleString();
+            } else {
+                document.getElementById('network-diff').textContent = 'N/A';
+            }
+        } catch (error) {
+            console.error('Failed to load network difficulty:', error);
+            document.getElementById('network-diff').textContent = 'Error';
+        }
+    }
+
+    async function loadCurrentProfitability() {
+        try {
+            const response = await fetch('/api/profitability/current');
+            const data = await response.json();
+
+            if (!data.ok || !data.profitability) {
+                console.error('No profitability data');
+                return;
+            }
+
+            const p = data.profitability;
+
+            // Profit
+            const dailyProfit = p.daily_profit_usd || 0;
+            document.getElementById('daily-profit').textContent =
+                '$' + dailyProfit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('daily-profit').className = 'metric-value ' + (dailyProfit >= 0 ? 'metric-positive' : 'metric-negative');
+
+            document.getElementById('monthly-profit').textContent =
+                '$' + (p.monthly_profit_usd || 0).toLocaleString('en-US', {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0
+                });
+            document.getElementById('yearly-profit').textContent =
+                '$' + (p.yearly_profit_usd || 0).toLocaleString('en-US', {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0
+                });
+
+            // Revenue
+            document.getElementById('daily-revenue').textContent =
+                '$' + (p.estimated_revenue_usd_per_day || 0).toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+            document.getElementById('daily-btc').textContent =
+                (p.estimated_btc_per_day || 0).toFixed(6);
+
+            // Cost
+            document.getElementById('daily-cost').textContent =
+                '$' + (p.daily_power_cost_usd || 0).toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+            document.getElementById('daily-kwh').textContent =
+                (p.daily_power_kwh || 0).toFixed(1);
+
+            // Hashrate
+            document.getElementById('fleet-hashrate').textContent =
+                (p.hashrate_ths || 0).toFixed(2) + ' TH/s';
+            document.getElementById('fleet-power').textContent =
+                (p.power_w || 0).toFixed(0) + 'W';
+            document.getElementById('efficiency').textContent =
+                (p.efficiency_j_per_th || 0).toFixed(1);
+
+            // Additional metrics
+            const margin = p.profit_margin_pct || 0;
+            document.getElementById('profit-margin').textContent = margin.toFixed(1) + '%';
+            document.getElementById('profit-margin').className = 'metric-value ' + (margin >= 0 ? 'metric-positive' : 'metric-negative');
+
+            document.getElementById('break-even').textContent =
+                '$' + (p.break_even_btc_price || 0).toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+
+            document.getElementById('miner-count').textContent = p.miner_count || 0;
+
+            document.getElementById('power-rate').textContent =
+                '$' + (p.power_cost_usd_per_kwh || 0).toFixed(4);
+
+        } catch (error) {
+            console.error('Failed to load profitability:', error);
+        }
+    }
+
+    async function loadHistory(days = 7) {
+        try {
+            // Update active button
+            document.querySelectorAll('.period-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            const response = await fetch(`/api/profitability/history?days=${days}`);
+            const data = await response.json();
+
+            if (!data.ok || !data.history || data.history.length === 0) {
+                console.log('No profitability history');
+                return;
+            }
+
+            // Prepare chart data
+            const labels = data.history.map(h => {
+                const date = new Date(h.timestamp);
+                return date.toLocaleDateString('en-US', {month: 'short', day: 'numeric', hour: '2-digit'});
+            });
+
+            const profitData = data.history.map(h => h.daily_profit_usd);
+            const revenueData = data.history.map(h => h.estimated_revenue_usd_per_day);
+            const costData = data.history.map(h => h.daily_power_cost_usd);
+
+            // Create or update chart
+            const ctx = document.getElementById('profitChart').getContext('2d');
+
+            if (profitChart) {
+                profitChart.destroy();
+            }
+
+            profitChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Profit',
+                            data: profitData,
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: 'Revenue',
+                            data: revenueData,
+                            borderColor: '#007bff',
+                            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: 'Power Cost',
+                            data: costData,
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += '$' + context.parsed.y.toFixed(2);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function (value) {
+                                    return '$' + value.toFixed(0);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+        } catch (error) {
+            console.error('Failed to load history:', error);
+        }
+    }
+
+    async function triggerSnapshot() {
+        try {
+            const response = await fetch('/api/profitability/snapshot', {method: 'POST'});
+            const data = await response.json();
+
+            if (data.ok) {
+                alert('Profitability snapshot saved');
+                loadHistory(7);
+            } else {
+                alert('Failed to save snapshot: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error saving snapshot: ' + error.message);
+        }
+    }
+
+    // Initial load
+    loadBTCPrice();
+    loadNetworkDifficulty();
+    loadCurrentProfitability();
+    loadHistory(7);
+
+    // Auto-refresh every 60 seconds
+    setInterval(() => {
+        loadBTCPrice();
+        loadNetworkDifficulty();
+        loadCurrentProfitability();
+    }, 60000);
+</script>
+</body>
+</html>

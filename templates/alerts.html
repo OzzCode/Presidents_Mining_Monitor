@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alerts - Mining Monitor</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .alerts-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .summary-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #6c757d;
+        }
+
+        .summary-card.critical {
+            border-left-color: #dc3545;
+        }
+
+        .summary-card.warning {
+            border-left-color: #ffc107;
+        }
+
+        .summary-card.info {
+            border-left-color: #17a2b8;
+        }
+
+        .summary-card h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #666;
+            text-transform: uppercase;
+        }
+
+        .summary-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .filters {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .filters-row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .filter-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #666;
+        }
+
+        .filter-group select,
+        .filter-group input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .alerts-list {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .alert-item {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            gap: 20px;
+            align-items: start;
+            transition: background 0.3s;
+        }
+
+        .alert-item:hover {
+            background: #f8f9fa;
+        }
+
+        .alert-item:last-child {
+            border-bottom: none;
+        }
+
+        .alert-severity {
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .alert-severity.critical {
+            background: #dc3545;
+            color: white;
+        }
+
+        .alert-severity.warning {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .alert-severity.info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .alert-content {
+            flex: 1;
+        }
+
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 10px;
+        }
+
+        .alert-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin: 0 0 5px 0;
+        }
+
+        .alert-meta {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .alert-message {
+            font-size: 14px;
+            color: #555;
+            margin-bottom: 10px;
+        }
+
+        .alert-details {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .alert-detail-item {
+            display: flex;
+            gap: 5px;
+        }
+
+        .alert-detail-item strong {
+            color: #333;
+        }
+
+        .alert-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .alert-actions .btn {
+            font-size: 12px;
+            padding: 6px 12px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-badge.active {
+            background: #dc3545;
+            color: white;
+        }
+
+        .status-badge.acknowledged {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .status-badge.resolved {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-badge.auto_resolved {
+            background: #6c757d;
+            color: white;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .empty-state i {
+            font-size: 64px;
+            margin-bottom: 20px;
+            color: #ddd;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+<div class="alerts-container">
+    <h1>Alert Management</h1>
+
+    <!-- Summary Cards -->
+    <div class="summary-cards">
+        <div class="summary-card critical">
+            <h3>Critical Active</h3>
+            <div class="value" id="critical-count">-</div>
+        </div>
+        <div class="summary-card warning">
+            <h3>Warning Active</h3>
+            <div class="value" id="warning-count">-</div>
+        </div>
+        <div class="summary-card">
+            <h3>Total Active</h3>
+            <div class="value" id="active-count">-</div>
+        </div>
+        <div class="summary-card">
+            <h3>Last 24 Hours</h3>
+            <div class="value" id="recent-count">-</div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters">
+        <div class="filters-row">
+            <div class="filter-group">
+                <label>Status</label>
+                <select id="filter-status">
+                    <option value="">All</option>
+                    <option value="active" selected>Active</option>
+                    <option value="acknowledged">Acknowledged</option>
+                    <option value="resolved">Resolved</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label>Severity</label>
+                <select id="filter-severity">
+                    <option value="">All</option>
+                    <option value="critical">Critical</option>
+                    <option value="warning">Warning</option>
+                    <option value="info">Info</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label>Type</label>
+                <select id="filter-type">
+                    <option value="">All</option>
+                    <option value="offline">Offline</option>
+                    <option value="temp">Temperature</option>
+                    <option value="hashrate">Hashrate</option>
+                    <option value="fan">Fan</option>
+                    <option value="power">Power</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label>Miner IP</label>
+                <input type="text" id="filter-ip" placeholder="e.g., 192.168.1.100">
+            </div>
+
+            <div class="filter-group" style="justify-content: flex-end;">
+                <label>&nbsp;</label>
+                <button class="btn btn-primary" onclick="loadAlerts()">Apply Filters</button>
+            </div>
+
+            <div class="filter-group" style="justify-content: flex-end; margin-left: auto;">
+                <label>&nbsp;</label>
+                <button class="btn btn-success" onclick="triggerAlertCheck()">Check Now</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alerts List -->
+    <div class="alerts-list" id="alerts-container">
+        <div class="loading">Loading alerts...</div>
+    </div>
+</div>
+
+<script>
+    let autoRefresh = true;
+
+    async function loadSummary() {
+        try {
+            const response = await fetch('/api/alerts/summary');
+            const data = await response.json();
+
+            if (data.ok) {
+                document.getElementById('critical-count').textContent = data.summary.critical_active;
+                document.getElementById('warning-count').textContent = data.summary.warning_active;
+                document.getElementById('active-count').textContent = data.summary.active;
+                document.getElementById('recent-count').textContent = data.summary.last_24h;
+            }
+        } catch (error) {
+            console.error('Failed to load summary:', error);
+        }
+    }
+
+    async function loadAlerts() {
+        const container = document.getElementById('alerts-container');
+
+        // Build query params
+        const params = new URLSearchParams();
+        const status = document.getElementById('filter-status').value;
+        const severity = document.getElementById('filter-severity').value;
+        const type = document.getElementById('filter-type').value;
+        const ip = document.getElementById('filter-ip').value.trim();
+
+        if (status) params.append('status', status);
+        if (severity) params.append('severity', severity);
+        if (type) params.append('alert_type', type);
+        if (ip) params.append('miner_ip', ip);
+        params.append('limit', '100');
+
+        try {
+            const response = await fetch(`/api/alerts/?${params}`);
+            const data = await response.json();
+
+            if (!data.ok) {
+                container.innerHTML = '<div class="loading">Error loading alerts</div>';
+                return;
+            }
+
+            if (data.alerts.length === 0) {
+                container.innerHTML = `
+                        <div class="empty-state">
+                            <div style="font-size: 64px;">✓</div>
+                            <h2>No alerts found</h2>
+                            <p>All systems operating normally</p>
+                        </div>
+                    `;
+                return;
+            }
+
+            container.innerHTML = data.alerts.map(alert => renderAlert(alert)).join('');
+        } catch (error) {
+            console.error('Failed to load alerts:', error);
+            container.innerHTML = '<div class="loading">Error loading alerts</div>';
+        }
+    }
+
+    function renderAlert(alert) {
+        const severityEmoji = {
+            critical: '🚨',
+            warning: '⚠️',
+            info: 'ℹ️'
+        };
+
+        const details = alert.details || {};
+        const detailsHtml = Object.keys(details).map(key => `
+                <div class="alert-detail-item">
+                    <strong>${key}:</strong>
+                    <span>${details[key]}</span>
+                </div>
+            `).join('');
+
+        const actionsHtml = alert.status === 'active' ? `
+                <button class="btn btn-primary" onclick="acknowledgeAlert(${alert.id})">Acknowledge</button>
+                <button class="btn btn-success" onclick="resolveAlert(${alert.id})">Resolve</button>
+            ` : alert.status === 'acknowledged' ? `
+                <button class="btn btn-success" onclick="resolveAlert(${alert.id})">Resolve</button>
+            ` : '';
+
+        const timeAgo = getTimeAgo(alert.created_at);
+
+        return `
+                <div class="alert-item" id="alert-${alert.id}">
+                    <div class="alert-severity ${alert.severity}">
+                        ${severityEmoji[alert.severity] || '•'}
+                    </div>
+                    <div class="alert-content">
+                        <div class="alert-header">
+                            <div>
+                                <h3 class="alert-title">${alert.miner_ip} - ${alert.alert_type.toUpperCase()}</h3>
+                                <div class="alert-meta">
+                                    <span class="status-badge ${alert.status}">${alert.status}</span>
+                                    <span style="margin-left: 10px;">${timeAgo}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="alert-message">${alert.message}</div>
+                        ${detailsHtml ? `<div class="alert-details">${detailsHtml}</div>` : ''}
+                        ${alert.resolution_note ? `<div class="alert-meta" style="margin-top: 10px; font-style: italic;">Resolution: ${alert.resolution_note}</div>` : ''}
+                        ${actionsHtml ? `<div class="alert-actions" style="margin-top: 15px;">${actionsHtml}</div>` : ''}
+                    </div>
+                </div>
+            `;
+    }
+
+    async function acknowledgeAlert(alertId) {
+        try {
+            const response = await fetch(`/api/alerts/${alertId}/acknowledge`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user: 'web_user'})
+            });
+
+            const data = await response.json();
+            if (data.ok) {
+                loadAlerts();
+                loadSummary();
+            } else {
+                alert('Failed to acknowledge alert: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error acknowledging alert: ' + error.message);
+        }
+    }
+
+    async function resolveAlert(alertId) {
+        const note = prompt('Resolution note (optional):');
+        if (note === null) return; // User cancelled
+
+        try {
+            const response = await fetch(`/api/alerts/${alertId}/resolve`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({note: note || undefined, user: 'web_user'})
+            });
+
+            const data = await response.json();
+            if (data.ok) {
+                loadAlerts();
+                loadSummary();
+            } else {
+                alert('Failed to resolve alert: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error resolving alert: ' + error.message);
+        }
+    }
+
+    async function triggerAlertCheck() {
+        const btn = event.target;
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+
+        try {
+            const response = await fetch('/api/alerts/check', {method: 'POST'});
+            const data = await response.json();
+
+            if (data.ok) {
+                alert(`Alert check complete: ${data.message}`);
+                loadAlerts();
+                loadSummary();
+            } else {
+                alert('Alert check failed: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error triggering alert check: ' + error.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Check Now';
+        }
+    }
+
+    function getTimeAgo(timestamp) {
+        if (!timestamp) return 'Unknown';
+        const date = new Date(timestamp);
+        const seconds = Math.floor((new Date() - date) / 1000);
+
+        if (seconds < 60) return `${seconds}s ago`;
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        return `${Math.floor(seconds / 86400)}d ago`;
+    }
+
+    // Initial load
+    loadSummary();
+    loadAlerts();
+
+    // Auto-refresh every 30 seconds
+    setInterval(() => {
+        if (autoRefresh) {
+            loadSummary();
+            loadAlerts();
+        }
+    }, 30000);
+</script>
+</body>
+</html>

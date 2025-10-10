@@ -13,12 +13,15 @@ if load_dotenv:
 MINER_IP_RANGE = os.getenv('MINER_IP_RANGE', get_auto_cidr())
 POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', 30))
 
-# Email notifications
+# Email notifications (for alerts feature)
 SMTP_SERVER = os.getenv('SMTP_SERVER')
 SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
-ALERT_EMAIL = os.getenv('ALERT_EMAIL')
-# SMTP_USER = os.getenv('SMTP_USER')
-# SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
+SMTP_USER = os.getenv('SMTP_USER')
+SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
+ALERT_EMAIL = os.getenv('ALERT_EMAIL')  # recipient email for alerts
+
+# Default power cost for profitability calculations (USD per kWh)
+DEFAULT_POWER_COST = float(os.getenv('DEFAULT_POWER_COST', 0.10))
 
 EFFICIENCY_J_PER_TH = float(os.getenv('EFFICIENCY_J_PER_TH', 29.5))
 

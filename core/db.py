@@ -155,6 +155,108 @@ class ErrorEvent(Base):
     traceback = Column(Text, nullable=True)
 
 
+class AlertRule(Base):
+    """Configurable alert rules for miner monitoring."""
+    __tablename__ = "alert_rules"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=_dt.datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=_dt.datetime.utcnow, onupdate=_dt.datetime.utcnow)
+
+    # Rule identification
+    name = Column(String(128), nullable=False)
+    description = Column(Text, nullable=True)
+    rule_type = Column(String(32), nullable=False, index=True)  # 'offline', 'temp', 'hashrate', 'fan', 'power'
+    enabled = Column(Boolean, default=True, index=True)
+
+    # Scope (apply to all miners or specific ones)
+    miner_ip = Column(String(64), nullable=True, index=True)  # None = apply to all miners
+    model_filter = Column(String(128), nullable=True)  # e.g., "S19" to apply to all S19 models
+    tags_filter = Column(SQLITE_JSON, nullable=True)  # filter by tags
+
+    # Thresholds (JSON for flexibility)
+    thresholds = Column(SQLITE_JSON, nullable=False)  # e.g., {"temp_c": 80, "duration_min": 5}
+
+    # Alert configuration
+    severity = Column(String(16), default='warning')  # 'info', 'warning', 'critical'
+    cooldown_minutes = Column(Integer, default=30)  # time before re-alerting
+
+    # Notification channels
+    notify_email = Column(Boolean, default=True)
+    notify_webhook = Column(Boolean, default=False)
+    webhook_url = Column(String(512), nullable=True)
+
+    # Auto-remediation
+    auto_action = Column(String(32), nullable=True)  # 'reboot', 'reduce_power', None
+
+
+class Alert(Base):
+    """Alert instances triggered by alert rules."""
+    __tablename__ = "alerts"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=_dt.datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=_dt.datetime.utcnow, onupdate=_dt.datetime.utcnow)
+
+    # Alert details
+    rule_id = Column(Integer, nullable=True, index=True)  # FK to AlertRule (nullable for manual alerts)
+    miner_ip = Column(String(64), nullable=False, index=True)
+    alert_type = Column(String(32), nullable=False, index=True)
+    severity = Column(String(16), nullable=False, index=True)
+
+    # Message and context
+    message = Column(Text, nullable=False)
+    details = Column(SQLITE_JSON, nullable=True)  # additional context
+
+    # Status tracking
+    status = Column(String(16), default='active', index=True)  # 'active', 'acknowledged', 'resolved', 'auto_resolved'
+    acknowledged_at = Column(DateTime, nullable=True)
+    acknowledged_by = Column(String(64), nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    resolution_note = Column(Text, nullable=True)
+
+    # Notification tracking
+    notified_at = Column(DateTime, nullable=True)
+    notification_status = Column(String(32), nullable=True)  # 'sent', 'failed', 'pending'
+
+
+class ProfitabilitySnapshot(Base):
+    """Time-series profitability calculations."""
+    __tablename__ = "profitability_snapshots"
+
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime, default=_dt.datetime.utcnow, index=True)
+    miner_ip = Column(String(64), nullable=True, index=True)  # None = fleet-wide aggregate
+
+    # BTC metrics
+    btc_price_usd = Column(Float, nullable=False)
+    network_difficulty = Column(Float, nullable=True)
+
+    # Mining performance
+    hashrate_ths = Column(Float, nullable=False)
+    power_w = Column(Float, nullable=False)
+    uptime_hours = Column(Float, default=24.0)
+
+    # Revenue (in BTC and USD)
+    estimated_btc_per_day = Column(Float, nullable=True)
+    estimated_revenue_usd_per_day = Column(Float, nullable=True)
+
+    # Costs
+    power_cost_usd_per_kwh = Column(Float, nullable=False)
+    daily_power_cost_usd = Column(Float, nullable=False)
+
+    # Profitability
+    daily_profit_usd = Column(Float, nullable=False)
+    profit_margin_pct = Column(Float, nullable=True)
+    break_even_btc_price = Column(Float, nullable=True)
+
+    # Pool data (if available)
+    pool_hashrate_ths = Column(Float, nullable=True)
+    pool_workers = Column(Integer, nullable=True)
+    shares_accepted = Column(Integer, nullable=True)
+    shares_rejected = Column(Integer, nullable=True)
+
+
 # -----------------------------------------------------------------------------
 # Utility
 # -----------------------------------------------------------------------------

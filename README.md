@@ -10,6 +10,8 @@ Current local date/time: 2025-09-11 16:13
 - Web UI dashboard: overview, miners list with freshness status, and logs.
 - JSON API for programmatic access to summary and per-miner metrics.
 - Background scheduler handles periodic polling.
+- **NEW**: Real-time alert system with email notifications and configurable rules.
+- **NEW**: Profitability dashboard with revenue/cost tracking and historical analysis.
 
 ## Tech Stack
 - Language: Python (Flask app)
