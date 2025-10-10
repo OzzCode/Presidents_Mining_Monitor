@@ -270,6 +270,16 @@
     </style>
 </head>
 <body>
+<nav style="background: #f8f9fa; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
+    <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+        <strong style="margin-right: 10px;">Navigation:</strong>
+        <a href="{{ url_for('dashboard.index') }}" style="color: #007bff; text-decoration: none;">Dashboard</a>
+        <a href="{{ url_for('dashboard.show_miners') }}" style="color: #007bff; text-decoration: none;">Miners</a>
+        <a href="{{ url_for('dashboard.alerts_page') }}" style="color: #333; font-weight: bold; text-decoration: none;">Alerts</a>
+        <a href="{{ url_for('dashboard.profitability_page') }}" style="color: #007bff; text-decoration: none;">Profitability</a>
+        <a href="{{ url_for('logs') }}" style="color: #007bff; text-decoration: none;">Logs</a>
+    </div>
+</nav>
 <div class="alerts-container">
     <h1>Alert Management</h1>
 

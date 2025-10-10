@@ -28,15 +28,21 @@ The server will automatically:
 
 ### 2. Access the New Dashboards
 
-**Alerts Dashboard:**
-```
-http://localhost:5050/dashboard/alerts
-```
+The new features are accessible via **navigation links** on all pages:
 
-**Profitability Dashboard:**
-```
-http://localhost:5050/dashboard/profitability
-```
+**Direct URLs:**
+- Alerts Dashboard: `http://localhost:5050/dashboard/alerts`
+- Profitability Dashboard: `http://localhost:5050/dashboard/profitability`
+
+**Navigation Menu:**
+All pages now have navigation links to:
+- Dashboard
+- Miners
+- **Alerts** (NEW!)
+- **Profitability** (NEW!)
+- Logs
+
+Just click "Alerts" or "Profitability" in the navigation menu to access the new features!
 
 ### 3. Test Alert System
 
