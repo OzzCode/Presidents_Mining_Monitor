@@ -1,10 +1,10 @@
 """API endpoints for alerts and profitability features."""
 from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
-from sqlalchemy import and_, or_, desc
+from sqlalchemy import and_, or_, desc, func
 import logging
 
-from core.db import SessionLocal, Alert, AlertRule, ProfitabilitySnapshot, Miner
+from core.db import SessionLocal, Alert, AlertRule, ProfitabilitySnapshot, Miner, Metric
 from core.alert_engine import AlertEngine, create_default_rules
 from core.notification_service import NotificationService
 from core.profitability import ProfitabilityEngine
@@ -376,14 +376,41 @@ def init_default_rules():
 # PROFITABILITY ENDPOINTS
 # ============================================================================
 
+@profitability_bp.route('/active-miners', methods=['GET'])
+def get_active_miners():
+    """
+    Get list of currently active miners.
+    Query params:
+      - hours: Hours threshold for considering a miner active (default 1)
+    """
+    hours = int(request.args.get('hours', 1))
+
+    try:
+        with ProfitabilityEngine() as engine:
+            active_miners = engine.get_active_miners(hours_threshold=hours)
+
+        return jsonify({
+            'ok': True,
+            'count': len(active_miners),
+            'hours_threshold': hours,
+            'active_miners': active_miners
+        })
+
+    except Exception as e:
+        logger.exception("Failed to fetch active miners", exc_info=e)
+        return jsonify({'error': str(e)}), 500
+
+
 @profitability_bp.route('/current', methods=['GET'])
 def get_current_profitability():
     """
     Get current profitability for a specific miner or entire fleet.
     Query params:
       - miner_ip: IP address (optional, if omitted returns fleet-wide)
+      - active_only: If true, only consider miners active in the last hour (default false)
     """
     miner_ip = request.args.get('miner_ip')
+    active_only = request.args.get('active_only', 'false').lower() == 'true'
 
     try:
         with ProfitabilityEngine() as engine:
@@ -392,9 +419,88 @@ def get_current_profitability():
                 if not result:
                     return jsonify({'error': 'Insufficient data for miner'}), 404
             else:
-                result = engine.calculate_fleet_profitability()
-                if not result:
-                    return jsonify({'error': 'No fleet data available'}), 404
+                if active_only:
+                    # Calculate profitability only for active miners
+                    active_miners = engine.get_active_miners(hours_threshold=1)
+                    if not active_miners:
+                        return jsonify({'error': 'No active miners found'}), 404
+
+                    # Get metrics only for active miners
+                    latest_subq = (
+                        engine.session.query(
+                            Metric.miner_ip.label('ip'),
+                            func.max(Metric.timestamp).label('last_ts')
+                        ).filter(Metric.miner_ip.in_(active_miners)).group_by(Metric.miner_ip).subquery()
+                    )
+
+                    metrics = (
+                        engine.session.query(Metric)
+                        .join(latest_subq, and_(
+                            Metric.miner_ip == latest_subq.c.ip,
+                            Metric.timestamp == latest_subq.c.last_ts
+                        ))
+                        .all()
+                    )
+
+                    if not metrics:
+                        return jsonify({'error': 'No data for active miners'}), 404
+
+                    # Get miner metadata for active miners
+                    miners_dict = {}
+                    miner_ips = [m.miner_ip for m in metrics]
+                    if miner_ips:
+                        miners = engine.session.query(Miner).filter(Miner.miner_ip.in_(miner_ips)).all()
+                        miners_dict = {m.miner_ip: m for m in miners}
+
+                    # Get BTC price and difficulty
+                    btc_price = engine.get_btc_price()
+                    network_difficulty = engine.get_network_difficulty()
+
+                    if not btc_price:
+                        return jsonify({'error': 'Could not fetch BTC price'}), 502
+
+                    # Aggregate metrics for active miners only
+                    total_hashrate = 0.0
+                    total_power = 0.0
+                    weighted_power_cost = 0.0
+                    miner_count = 0
+
+                    for metric in metrics:
+                        if not metric.hashrate_ths or not metric.power_w:
+                            continue
+
+                        miner = miners_dict.get(metric.miner_ip)
+                        power_cost = engine.default_power_cost
+                        if miner and miner.power_price_usd_per_kwh:
+                            power_cost = miner.power_price_usd_per_kwh
+
+                        total_hashrate += metric.hashrate_ths
+                        total_power += metric.power_w
+                        weighted_power_cost += metric.power_w * power_cost
+                        miner_count += 1
+
+                    if total_power == 0:
+                        return jsonify({'error': 'No valid metrics for active miners'}), 404
+
+                    # Calculate average power cost weighted by power consumption
+                    avg_power_cost = weighted_power_cost / total_power
+
+                    # Calculate fleet profitability for active miners only
+                    result = engine._calculate_profitability(
+                        hashrate_ths=total_hashrate,
+                        power_w=total_power,
+                        btc_price=btc_price,
+                        power_cost=avg_power_cost,
+                        network_difficulty=network_difficulty
+                    )
+
+                    result['miner_count'] = miner_count
+                    result['active_only'] = True
+                    result['active_miners'] = active_miners
+                else:
+                    result = engine.calculate_fleet_profitability()
+                    if not result:
+                        return jsonify({'error': 'No fleet data available'}), 404
 
         return jsonify({
             'ok': True,
@@ -413,18 +519,87 @@ def get_profitability_history():
     Query params:
       - miner_ip: IP address (optional, if omitted returns fleet-wide)
       - days: number of days of history (default 7, max 90)
+      - active_only: If true, only consider miners active in the last hour (default false)
     """
     miner_ip = request.args.get('miner_ip')
     days = min(int(request.args.get('days', 7)), 90)
+    active_only = request.args.get('active_only', 'false').lower() == 'true'
 
     try:
         with ProfitabilityEngine() as engine:
-            history = engine.get_profitability_history(miner_ip, days)
+            if active_only and not miner_ip:
+                # Get active miners for fleet-wide history filtering
+                active_miners = engine.get_active_miners(hours_threshold=1)
+                if not active_miners:
+                    return jsonify({'error': 'No active miners found'}), 404
+
+                # Get snapshots only for active miners
+                cutoff = datetime.utcnow() - timedelta(days=days)
+
+                snapshots = (
+                    engine.session.query(ProfitabilitySnapshot)
+                    .filter(
+                        and_(
+                            ProfitabilitySnapshot.timestamp >= cutoff,
+                            ProfitabilitySnapshot.miner_ip.in_(active_miners)
+                        )
+                    )
+                    .order_by(ProfitabilitySnapshot.timestamp.asc())
+                    .all()
+                )
+
+                # Group by timestamp and aggregate
+                history_by_time = {}
+                for snapshot in snapshots:
+                    timestamp = snapshot.timestamp.replace(minute=0, second=0, microsecond=0)
+                    if timestamp not in history_by_time:
+                        history_by_time[timestamp] = {
+                            'timestamp': timestamp,
+                            'btc_price_usd': snapshot.btc_price_usd,
+                            'network_difficulty': snapshot.network_difficulty,
+                            'total_hashrate': 0,
+                            'total_power': 0,
+                            'total_cost': 0,
+                            'total_revenue': 0,
+                            'miner_count': 0
+                        }
+
+                    entry = history_by_time[timestamp]
+                    if snapshot.hashrate_ths:
+                        entry['total_hashrate'] += snapshot.hashrate_ths
+                    if snapshot.power_w:
+                        entry['total_power'] += snapshot.power_w
+                    if snapshot.daily_power_cost_usd:
+                        entry['total_cost'] += snapshot.daily_power_cost_usd
+                    if snapshot.estimated_revenue_usd_per_day:
+                        entry['total_revenue'] += snapshot.estimated_revenue_usd_per_day
+                    entry['miner_count'] += 1
+
+                # Convert to list and calculate aggregated values
+                aggregated_history = []
+                for entry in history_by_time.values():
+                    daily_profit = entry['total_revenue'] - entry['total_cost']
+                    aggregated_history.append({
+                        'timestamp': entry['timestamp'],
+                        'daily_profit_usd': daily_profit,
+                        'estimated_revenue_usd_per_day': entry['total_revenue'],
+                        'daily_power_cost_usd': entry['total_cost'],
+                        'hashrate_ths': entry['total_hashrate'],
+                        'power_w': entry['total_power'],
+                        'btc_price_usd': entry['btc_price_usd'],
+                        'network_difficulty': entry['network_difficulty'],
+                        'miner_count': entry['miner_count']
+                    })
+
+                history = sorted(aggregated_history, key=lambda x: x['timestamp'])
+            else:
+                history = engine.get_profitability_history(miner_ip, days)
 
         return jsonify({
             'ok': True,
             'count': len(history),
-            'history': [_serialize_profitability_snapshot(s) for s in history]
+            'history': [_serialize_profitability_snapshot(s) for s in history],
+            'active_only': active_only if not miner_ip else False
         })
 
     except Exception as e:

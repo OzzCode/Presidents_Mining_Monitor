@@ -426,4 +426,24 @@ class ProfitabilityEngine:
         else:
             query = query.filter(ProfitabilitySnapshot.miner_ip.is_(None))
 
-        return query.order_by(ProfitabilitySnapshot.timestamp.asc()).all()
+    def get_active_miners(self, hours_threshold: int = 1) -> List[str]:
+        """
+        Get list of miners that have been active within the specified time window.
+
+        Args:
+            hours_threshold: Hours within which a miner must have reported data
+
+        Returns:
+            List of miner IP addresses that are currently active
+        """
+        cutoff = datetime.utcnow() - timedelta(hours=hours_threshold)
+
+        # Get miners with recent metrics
+        recent_metrics = (
+            self.session.query(Metric.miner_ip)
+            .filter(Metric.timestamp >= cutoff)
+            .distinct()
+            .all()
+        )
+
+        return [m.miner_ip for m in recent_metrics if m.miner_ip]

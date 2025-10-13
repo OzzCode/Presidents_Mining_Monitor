@@ -110,11 +110,12 @@
         }
 
         .chart-container {
-            background: white;
+            background: #ffffff;
             border-radius: 8px;
             padding: 24px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             margin-bottom: 30px;
+            text-decoration-color: #00ffd0;
         }
 
         .chart-title {
@@ -232,8 +233,49 @@
             border-color: #007bff;
         }
 
-        .period-btn:hover {
+        .filter-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .filter-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #666;
+        }
+
+        .filter-select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            min-width: 150px;
+        }
+
+        .filter-select:focus {
+            outline: none;
             border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+        }
+
+        .filter-indicator {
+            font-size: 12px;
+            color: #007bff;
+            font-weight: 500;
         }
     </style>
 </head>
@@ -244,12 +286,35 @@
         <a href="{{ url_for('dashboard.index') }}" style="color: #007bff; text-decoration: none;">Dashboard</a>
         <a href="{{ url_for('dashboard.show_miners') }}" style="color: #007bff; text-decoration: none;">Miners</a>
         <a href="{{ url_for('dashboard.alerts_page') }}" style="color: #007bff; text-decoration: none;">Alerts</a>
-        <a href="{{ url_for('dashboard.profitability_page') }}" style="color: #333; font-weight: bold; text-decoration: none;">Profitability</a>
+        <a href="{{ url_for('dashboard.profitability_page') }}"
+           style="color: #333; font-weight: bold; text-decoration: none;">Profitability</a>
         <a href="{{ url_for('logs') }}" style="color: #007bff; text-decoration: none;">Logs</a>
     </div>
 </nav>
 <div class="profitability-container">
     <h1>Profitability Dashboard</h1>
+
+    <!-- Filter Controls -->
+    <div class="filter-controls">
+        <div class="filter-group">
+            <div class="filter-label">Miner Filter</div>
+            <select class="filter-select" id="minerFilter">
+                <option value="all">All Miners</option>
+                <option value="active">Active Miners Only</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <div class="filter-label">Time Period</div>
+            <select class="filter-select" id="timeFilter">
+                <option value="24h">Past 24 Hours</option>
+                <option value="7d" selected>Past 7 Days</option>
+                <option value="30d">Past 30 Days</option>
+            </select>
+        </div>
+        <div class="filter-indicator" id="filterIndicator">
+            Showing: All Miners • Past 7 Days
+        </div>
+    </div>
 
     <!-- BTC Price Banner -->
     <div class="btc-price-banner">
@@ -332,11 +397,6 @@
     <!-- Profitability Chart -->
     <div class="chart-container">
         <div class="chart-title">Profitability Trend</div>
-        <div class="period-selector">
-            <button class="period-btn" onclick="loadHistory(1)">24h</button>
-            <button class="period-btn active" onclick="loadHistory(7)">7 days</button>
-            <button class="period-btn" onclick="loadHistory(30)">30 days</button>
-        </div>
         <canvas id="profitChart" style="max-height: 400px;"></canvas>
     </div>
 </div>
@@ -381,7 +441,10 @@
 
     async function loadCurrentProfitability() {
         try {
-            const response = await fetch('/api/profitability/current');
+            const minerFilter = document.getElementById('minerFilter').value;
+            const activeOnly = minerFilter === 'active' ? 'true' : 'false';
+
+            const response = await fetch(`/api/profitability/current?active_only=${activeOnly}`);
             const data = await response.json();
 
             if (!data.ok || !data.profitability) {
@@ -455,15 +518,22 @@
         }
     }
 
-    async function loadHistory(days = 7) {
+    async function loadHistory() {
         try {
-            // Update active button
-            document.querySelectorAll('.period-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            event.target.classList.add('active');
+            const minerFilter = document.getElementById('minerFilter').value;
+            const timeFilter = document.getElementById('timeFilter').value;
 
-            const response = await fetch(`/api/profitability/history?days=${days}`);
+            // Convert time filter to days
+            let days = 7; // default
+            switch(timeFilter) {
+                case '24h': days = 1; break;
+                case '7d': days = 7; break;
+                case '30d': days = 30; break;
+            }
+
+            const activeOnly = minerFilter === 'active' ? 'true' : 'false';
+
+            const response = await fetch(`/api/profitability/history?days=${days}&active_only=${activeOnly}`);
             const data = await response.json();
 
             if (!data.ok || !data.history || data.history.length === 0) {
@@ -567,6 +637,26 @@
         }
     }
 
+    function updateFilterIndicator() {
+        const minerFilter = document.getElementById('minerFilter').value;
+        const timeFilter = document.getElementById('timeFilter').value;
+
+        let minerText = 'All Miners';
+        if (minerFilter === 'active') {
+            minerText = 'Active Miners Only';
+        }
+
+        let timeText = 'Past 7 Days';
+        switch(timeFilter) {
+            case '24h': timeText = 'Past 24 Hours'; break;
+            case '7d': timeText = 'Past 7 Days'; break;
+            case '30d': timeText = 'Past 30 Days'; break;
+        }
+
+        document.getElementById('filterIndicator').textContent =
+            `Showing: ${minerText} • ${timeText}`;
+    }
+
     async function triggerSnapshot() {
         try {
             const response = await fetch('/api/profitability/snapshot', {method: 'POST'});
@@ -587,7 +677,20 @@
     loadBTCPrice();
     loadNetworkDifficulty();
     loadCurrentProfitability();
-    loadHistory(7);
+    loadHistory();
+    updateFilterIndicator();
+
+    // Filter change handlers
+    document.getElementById('minerFilter').addEventListener('change', () => {
+        loadCurrentProfitability();
+        loadHistory();
+        updateFilterIndicator();
+    });
+
+    document.getElementById('timeFilter').addEventListener('change', () => {
+        loadHistory();
+        updateFilterIndicator();
+    });
 
     // Auto-refresh every 60 seconds
     setInterval(() => {
