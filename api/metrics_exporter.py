@@ -9,6 +9,7 @@ try:  # pragma: no cover - behavior exercised via tests
 except Exception:  # pragma: no cover
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
 
+
     class _SimpleGauge:
         def __init__(self, name, description, labelnames=None):
             self.name = name
@@ -43,13 +44,16 @@ except Exception:  # pragma: no cover
                 lines.append(f"{self.name}{labelstr} {value}")
             return "\n".join(lines)
 
+
     class _Registry:
         gauges = []
+
 
     def Gauge(name, desc, labelnames=None):  # type: ignore
         g = _SimpleGauge(name, desc, labelnames)
         _Registry.gauges.append(g)
         return g
+
 
     def generate_latest():  # type: ignore
         text = "\n".join(g.render() for g in _Registry.gauges)

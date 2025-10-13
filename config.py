@@ -29,13 +29,13 @@ EFFICIENCY_J_PER_TH = float(os.getenv('EFFICIENCY_J_PER_TH', 29.5))
 # You can override any of these via env vars with the same keys (optional).
 EFFICIENCY_MAP = {
     # Common S19 family baselines (rough stock figures)
-    "S19": float(os.getenv("EFF_S19", 29.5)),
-    "S19 Pro": float(os.getenv("EFF_S19_PRO", 27)),
-    "S19j": float(os.getenv("EFF_S19J", 31)),
-    "S19j Pro": float(os.getenv("EFF_S19J_PRO", 29)),
-    "S19 XP": float(os.getenv("EFF_S19_XP", 21.5)),  # ~21–22 J/TH
-    "S19a": float(os.getenv("EFF_S19A", 30)),
-    "S19a Pro": float(os.getenv("EFF_S19A_PRO", 28)),
+    "Antminer S19": float(os.getenv("EFF_S19", 29.5)),
+    "Antminer S19 Pro": float(os.getenv("EFF_S19_PRO", 27)),
+    "Antminer S19j": float(os.getenv("EFF_S19J", 31)),
+    "Antminer S19j Pro": float(os.getenv("EFF_S19J_PRO", 29)),
+    "Antminer S19 XP": float(os.getenv("EFF_S19_XP", 21.5)),  # ~21–22 J/TH
+    "Antminer S19a": float(os.getenv("EFF_S19A", 30)),
+    "Antminer S19a Pro": float(os.getenv("EFF_S19A_PRO", 28)),
     # Add more models as needed
 }
 
