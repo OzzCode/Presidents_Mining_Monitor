@@ -407,11 +407,11 @@ class ProfitabilityEngine:
                                   days: int = 7) -> List[ProfitabilitySnapshot]:
         """
         Get historical profitability snapshots.
-        
+
         Args:
             miner_ip: IP address for per-miner history, None for fleet-wide
             days: Number of days of history to retrieve
-        
+
         Returns:
             List of ProfitabilitySnapshot objects
         """
@@ -425,6 +425,8 @@ class ProfitabilityEngine:
             query = query.filter(ProfitabilitySnapshot.miner_ip == miner_ip)
         else:
             query = query.filter(ProfitabilitySnapshot.miner_ip.is_(None))
+
+        return query.order_by(ProfitabilitySnapshot.timestamp.asc()).all()
 
     def get_active_miners(self, hours_threshold: int = 1) -> List[str]:
         """
