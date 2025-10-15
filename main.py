@@ -1,6 +1,7 @@
 from flask import Flask, render_template, jsonify
 from api.endpoints import api_bp
 from api.alerts_profitability import alerts_bp, profitability_bp
+from api.analytics import analytics_bp
 from scheduler import start_scheduler
 from flask_cors import CORS
 from dashboard.routes import dash_bp, get_miners
@@ -18,6 +19,7 @@ def create_app():
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(alerts_bp)
     app.register_blueprint(profitability_bp)
+    app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
 
     @app.route("/")
     def home():

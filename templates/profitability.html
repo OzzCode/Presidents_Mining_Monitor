@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,27 +7,11 @@
     <link rel="stylesheet" href="/static/css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
-        :root {
-            --primary-color: #2563eb;
-            --primary-hover: #1d4ed8;
-            --success-color: #16a34a;
-            --danger-color: #dc2626;
-            --warning-color: #d97706;
-            --text-primary: #1f2937;
-            --text-secondary: #4b5563;
-            --bg-light: #f9fafb;
-            --border-color: #e5e7eb;
-            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            --radius: 0.5rem;
-            --transition: all 0.2s ease;
-        }
-
         body {
-            color: var(--text-primary);
-            line-height: 1.5;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', sans-serif;
-            background-color: var(--bg-light);
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
         }
 
         .profitability-container {
@@ -40,22 +24,25 @@
             font-size: 2rem;
             font-weight: 700;
             margin: 0 0 1.5rem 0;
-            color: var(--text-primary);
+            color: var(--text);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.75rem;
         }
 
         .btc-price-banner {
             background: linear-gradient(135deg, #f7931a 0%, #ff8c00 100%);
             color: white;
             padding: 2rem;
-            border-radius: var(--radius);
+            border-radius: 12px;
             margin-bottom: 2rem;
-            box-shadow: var(--shadow-md);
-            transition: var(--transition);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .btc-price-banner:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
         }
 
         .btc-price-content {
@@ -89,7 +76,7 @@
             gap: 1.5rem;
             margin: 2rem 0;
         }
-        
+
         @media (max-width: 768px) {
             .metrics-grid {
                 grid-template-columns: 1fr;
@@ -97,12 +84,12 @@
         }
 
         .metric-card {
-            background: white;
-            border-radius: var(--radius);
+            background: var(--surface);
+            border-radius: 12px;
             padding: 1.5rem;
-            box-shadow: var(--shadow-sm);
-            transition: var(--transition);
-            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+            transition: all 0.2s ease;
+            border: 1px solid var(--border);
             height: 100%;
             display: flex;
             flex-direction: column;
@@ -111,7 +98,7 @@
         .metric-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-            border-color: var(--primary-color);
+            border-color: var(--primary);
         }
 
         .metric-card.profit {
@@ -132,7 +119,7 @@
 
         .metric-label {
             font-size: 0.875rem;
-            color: var(--text-secondary);
+            color: var(--muted);
             text-transform: uppercase;
             font-weight: 600;
             letter-spacing: 0.05em;
@@ -145,14 +132,14 @@
         .metric-value {
             font-size: 1.75rem;
             font-weight: 700;
-            color: var(--text-primary);
+            color: var(--text);
             margin: 0.5rem 0;
             line-height: 1.2;
         }
 
         .metric-sub {
             font-size: 14px;
-            color: #666;
+            color: var(--muted);
         }
 
         .metric-positive {
@@ -164,31 +151,31 @@
         }
 
         .chart-container {
-            background: white;
-            border-radius: var(--radius);
+            background: var(--surface);
+            border-radius: 12px;
             padding: 1.5rem;
-            box-shadow: var(--shadow-sm);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
             margin: 2rem 0;
-            border: 1px solid var(--border-color);
-            transition: var(--transition);
+            border: 1px solid var(--border);
+            transition: all 0.2s ease;
         }
 
         .chart-container:hover {
-            box-shadow: var(--shadow-md);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.05);
         }
 
         .chart-title {
             font-size: 18px;
             font-weight: 600;
             margin-bottom: 20px;
-            color: #333;
+            color: var(--text);
         }
 
         .tabs {
             display: flex;
             gap: 0.5rem;
             margin: 0 0 1.5rem 0;
-            border-bottom: 2px solid var(--border-color);
+            border-bottom: 2px solid var(--border);
             padding-bottom: 0.5rem;
             flex-wrap: wrap;
         }
@@ -200,34 +187,34 @@
             background: none;
             font-size: 0.9375rem;
             font-weight: 600;
-            color: var(--text-secondary);
+            color: var(--muted);
             border-bottom: 3px solid transparent;
-            transition: var(--transition);
+            transition: all 0.2s ease;
             border-radius: 0.25rem 0.25rem 0 0;
             margin-bottom: -2px;
         }
 
         .tab:focus {
-            outline: 2px solid var(--primary-color);
+            outline: 2px solid var(--ring);
             outline-offset: 2px;
         }
 
         .tab.active {
-            color: var(--primary-color);
-            border-bottom-color: var(--primary-color);
-            background-color: rgba(37, 99, 235, 0.05);
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+            background-color: var(--surface-2);
         }
 
         .tab:hover {
-            color: #007bff;
+            color: var(--primary);
         }
 
         .breakdown-table {
-            background: white;
-            border-radius: var(--radius);
+            background: var(--surface);
+            border-radius: 12px;
             padding: 1.5rem;
-            box-shadow: var(--shadow-sm);
-            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--border);
             overflow-x: auto;
         }
 
@@ -239,40 +226,41 @@
         thead th {
             text-align: left;
             padding: 12px;
-            background: #f8f9fa;
+            background: var(--surface-2);
             font-size: 13px;
             font-weight: 600;
-            color: #666;
-            border-bottom: 2px solid #dee2e6;
+            color: var(--muted-2);
+            border-bottom: 2px solid var(--border);
         }
 
         tbody td {
             padding: 12px;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid var(--border);
             font-size: 14px;
+            color: var(--text);
         }
 
         tbody tr {
-            transition: var(--transition);
+            transition: all 0.2s ease;
         }
 
         tbody tr:hover {
-            background-color: rgba(0, 0, 0, 0.02);
+            background-color: var(--surface-2);
         }
 
         .loading {
             text-align: center;
             padding: 3rem 1.5rem;
-            color: var(--text-secondary);
-            background: white;
-            border-radius: var(--radius);
-            border: 1px dashed var(--border-color);
+            color: var(--muted);
+            background: var(--surface);
+            border-radius: 12px;
+            border: 1px dashed var(--border);
             margin: 1.5rem 0;
         }
 
         .loading-spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #007bff;
+            border: 4px solid var(--border);
+            border-top: 4px solid var(--primary);
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -298,41 +286,31 @@
 
         .period-btn {
             padding: 0.5rem 1rem;
-            border: 1px solid var(--border-color);
-            background: white;
+            border: 1px solid var(--border);
+            background: var(--surface);
             border-radius: 0.375rem;
             font-size: 0.875rem;
             font-weight: 500;
-            color: var(--text-secondary);
+            color: var(--muted);
             cursor: pointer;
-            transition: var(--transition);
+            transition: all 0.2s ease;
         }
 
         .period-btn:hover {
-            background-color: var(--bg-light);
-            border-color: var(--primary-color);
-            color: var(--primary-color);
+            background-color: var(--surface-2);
+            border-color: var(--primary);
+            color: var(--primary);
         }
 
         .period-btn.active {
-            background-color: var(--primary-color);
-            border-color: var(--primary-color);
+            background-color: var(--primary);
+            border-color: var(--primary);
             color: white;
         }
 
         .period-btn:focus {
-            outline: 2px solid var(--primary-color);
+            outline: 2px solid var(--ring);
             outline-offset: 2px;
-        }
-            cursor: pointer;
-            font-size: 13px;
-            transition: all 0.3s;
-        }
-
-        .period-btn.active {
-            background: #007bff;
-            color: white;
-            border-color: #007bff;
         }
 
         .filter-controls {
@@ -341,9 +319,11 @@
             align-items: center;
             margin-bottom: 20px;
             padding: 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
+            background: var(--surface);
+            border-radius: 12px;
             flex-wrap: wrap;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
         }
 
         .filter-group {
@@ -355,42 +335,87 @@
         .filter-label {
             font-size: 13px;
             font-weight: 600;
-            color: #666;
+            color: var(--muted-2);
         }
 
         .filter-select {
             padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
             font-size: 14px;
-            background: white;
+            background: var(--surface);
+            color: var(--text);
             cursor: pointer;
             min-width: 150px;
+            transition: all 0.2s ease;
         }
 
         .filter-select:focus {
-            outline: none;
-            border-color: #007bff;
-            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+            outline: 2px solid var(--ring);
+            outline-offset: 2px;
+            border-color: var(--primary);
         }
 
         .filter-indicator {
             font-size: 12px;
-            color: #007bff;
+            color: var(--primary);
             font-weight: 500;
+        }
+
+        /* Navigation hover effects */
+        nav a:hover {
+            background-color: var(--surface-2) !important;
+            color: var(--primary) !important;
+        }
+
+        /* Responsive improvements */
+        @media (max-width: 768px) {
+            .profitability-container {
+                padding: 1rem;
+            }
+
+            .btc-price-banner {
+                padding: 1.5rem;
+            }
+
+            .btc-price-content {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .network-diff {
+                text-align: center;
+            }
+
+            .filter-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-group {
+                width: 100%;
+            }
+
+            .filter-select {
+                width: 100%;
+            }
         }
     </style>
 </head>
 <body>
-<nav style="background: #f8f9fa; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
+<nav style="background: var(--surface); padding: 15px; margin-bottom: 20px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);">
     <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-        <strong style="margin-right: 10px;">Navigation:</strong>
-        <a href="{{ url_for('dashboard.index') }}" style="color: #007bff; text-decoration: none;">Dashboard</a>
-        <a href="{{ url_for('dashboard.show_miners') }}" style="color: #007bff; text-decoration: none;">Miners</a>
-        <a href="{{ url_for('dashboard.alerts_page') }}" style="color: #007bff; text-decoration: none;">Alerts</a>
+        <strong style="margin-right: 10px; color: var(--text);">Navigation:</strong>
+        <a href="{{ url_for('dashboard.index') }}"
+           style="color: var(--primary); text-decoration: none; transition: all 0.2s ease; padding: 0.25rem 0.5rem; border-radius: 6px;">Dashboard</a>
+        <a href="{{ url_for('dashboard.show_miners') }}"
+           style="color: var(--primary); text-decoration: none; transition: all 0.2s ease; padding: 0.25rem 0.5rem; border-radius: 6px;">Miners</a>
+        <a href="{{ url_for('dashboard.alerts_page') }}"
+           style="color: var(--primary); text-decoration: none; transition: all 0.2s ease; padding: 0.25rem 0.5rem; border-radius: 6px;">Alerts</a>
         <a href="{{ url_for('dashboard.profitability_page') }}"
-           style="color: #333; font-weight: bold; text-decoration: none;">Profitability</a>
-        <a href="{{ url_for('logs') }}" style="color: #007bff; text-decoration: none;">Logs</a>
+           style="color: var(--text); font-weight: bold; text-decoration: none; background: var(--surface-2); padding: 0.25rem 0.5rem; border-radius: 6px;">Profitability</a>
+        <a href="{{ url_for('logs') }}"
+           style="color: var(--primary); text-decoration: none; transition: all 0.2s ease; padding: 0.25rem 0.5rem; border-radius: 6px;">Logs</a>
     </div>
 </nav>
 <div class="profitability-container">
@@ -627,10 +652,16 @@
 
             // Convert time filter to days
             let days = 7; // default
-            switch(timeFilter) {
-                case '24h': days = 1; break;
-                case '7d': days = 7; break;
-                case '30d': days = 30; break;
+            switch (timeFilter) {
+                case '24h':
+                    days = 1;
+                    break;
+                case '7d':
+                    days = 7;
+                    break;
+                case '30d':
+                    days = 30;
+                    break;
             }
 
             const activeOnly = minerFilter === 'active' ? 'true' : 'false';
@@ -749,10 +780,16 @@
         }
 
         let timeText = 'Past 7 Days';
-        switch(timeFilter) {
-            case '24h': timeText = 'Past 24 Hours'; break;
-            case '7d': timeText = 'Past 7 Days'; break;
-            case '30d': timeText = 'Past 30 Days'; break;
+        switch (timeFilter) {
+            case '24h':
+                timeText = 'Past 24 Hours';
+                break;
+            case '7d':
+                timeText = 'Past 7 Days';
+                break;
+            case '30d':
+                timeText = 'Past 30 Days';
+                break;
         }
 
         document.getElementById('filterIndicator').textContent =

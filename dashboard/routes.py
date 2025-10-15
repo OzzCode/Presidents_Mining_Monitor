@@ -208,3 +208,8 @@ def alerts_page():
 @dash_bp.route('/profitability')
 def profitability_page():
     return render_template('profitability.html')
+
+
+@dash_bp.route('/analytics')
+def analytics_page():
+    return render_template('analytics.html')

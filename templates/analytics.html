@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Predictive Analytics - Mining Monitor</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        }
+
+        .analytics-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0 0 1.5rem 0;
+            color: var(--text);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.75rem;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .analytics-card {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+            transition: all 0.2s ease;
+            border: 1px solid var(--border);
+        }
+
+        .analytics-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .card-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .card-icon {
+            width: 24px;
+            height: 24px;
+            opacity: 0.7;
+        }
+
+        .metric-large {
+            font-size: 2.5rem;
+            font-weight: 800;
+            line-height: 1;
+            margin: 0.5rem 0;
+        }
+
+        .metric-medium {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 0.25rem 0;
+        }
+
+        .metric-small {
+            font-size: 0.875rem;
+            color: var(--muted);
+            margin-top: 0.5rem;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-low {
+            background: rgba(34, 197, 94, 0.1);
+            color: #22c55e;
+        }
+
+        .status-medium {
+            background: rgba(251, 191, 36, 0.1);
+            color: #fbbf24;
+        }
+
+        .status-high {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }
+
+        .status-critical {
+            background: rgba(220, 38, 38, 0.2);
+            color: #dc2626;
+        }
+
+        .chart-container {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+            margin: 1.5rem 0;
+            border: 1px solid var(--border);
+        }
+
+        .chart-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+
+        .risk-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .risk-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background: var(--surface-2);
+            border-radius: 8px;
+            border-left: 4px solid transparent;
+        }
+
+        .risk-item.critical {
+            border-left-color: #dc2626;
+        }
+
+        .risk-item.high {
+            border-left-color: #ef4444;
+        }
+
+        .risk-item.medium {
+            border-left-color: #fbbf24;
+        }
+
+        .risk-info {
+            flex: 1;
+        }
+
+        .risk-miner {
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .risk-details {
+            font-size: 0.875rem;
+            color: var(--muted);
+            margin-top: 0.25rem;
+        }
+
+        .forecast-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .forecast-item:last-child {
+            border-bottom: none;
+        }
+
+        .forecast-date {
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .forecast-price {
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .forecast-trend {
+            font-size: 0.75rem;
+            padding: 0.125rem 0.5rem;
+            border-radius: 12px;
+        }
+
+        .trend-bullish {
+            background: rgba(34, 197, 94, 0.1);
+            color: #22c55e;
+        }
+
+        .trend-bearish {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }
+
+        .trend-neutral {
+            background: rgba(107, 114, 128, 0.1);
+            color: #6b7280;
+        }
+
+        .maintenance-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background: var(--surface-2);
+            border-radius: 8px;
+            border-left: 4px solid var(--border);
+        }
+
+        .maintenance-urgent {
+            border-left-color: #dc2626;
+        }
+
+        .maintenance-high {
+            border-left-color: #f59e0b;
+        }
+
+        .maintenance-medium {
+            border-left-color: #10b981;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--muted);
+        }
+
+        .loading-spinner {
+            border: 3px solid var(--border);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .refresh-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s ease;
+        }
+
+        .refresh-btn:hover {
+            background: var(--primary-hover);
+        }
+
+        .refresh-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .recommendations {
+            background: var(--surface-2);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .recommendation-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 0.5rem;
+        }
+
+        .recommendation-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .recommendation-icon {
+            width: 16px;
+            height: 16px;
+            margin-right: 0.5rem;
+            margin-top: 0.125rem;
+            color: var(--primary);
+        }
+
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .analytics-container {
+                padding: 1rem;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .two-column {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+<nav style="background: var(--surface); padding: 15px; margin-bottom: 20px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);">
+    <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+        <strong style="margin-right: 10px; color: var(--text);">Navigation:</strong>
+        <a href="{{ url_for('dashboard.index') }}"
+           style="color: var(--primary); text-decoration: none; transition: all 0.2s ease; padding: 0.25rem 0.5rem; border-radius: 6px;">Dashboard</a>
+        <a href="{{ url_for('dashboard.show_miners') }}"
+           style="color: var(--primary); text-decoration: none; transition: all 0.2s ease; padding: 0.25rem 0.5rem; border-radius: 6px;">Miners</a>
+        <a href="{{ url_for('dashboard.alerts_page') }}"
+           style="color: var(--primary); text-decoration: none; transition: all 0.2s ease; padding: 0.25rem 0.5rem; border-radius: 6px;">Alerts</a>
+        <a href="{{ url_for('dashboard.profitability_page') }}"
+           style="color: var(--primary); text-decoration: none; transition: all 0.2s ease; padding: 0.25rem 0.5rem; border-radius: 6px;">Profitability</a>
+        <a href="{{ url_for('dashboard.analytics_page') }}"
+           style="color: var(--text); font-weight: bold; text-decoration: none; background: var(--surface-2); padding: 0.25rem 0.5rem; border-radius: 6px;">Analytics</a>
+        <a href="{{ url_for('logs') }}"
+           style="color: var(--primary); text-decoration: none; transition: all 0.2s ease; padding: 0.25rem 0.5rem; border-radius: 6px;">Logs</a>
+    </div>
+</nav>
+
+<div class="analytics-container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h1>Predictive Analytics Dashboard</h1>
+        <button class="refresh-btn" onclick="refreshAllData()" id="refreshBtn">
+            🔄 Refresh Data
+        </button>
+    </div>
+
+    <!-- Key Metrics Overview -->
+    <div class="dashboard-grid">
+        <div class="analytics-card">
+            <div class="card-header">
+                <div class="card-title">Fleet Health Score</div>
+                <div class="card-icon">🏥</div>
+            </div>
+            <div class="metric-large" id="fleetHealthScore">--</div>
+            <div class="metric-small">Overall fleet condition</div>
+        </div>
+
+        <div class="analytics-card">
+            <div class="card-header">
+                <div class="card-title">High Risk Miners</div>
+                <div class="card-icon">⚠️</div>
+            </div>
+            <div class="metric-large" id="highRiskCount">--</div>
+            <div class="metric-small">Require immediate attention</div>
+        </div>
+
+        <div class="analytics-card">
+            <div class="card-header">
+                <div class="card-title">Maintenance Needed</div>
+                <div class="card-icon">🔧</div>
+            </div>
+            <div class="metric-large" id="maintenanceCount">--</div>
+            <div class="metric-small">Scheduled maintenance items</div>
+        </div>
+
+        <div class="analytics-card">
+            <div class="card-header">
+                <div class="card-title">BTC Price Trend</div>
+                <div class="card-icon">₿</div>
+            </div>
+            <div class="metric-medium" id="btcTrend">--</div>
+            <div class="metric-small" id="btcForecast">7-day forecast</div>
+        </div>
+    </div>
+
+    <!-- Charts Section -->
+    <div class="two-column">
+        <div class="chart-container">
+            <div class="chart-title">Fleet Health Trend</div>
+            <canvas id="healthTrendChart" style="max-height: 300px;"></canvas>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">BTC Price Forecast</div>
+            <canvas id="btcForecastChart" style="max-height: 300px;"></canvas>
+        </div>
+    </div>
+
+    <!-- Risk Assessment and Maintenance -->
+    <div class="two-column">
+        <div class="analytics-card">
+            <div class="card-header">
+                <div class="card-title">High Risk Miners</div>
+                <span class="status-indicator status-high" id="riskStatus">Loading...</span>
+            </div>
+            <div class="risk-list" id="riskList">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    Loading risk assessments...
+                </div>
+            </div>
+        </div>
+
+        <div class="analytics-card">
+            <div class="card-header">
+                <div class="card-title">Maintenance Schedule</div>
+                <span class="status-indicator status-medium" id="maintenanceStatus">Loading...</span>
+            </div>
+            <div class="risk-list" id="maintenanceList">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    Loading maintenance schedule...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BTC Forecast Details -->
+    <div class="analytics-card">
+        <div class="card-header">
+            <div class="card-title">BTC Price Forecast Details</div>
+            <div class="card-icon">📈</div>
+        </div>
+        <div id="forecastDetails">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                Loading BTC forecast...
+            </div>
+        </div>
+    </div>
+
+    <!-- Recommendations -->
+    <div class="analytics-card">
+        <div class="card-header">
+            <div class="card-title">AI Recommendations</div>
+            <div class="card-icon">🤖</div>
+        </div>
+        <div class="recommendations" id="recommendations">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                Generating recommendations...
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let healthTrendChart = null;
+    let btcForecastChart = null;
+
+    async function loadFleetSummary() {
+        try {
+            const response = await fetch('/api/analytics/fleet-summary');
+            const data = await response.json();
+
+            if (data.ok) {
+                const summary = data.data;
+
+                // Update key metrics
+                document.getElementById('fleetHealthScore').textContent =
+                    Math.round(summary.fleet_summary.fleet_health_score || 0) + '%';
+
+                document.getElementById('highRiskCount').textContent =
+                    summary.fleet_summary.high_risk_miners || 0;
+
+                document.getElementById('maintenanceCount').textContent =
+                    summary.fleet_summary.maintenance_needed || 0;
+
+                // Update BTC trend
+                if (summary.btc_forecasts && summary.btc_forecasts.length > 0) {
+                    const forecast = summary.btc_forecasts[0];
+                    document.getElementById('btcTrend').textContent = forecast.trend;
+                    document.getElementById('btcForecast').textContent =
+                        `$${Math.round(forecast.predicted_price).toLocaleString()}`;
+                }
+
+                // Update recommendations
+                updateRecommendations(summary.recommendations || []);
+
+                return summary;
+            }
+        } catch (error) {
+            console.error('Error loading fleet summary:', error);
+        }
+        return null;
+    }
+
+    async function loadHighRiskMiners() {
+        try {
+            const response = await fetch('/api/analytics/high-risk-miners');
+            const data = await response.json();
+
+            if (data.ok) {
+                const riskList = document.getElementById('riskList');
+                const riskStatus = document.getElementById('riskStatus');
+
+                if (data.data.high_risk_miners.length === 0) {
+                    riskList.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--muted);">No high-risk miners detected</div>';
+                    riskStatus.textContent = 'All Good';
+                    riskStatus.className = 'status-indicator status-low';
+                } else {
+                    riskStatus.textContent = `${data.data.count} At Risk`;
+                    riskStatus.className = 'status-indicator status-high';
+
+                    let html = '';
+                    data.data.high_risk_miners.forEach(miner => {
+                        const riskClass = miner.risk_level.toLowerCase();
+                        html += `
+                            <div class="risk-item ${riskClass}">
+                                <div class="risk-info">
+                                    <div class="risk-miner">${miner.miner_name} (${miner.model})</div>
+                                    <div class="risk-details">
+                                        Risk: ${Math.round(miner.risk_score * 100)}% • 
+                                        ${miner.contributing_factors.slice(0, 2).join(', ')}
+                                    </div>
+                                </div>
+                                <span class="status-indicator status-${riskClass}">${miner.risk_level}</span>
+                            </div>
+                        `;
+                    });
+                    riskList.innerHTML = html;
+                }
+            }
+        } catch (error) {
+            console.error('Error loading high risk miners:', error);
+        }
+    }
+
+    async function loadMaintenanceSchedule() {
+        try {
+            const response = await fetch('/api/analytics/maintenance-schedule');
+            const data = await response.json();
+
+            if (data.ok) {
+                const maintenanceList = document.getElementById('maintenanceList');
+                const maintenanceStatus = document.getElementById('maintenanceStatus');
+
+                if (data.data.maintenance_schedule.length === 0) {
+                    maintenanceList.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--muted);">No maintenance required</div>';
+                    maintenanceStatus.textContent = 'Up to Date';
+                    maintenanceStatus.className = 'status-indicator status-low';
+                } else {
+                    maintenanceStatus.textContent = `${data.data.total_items} Items`;
+                    maintenanceStatus.className = data.data.urgent_items > 0 ? 'status-indicator status-high' : 'status-indicator status-medium';
+
+                    let html = '';
+                    data.data.maintenance_schedule.slice(0, 10).forEach(item => {
+                        const urgencyClass = item.urgency.toLowerCase();
+                        const date = new Date(item.maintenance_date).toLocaleDateString();
+                        html += `
+                            <div class="maintenance-item maintenance-${urgencyClass}">
+                                <div class="risk-info">
+                                    <div class="risk-miner">${item.miner_name}</div>
+                                    <div class="risk-details">
+                                        ${date} • ${item.estimated_duration} • ${item.urgency}
+                                    </div>
+                                </div>
+                                <span class="status-indicator status-${item.risk_level.toLowerCase()}">${item.risk_level}</span>
+                            </div>
+                        `;
+                    });
+                    maintenanceList.innerHTML = html;
+                }
+            }
+        } catch (error) {
+            console.error('Error loading maintenance schedule:', error);
+        }
+    }
+
+    async function loadBTCForecast() {
+        try {
+            const response = await fetch('/api/analytics/btc-forecast?days=7');
+            const data = await response.json();
+
+            if (data.ok && data.data.forecasts.length > 0) {
+                const forecastDetails = document.getElementById('forecastDetails');
+
+                let html = '';
+                data.data.forecasts.forEach(forecast => {
+                    const date = new Date(forecast.date).toLocaleDateString();
+                    const trendClass = `trend-${forecast.trend.toLowerCase()}`;
+                    html += `
+                        <div class="forecast-item">
+                            <div class="forecast-date">${date}</div>
+                            <div class="forecast-price">$${Math.round(forecast.predicted_price).toLocaleString()}</div>
+                            <span class="forecast-trend ${trendClass}">${forecast.trend}</span>
+                        </div>
+                    `;
+                });
+
+                forecastDetails.innerHTML = html;
+
+                // Update chart
+                updateBTCForecastChart(data.data.forecasts);
+            }
+        } catch (error) {
+            console.error('Error loading BTC forecast:', error);
+        }
+    }
+
+    async function loadFleetHealthTrend() {
+        try {
+            const response = await fetch('/api/analytics/fleet-health-trend?days=30');
+            const data = await response.json();
+
+            if (data.ok) {
+                updateHealthTrendChart(data.data.health_trend);
+            }
+        } catch (error) {
+            console.error('Error loading fleet health trend:', error);
+        }
+    }
+
+    function updateHealthTrendChart(healthData) {
+        const ctx = document.getElementById('healthTrendChart').getContext('2d');
+
+        if (healthTrendChart) {
+            healthTrendChart.destroy();
+        }
+
+        const labels = healthData.map(item => new Date(item.date).toLocaleDateString());
+        const scores = healthData.map(item => item.health_score);
+
+        healthTrendChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Fleet Health Score',
+                    data: scores,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function (value) {
+                                return value + '%';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateBTCForecastChart(forecasts) {
+        const ctx = document.getElementById('btcForecastChart').getContext('2d');
+
+        if (btcForecastChart) {
+            btcForecastChart.destroy();
+        }
+
+        const labels = forecasts.map(f => new Date(f.date).toLocaleDateString());
+        const prices = forecasts.map(f => f.predicted_price);
+        const upperBounds = forecasts.map(f => f.confidence_upper);
+        const lowerBounds = forecasts.map(f => f.confidence_lower);
+
+        btcForecastChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Predicted Price',
+                        data: prices,
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Upper Confidence',
+                        data: upperBounds,
+                        borderColor: 'rgba(245, 158, 11, 0.3)',
+                        borderWidth: 1,
+                        borderDash: [5, 5],
+                        fill: false
+                    },
+                    {
+                        label: 'Lower Confidence',
+                        data: lowerBounds,
+                        borderColor: 'rgba(245, 158, 11, 0.3)',
+                        borderWidth: 1,
+                        borderDash: [5, 5],
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        ticks: {
+                            callback: function (value) {
+                                return '$' + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateRecommendations(recommendations) {
+        const container = document.getElementById('recommendations');
+
+        if (recommendations.length === 0) {
+            container.innerHTML = '<div style="text-align: center; color: var(--muted);">No specific recommendations at this time</div>';
+            return;
+        }
+
+        let html = '';
+        recommendations.forEach(rec => {
+            html += `
+                <div class="recommendation-item">
+                    <div class="recommendation-icon">💡</div>
+                    <div>${rec}</div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    async function refreshAllData() {
+        const refreshBtn = document.getElementById('refreshBtn');
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = '🔄 Refreshing...';
+
+        try {
+            await Promise.all([
+                loadFleetSummary(),
+                loadHighRiskMiners(),
+                loadMaintenanceSchedule(),
+                loadBTCForecast(),
+                loadFleetHealthTrend()
+            ]);
+        } finally {
+            refreshBtn.disabled = false;
+            refreshBtn.textContent = '🔄 Refresh Data';
+        }
+    }
+
+    // Initial load
+    document.addEventListener('DOMContentLoaded', function () {
+        refreshAllData();
+
+        // Auto-refresh every 5 minutes
+        setInterval(refreshAllData, 300000);
+    });
+</script>
+</body>
+</html>

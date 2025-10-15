@@ -14,3 +14,8 @@ python-dateutil
 python-json-logger
 gunicorn
 requests~=2.32.3
+# Machine Learning Dependencies for Predictive Analytics
+numpy~=1.24.3
+pandas~=2.0.3
+scikit-learn~=1.3.0
+joblib~=1.3.0
