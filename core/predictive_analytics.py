@@ -586,7 +586,8 @@ class PredictiveAnalyticsEngine:
     def get_fleet_analytics_summary(self) -> Dict[str, Any]:
         """Get comprehensive analytics summary for the entire fleet"""
         try:
-            miners = Miner.query.filter_by(status='active').all()
+            with SessionLocal() as session:
+                miners = session.query(Miner).all()
 
             # Get failure risk assessments for all miners
             risk_assessments = []

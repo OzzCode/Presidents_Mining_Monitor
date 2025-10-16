@@ -105,24 +105,25 @@ def get_btc_price_forecast():
 def get_high_risk_miners():
     """Get list of miners with high failure risk"""
     try:
-        with SessionLocal() as session:
-            # Note: Miner model doesn't have a 'status' field, getting all miners instead
-            miners = session.query(Miner).all()
         high_risk_miners = []
 
-        for miner in miners:
-            assessment = analytics_engine.predict_miner_failure_risk(miner.id)
-            if assessment.risk_level in ['HIGH', 'CRITICAL']:
-                high_risk_miners.append({
-                    'miner_id': miner.id,
-                    'miner_name': miner.hostname or miner.miner_ip,  # Use hostname or IP as name
-                    'model': miner.model,
-                    'risk_score': assessment.risk_score,
-                    'risk_level': assessment.risk_level,
-                    'predicted_failure_date': assessment.predicted_failure_date.isoformat() if assessment.predicted_failure_date else None,
-                    'contributing_factors': assessment.contributing_factors,
-                    'recommendations': assessment.recommendations
-                })
+        # Get all miners using session
+        with SessionLocal() as session:
+            miners = session.query(Miner).all()
+
+            for miner in miners:
+                assessment = analytics_engine.predict_miner_failure_risk(miner.id)
+                if assessment.risk_level in ['HIGH', 'CRITICAL']:
+                    high_risk_miners.append({
+                        'miner_id': miner.id,
+                        'miner_name': miner.hostname or miner.miner_ip,
+                        'model': miner.model,
+                        'risk_score': assessment.risk_score,
+                        'risk_level': assessment.risk_level,
+                        'predicted_failure_date': assessment.predicted_failure_date.isoformat() if assessment.predicted_failure_date else None,
+                        'contributing_factors': assessment.contributing_factors,
+                        'recommendations': assessment.recommendations
+                    })
 
         # Sort by risk score (highest first)
         high_risk_miners.sort(key=lambda x: x['risk_score'], reverse=True)
@@ -179,7 +180,7 @@ def get_fleet_health_trend():
             # Add some variation to simulate trend
             variation = (i - days / 2) * 0.5  # Slight trend
             noise = (hash(date.strftime('%Y%m%d')) % 10 - 5) * 0.5  # Random variation
-            health_score = max(0, min(100, current_health + variation + noise))
+            health_score = int(round(max(0, min(100, current_health + variation + noise))))
 
             health_data.append({
                 'date': date.strftime('%Y-%m-%d'),
