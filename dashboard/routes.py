@@ -195,11 +195,6 @@ def logs_page():
     return render_template("logs.html")
 
 
-@dash_bp.route('/returns')
-def returns_page():
-    return render_template('returns.html')
-
-
 @dash_bp.route('/alerts')
 def alerts_page():
     return render_template('alerts.html')

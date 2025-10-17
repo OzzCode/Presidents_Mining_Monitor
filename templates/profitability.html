@@ -526,6 +526,95 @@
         <div class="chart-title">Profitability Trend</div>
         <canvas id="profitChart" style="max-height: 400px;"></canvas>
     </div>
+
+    <!-- Individual Miner Contributions -->
+    <div class="chart-container" style="margin-top: 2rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <div class="chart-title" style="margin: 0;">Individual Miner Contributions</div>
+            <button id="toggleMinerTable" class="period-btn active" style="background: var(--primary); color: white; border-color: var(--primary);">
+                Show Details
+            </button>
+        </div>
+        
+        <div id="minerContributionsSection" style="display: none;">
+            <!-- Controls for per-miner calculations -->
+            <div style="display: flex; gap: 15px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap;">
+                <div class="filter-group">
+                    <div class="filter-label">Electricity Rate ($/kWh)</div>
+                    <input type="number" id="minerElectricityRate" class="filter-select" 
+                           style="width: 150px; padding: 8px 12px;" 
+                           step="0.001" min="0" placeholder="0.10" value="0.10">
+                </div>
+                <div class="filter-group">
+                    <div class="filter-label">Active Within (minutes)</div>
+                    <select id="minerFreshWithin" class="filter-select" style="width: 150px;">
+                        <option value="15">15 minutes</option>
+                        <option value="30" selected>30 minutes</option>
+                        <option value="60">60 minutes</option>
+                        <option value="120">120 minutes</option>
+                    </select>
+                </div>
+                <div>
+                    <button id="applyMinerFilters" class="period-btn" style="padding: 8px 20px; background: var(--primary); color: white; border-color: var(--primary);">
+                        Apply
+                    </button>
+                </div>
+                <div id="minerStatus" style="color: var(--muted); font-size: 0.875rem;"></div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                <div style="background: var(--surface-2); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-bottom: 0.25rem;">Total Hashrate</div>
+                    <div style="font-size: 1.25rem; font-weight: 700; color: var(--text);" id="minerTotalHash">—</div>
+                </div>
+                <div style="background: var(--surface-2); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-bottom: 0.25rem;">Total Power</div>
+                    <div style="font-size: 1.25rem; font-weight: 700; color: var(--text);" id="minerTotalPower">—</div>
+                </div>
+                <div style="background: var(--surface-2); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-bottom: 0.25rem;">BTC/TH/Day</div>
+                    <div style="font-size: 1.25rem; font-weight: 700; color: var(--text);" id="minerBtcPerThDay">—</div>
+                </div>
+                <div style="background: var(--surface-2); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-bottom: 0.25rem;">Daily Revenue</div>
+                    <div style="font-size: 1.25rem; font-weight: 700; color: #007bff;" id="minerDailyRevenue">—</div>
+                </div>
+                <div style="background: var(--surface-2); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-bottom: 0.25rem;">Daily Cost</div>
+                    <div style="font-size: 1.25rem; font-weight: 700; color: #dc3545;" id="minerDailyCost">—</div>
+                </div>
+                <div style="background: var(--surface-2); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                    <div style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-bottom: 0.25rem;">Daily Profit</div>
+                    <div style="font-size: 1.25rem; font-weight: 700;" id="minerDailyProfit">—</div>
+                </div>
+            </div>
+
+            <!-- Miner Table -->
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>IP Address</th>
+                            <th>Model</th>
+                            <th>Hashrate (TH/s)</th>
+                            <th>Power (W)</th>
+                            <th>Revenue/Day (USD)</th>
+                            <th>Cost/Day (USD)</th>
+                            <th>Profit/Day (USD)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="minerContributionsTable">
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 2rem; color: var(--muted);">
+                                Click "Apply" to load miner data
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -837,6 +926,199 @@
         loadNetworkDifficulty();
         loadCurrentProfitability();
     }, 60000);
+
+    // ========== Individual Miner Contributions ==========
+
+    function fmt(n, digits = 2) {
+        if (!isFinite(n)) return '—';
+        return Number(n).toLocaleString(undefined, {maximumFractionDigits: digits});
+    }
+
+    function loadMinerPrefs() {
+        try {
+            const rate = localStorage.getItem('miner_rate');
+            const freshWithin = localStorage.getItem('miner_fresh_within');
+            if (rate) document.getElementById('minerElectricityRate').value = rate;
+            if (freshWithin) document.getElementById('minerFreshWithin').value = freshWithin;
+        } catch (e) {
+            console.log('Could not load preferences:', e);
+        }
+    }
+
+    function saveMinerPrefs(rate, freshWithin) {
+        try {
+            localStorage.setItem('miner_rate', String(rate));
+            localStorage.setItem('miner_fresh_within', String(freshWithin));
+        } catch (e) {
+            console.log('Could not save preferences:', e);
+        }
+    }
+
+    async function fetchDifficulty() {
+        try {
+            const response = await fetch('https://blockchain.info/q/getdifficulty', {cache: 'no-store'});
+            if (!response.ok) throw new Error('Difficulty fetch failed');
+            const text = await response.text();
+            const diff = parseFloat(text);
+            if (!isFinite(diff)) throw new Error('Invalid difficulty');
+            return diff;
+        } catch (error) {
+            console.error('Failed to fetch difficulty:', error);
+            return null;
+        }
+    }
+
+    function btcPerTHPerDay(difficulty, rewardBtc = 3.125) {
+        const two32 = 4294967296; // 2^32
+        return (1e12 * 86400 / (difficulty * two32)) * rewardBtc;
+    }
+
+    async function fetchMinersCurrent(freshWithin) {
+        try {
+            const params = new URLSearchParams({active_only: 'true', fresh_within: String(freshWithin)});
+            const response = await fetch(`/api/miners/current?${params.toString()}`);
+            if (!response.ok) throw new Error('Miners fetch failed');
+            const data = await response.json();
+            return Array.isArray(data) ? data : [];
+        } catch (error) {
+            console.error('Failed to fetch miners:', error);
+            return [];
+        }
+    }
+
+    function renderMinerTable(miners, rate, usdPerThDay, btcPrice) {
+        const tbody = document.getElementById('minerContributionsTable');
+        if (!tbody) return {totalHash: 0, totalPower: 0, totalCost: 0, totalRev: 0};
+
+        let totalHash = 0;
+        let totalPower = 0;
+        let totalCost = 0;
+        let totalRev = 0;
+
+        if (miners.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--muted);">No active miners found</td></tr>';
+            return {totalHash: 0, totalPower: 0, totalCost: 0, totalRev: 0};
+        }
+
+        const rows = miners.map(m => {
+            const hr = Number(m.hashrate_ths || 0);
+            const pw = Number(m.power_w || 0);
+            totalHash += hr;
+            totalPower += pw;
+
+            const revUsd = hr * usdPerThDay;
+            const costUsd = (pw / 1000) * 24 * rate;
+            const profitUsd = revUsd - costUsd;
+
+            totalRev += revUsd;
+            totalCost += costUsd;
+
+            const profitColor = profitUsd >= 0 ? '#28a745' : '#dc3545';
+
+            return `
+                <tr>
+                    <td><a href="/dashboard/?ip=${encodeURIComponent(m.ip || '')}" style="color: var(--primary); text-decoration: none;">${m.ip || '—'}</a></td>
+                    <td>${m.model || '—'}</td>
+                    <td>${fmt(hr, 3)}</td>
+                    <td>${fmt(pw, 0)}</td>
+                    <td>$${fmt(revUsd, 2)}</td>
+                    <td>$${fmt(costUsd, 2)}</td>
+                    <td style="font-weight: 600; color: ${profitColor};">$${fmt(profitUsd, 2)}</td>
+                </tr>
+            `;
+        }).join('');
+
+        tbody.innerHTML = rows;
+        return {totalHash, totalPower, totalCost, totalRev};
+    }
+
+    async function refreshMinerContributions() {
+        const status = document.getElementById('minerStatus');
+        const rate = parseFloat(document.getElementById('minerElectricityRate').value || '0.1');
+        const freshWithin = parseInt(document.getElementById('minerFreshWithin').value || '30', 10);
+        saveMinerPrefs(rate, freshWithin);
+
+        try {
+            if (status) status.textContent = 'Loading…';
+
+            // Fetch BTC price first (from already loaded value or fetch again)
+            const btcPriceEl = document.getElementById('btc-price');
+            const btcPriceText = btcPriceEl.textContent.replace(/[^0-9.]/g, '');
+            let btcPrice = parseFloat(btcPriceText);
+            
+            if (!btcPrice || !isFinite(btcPrice)) {
+                const response = await fetch('/api/profitability/btc-price');
+                const data = await response.json();
+                btcPrice = data.ok ? data.btc_price_usd : 0;
+            }
+
+            // Fetch difficulty and miners
+            const [diff, miners] = await Promise.all([
+                fetchDifficulty(),
+                fetchMinersCurrent(freshWithin)
+            ]);
+
+            let btcThDay = null;
+            if (diff) {
+                btcThDay = btcPerTHPerDay(diff, 3.125);
+            }
+
+            // Update BTC/TH/Day display
+            const btcPerThDayEl = document.getElementById('minerBtcPerThDay');
+            if (btcThDay != null) {
+                btcPerThDayEl.textContent = `${fmt(btcThDay, 8)} BTC`;
+            } else {
+                btcPerThDayEl.textContent = '—';
+            }
+
+            // Calculate USD per TH/day
+            const usdPerThDay = (btcThDay != null) ? (btcThDay * btcPrice) : 0;
+
+            // Render table and get totals
+            const {totalHash, totalPower, totalCost, totalRev} = renderMinerTable(miners, rate, usdPerThDay, btcPrice);
+
+            // Update summary cards
+            document.getElementById('minerTotalHash').textContent = `${fmt(totalHash, 3)} TH/s`;
+            document.getElementById('minerTotalPower').textContent = `${fmt(totalPower, 0)} W`;
+            document.getElementById('minerDailyRevenue').textContent = `$${fmt(totalRev, 2)}`;
+            document.getElementById('minerDailyCost').textContent = `$${fmt(totalCost, 2)}`;
+            
+            const profit = totalRev - totalCost;
+            const profitEl = document.getElementById('minerDailyProfit');
+            profitEl.textContent = `$${fmt(profit, 2)}`;
+            profitEl.style.color = profit >= 0 ? '#28a745' : '#dc3545';
+
+            if (status) status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        } catch (error) {
+            console.error('Failed to refresh miner contributions:', error);
+            if (status) status.textContent = 'Failed to load data';
+        }
+    }
+
+    // Toggle miner contributions visibility
+    document.getElementById('toggleMinerTable').addEventListener('click', function() {
+        const section = document.getElementById('minerContributionsSection');
+        const button = this;
+        
+        if (section.style.display === 'none') {
+            section.style.display = 'block';
+            button.textContent = 'Hide Details';
+            // Auto-load data if not loaded yet
+            const tbody = document.getElementById('minerContributionsTable');
+            if (tbody.textContent.includes('Click "Apply"')) {
+                refreshMinerContributions();
+            }
+        } else {
+            section.style.display = 'none';
+            button.textContent = 'Show Details';
+        }
+    });
+
+    // Apply button handler
+    document.getElementById('applyMinerFilters').addEventListener('click', refreshMinerContributions);
+
+    // Load saved preferences
+    loadMinerPrefs();
 </script>
 </body>
 </html>

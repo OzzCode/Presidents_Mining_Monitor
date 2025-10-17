@@ -131,18 +131,18 @@ class PredictiveAnalyticsEngine:
             try:
                 query = text("""
                              SELECT m.timestamp,
-                                    m.hashrate,
-                                    m.temperature,
+                                    m.hashrate_ths as hashrate,
+                                    m.avg_temp_c as temperature,
                                     m.avg_fan_rpm as fan_speed,
-                                    m.power_consumption,
-                                    m.pool_rejected_shares,
-                                    m.pool_accepted_shares,
-                                    0             as uptime,
+                                    m.power_w as power_consumption,
+                                    0 as rejected_shares,
+                                    0 as accepted_shares,
+                                    COALESCE(mn.uptime_s, 0) as uptime,
                                     mn.model,
                                     mn.firmware_version
                              FROM metrics m
                                       JOIN miners mn ON m.miner_ip = mn.miner_ip
-                             WHERE mn.id = :miner_id
+                             WHERE m.miner_ip = :miner_id
                                AND m.timestamp >= :start_date
                                AND m.timestamp <= :end_date
                              ORDER BY m.timestamp
@@ -204,7 +204,7 @@ class PredictiveAnalyticsEngine:
             training_data = []
 
             for miner in miners:
-                features_df = self.get_miner_features(miner.id, days=60)
+                features_df = self.get_miner_features(miner.miner_ip, days=60)
                 if features_df.empty:
                     continue
                 # Create labels based on known failures or performance degradation
@@ -592,7 +592,7 @@ class PredictiveAnalyticsEngine:
             # Get failure risk assessments for all miners
             risk_assessments = []
             for miner in miners:
-                assessment = self.predict_miner_failure_risk(miner.id)
+                assessment = self.predict_miner_failure_risk(miner.miner_ip)
                 risk_assessments.append(assessment)
 
             # Calculate fleet-wide metrics

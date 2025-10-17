@@ -35,16 +35,26 @@ def get_fleet_analytics_summary():
 def get_miner_risk_assessment(miner_id):
     """Get failure risk assessment for a specific miner"""
     try:
-        # Verify miner exists
+        # Verify miner exists (miner_id can be IP or integer ID)
         with SessionLocal() as session:
-            miner = session.get(Miner, miner_id)
+            # Try to get by IP first, then by ID
+            miner = session.query(Miner).filter(Miner.miner_ip == miner_id).first()
+            if not miner:
+                # Try by integer ID
+                try:
+                    miner = session.get(Miner, int(miner_id))
+                except (ValueError, TypeError):
+                    pass
+            
             if not miner:
                 return jsonify({
                     'ok': False,
                     'error': 'Miner not found'
                 }), 404
+            
+            miner_ip = miner.miner_ip
 
-        assessment = analytics_engine.predict_miner_failure_risk(miner_id)
+        assessment = analytics_engine.predict_miner_failure_risk(miner_ip)
 
         return jsonify({
             'ok': True,
@@ -112,10 +122,10 @@ def get_high_risk_miners():
             miners = session.query(Miner).all()
 
             for miner in miners:
-                assessment = analytics_engine.predict_miner_failure_risk(miner.id)
+                assessment = analytics_engine.predict_miner_failure_risk(miner.miner_ip)
                 if assessment.risk_level in ['HIGH', 'CRITICAL']:
                     high_risk_miners.append({
-                        'miner_id': miner.id,
+                        'miner_id': miner.miner_ip,
                         'miner_name': miner.hostname or miner.miner_ip,
                         'model': miner.model,
                         'risk_score': assessment.risk_score,
@@ -166,7 +176,7 @@ def get_fleet_health_trend():
 
         for miner in miners:
             try:
-                assessment = analytics_engine.predict_miner_failure_risk(miner.id)
+                assessment = analytics_engine.predict_miner_failure_risk(miner.miner_ip)
                 total_risk += assessment.risk_score
                 active_miners += 1
             except:
@@ -215,7 +225,7 @@ def get_maintenance_schedule():
         maintenance_schedule = []
 
         for miner in miners:
-            assessment = analytics_engine.predict_miner_failure_risk(miner.id)
+            assessment = analytics_engine.predict_miner_failure_risk(miner.miner_ip)
 
             # Only include miners that need attention
             if assessment.risk_level in ['MEDIUM', 'HIGH', 'CRITICAL']:
@@ -232,7 +242,7 @@ def get_maintenance_schedule():
                     maintenance_date = datetime.utcnow() + timedelta(days=days_ahead)
 
                 maintenance_schedule.append({
-                    'miner_id': miner.id,
+                    'miner_id': miner.miner_ip,
                     'miner_name': miner.hostname or miner.miner_ip,  # Use hostname or IP as name
                     'model': miner.model,
                     'risk_level': assessment.risk_level,
