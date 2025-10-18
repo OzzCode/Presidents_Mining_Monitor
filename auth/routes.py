@@ -66,7 +66,17 @@ def login():
             if user and check_password_hash(user.password_hash, password):
                 session["user_id"] = user.id
                 session.permanent = True  # follow app.permanent_session_lifetime if set
-                dest = request.args.get("next") or url_for("dashboard.index")
+                # Honor user default landing if set in preferences
+                default_landing = None
+                try:
+                    prefs = user.preferences or {}
+                    ui_prefs = prefs.get("ui") or {}
+                    dl = ui_prefs.get("default_landing")
+                    if isinstance(dl, str) and dl.strip():
+                        default_landing = dl.strip()
+                except Exception:
+                    default_landing = None
+                dest = request.args.get("next") or default_landing or url_for("dashboard.index")
                 return redirect(dest)
             else:
                 error = "Invalid username or password"
@@ -131,7 +141,36 @@ def user_preferences():
             return jsonify({"ok": False, "error": "user not found"}), 404
 
         if request.method == "GET":
-            return jsonify({"ok": True, "preferences": user.preferences or {}})
+            # Merge user prefs with sensible defaults (non-destructive)
+            defaults = {
+                "ui": {
+                    "theme": "system",
+                    "density": "comfortable",
+                    "default_landing": "/dashboard",
+                    "default_fresh_minutes": 30,
+                },
+                "dashboard": {
+                    "hidden_cards": []
+                },
+                "miners": {
+                    "favorites": []
+                },
+                "discovery": {
+                    "profiles": [],
+                    "default_profile": None
+                }
+            }
+            prefs = user.preferences or {}
+            # shallow + 1-level deep merge for common namespaces
+            merged = {**defaults}
+            for k, v in prefs.items():
+                if isinstance(v, dict) and isinstance(merged.get(k), dict):
+                    mv = {**merged[k]}
+                    mv.update(v)
+                    merged[k] = mv
+                else:
+                    merged[k] = v
+            return jsonify({"ok": True, "preferences": merged})
 
         # POST: merge/replace preferences
         data: Dict[str, Any] = request.get_json(silent=True) or {}

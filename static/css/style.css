@@ -654,12 +654,21 @@ tr.stale { opacity: 0.5; }
     height: 100% !important;
 }
 
+/* KPI cards container */
+#farm-kpis {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin: 16px auto;
+    max-width: 1200px;
+}
+
 /* Simple KPI cards */
 .kpi-card {
-    flex: 1 1 180px;
     background-color: var(--surface);
     border-radius: 8px;
     padding: 1rem;
+    margin: 8px;
     color: var(--text);
     text-align: center;
     border: 1px solid var(--border);

@@ -51,12 +51,76 @@
 {#    <img src="{{ url_for('static', filename='img/Presidents_Mining_DashHeader.png') }}" alt="Dashboard Header" style="max-width:100%; height:auto; display:block; border-radius:8px;">#}
 {#</div>#}
 
-<!-- Quick actions -->
-<div style="margin:12px 0;">
-    <a href="/dashboard/pools"
-       style="display:inline-block; background:#2a6df4;
-       color:#fff; padding:8px 12px; border-radius:6px;
-       text-decoration:none;">Add Mining Pool</a>
+<!-- Quick actions + Customize dropdown -->
+<div class="action-bar" style="margin:12px 0; display:flex; align-items:center; gap:12px; flex-wrap:wrap; position:relative;">
+    <a href="/dashboard/pools" class="btn"
+       style="display:inline-block; background:linear-gradient(135deg,#2563eb,#7c3aed); box-shadow:0 6px 14px rgba(37,99,235,0.25); color:#fff; padding:10px 14px; border-radius:8px; text-decoration:none; font-weight:600;">
+        ➕ Add Mining Pool
+    </a>
+
+    <div id="customize-dropdown" style="position:relative;">
+        <button id="btn-customize" type="button" class="btn"
+                style="display:inline-flex; align-items:center; gap:8px; background:linear-gradient(135deg,#10b981,#059669); color:#fff; padding:10px 12px; border-radius:8px; border:0; box-shadow:0 6px 14px rgba(5,150,105,0.25); cursor:pointer;">
+            <span>⚙️</span>
+            <span>Customize</span>
+        </button>
+        <div id="customize-panel" aria-label="Customize dashboard" role="dialog"
+             style="display:none; position:absolute; z-index:50; top:46px; left:0; min-width:320px; max-width:92vw; background:var(--surface-1, #fff); color:inherit; border:1px solid var(--border, #e5e7eb); border-radius:12px; box-shadow:0 20px 40px rgba(0,0,0,0.18); padding:14px;">
+            <div style="display:flex; gap:18px; flex-wrap:wrap;">
+                <div style="min-width:180px;">
+                    <div style="font-weight:700; margin-bottom:6px;">Show cards</div>
+                    <div style="display:grid; grid-template-columns:1fr; gap:6px; font-size:0.95rem;">
+                        <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" class="pref-card" data-card="kpi_hash" checked> KPI — Total Hashrate</label>
+                        <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" class="pref-card" data-card="kpi_power" checked> KPI — Total Power</label>
+                        <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" class="pref-card" data-card="kpi_temp" checked> KPI — Avg Temp</label>
+                        <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" class="pref-card" data-card="kpi_workers" checked> KPI — Workers</label>
+                        <hr style="border:none; border-top:1px solid var(--border, #e5e7eb); margin:6px 0;">
+                        <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" class="pref-card" data-card="hash" checked> Hashrate chart</label>
+                        <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" class="pref-card" data-card="power" checked> Power chart</label>
+                        <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" class="pref-card" data-card="tempfan" checked> Temp/Fan chart</label>
+                        <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" class="pref-card" data-card="pools" checked> Pools card</label>
+                    </div>
+                </div>
+                <div style="min-width:220px;">
+                    <div style="font-weight:700;">Defaults</div>
+                    <div style="margin-top:6px; display:flex; flex-direction:column; gap:8px;">
+                        <label>Landing page
+                            <select id="pref-default-landing" style="margin-left:6px; max-width:220px;">
+                                <option value="/dashboard">Dashboard</option>
+                                <option value="/dashboard/miners">Miners</option>
+                                <option value="/dashboard/alerts">Alerts</option>
+                                <option value="/dashboard/profitability">Profitability</option>
+                                <option value="/dashboard/analytics">Analytics</option>
+                            </select>
+                        </label>
+                        <label>Fresh within
+                            <select id="pref-default-fresh" style="margin-left:6px; max-width:180px;">
+                                <option value="15">15 min</option>
+                                <option value="30">30 min</option>
+                                <option value="60">60 min</option>
+                                <option value="180">3 hours</option>
+                                <option value="720">12 hours</option>
+                                <option value="1440">24 hours</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div style="font-weight:700; margin-top:10px;">Discovery</div>
+                    <div style="margin-top:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <label>CIDRs
+                            <input id="disc-cidrs" type="text" placeholder="10.0.0.0/24,10.0.1.0/24" style="width:220px; margin-left:6px;">
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="disc-mdns" checked> mDNS
+                        </label>
+                        <label>Timeout <input id="disc-timeout" type="number" value="1" min="0.1" step="0.1" style="width:70px; margin-left:6px;"></label>
+                        <label>Workers <input id="disc-workers" type="number" value="50" min="1" max="512" style="width:70px; margin-left:6px;"></label>
+                        <button id="btn-run-discovery" class="btn" type="button" style="background:#4f46e5;color:#fff;border-radius:8px;">Run</button>
+                        <span id="disc-status" style="font-size:0.9rem;color:#6b7280;">—</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Include Chart.js once if not already present anywhere -->
@@ -64,21 +128,21 @@
 <!-- Timescale adapter for date axes -->
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 
-<!-- KPI row (optional) -->
-<div id="farm-kpis" style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px;">
-    <div class="kpi-card">
+<!-- KPI row (now individual hideable cards) -->
+<div id="farm-kpis">
+    <div class="kpi-card" id="card-kpi-hash">
         <div class="kpi-label">Total Hashrate</div>
         <div class="kpi-value" id="kpi-hash">—</div>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card" id="card-kpi-power">
         <div class="kpi-label">Total Power (est.)</div>
         <div class="kpi-value" id="kpi-power">—</div>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card" id="card-kpi-temp">
         <div class="kpi-label">Avg Temp</div>
         <div class="kpi-value" id="kpi-temp">—</div>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card" id="card-kpi-workers">
         <div class="kpi-label">Workers</div>
         <div class="kpi-value" id="kpi-workers">—</div>
     </div>
@@ -86,25 +150,25 @@
 
 <!-- Overview charts -->
 <div class="dashboard-grid" style="margin-top:12px;">
-    <div class="chart-card">
+    <div class="chart-card" id="card-hash">
         <h3>Farm Hashrate (TH/s)</h3>
         <div class="chart-wrap">
             <canvas id="overview-hash"></canvas>
         </div>
     </div>
-    <div class="chart-card">
+    <div class="chart-card" id="card-power">
         <h3>Farm Power (W)</h3>
         <div class="chart-wrap">
             <canvas id="overview-power"></canvas>
         </div>
     </div>
-    <div class="chart-card">
+    <div class="chart-card" id="card-tempfan">
         <h3>Farm Temp / Fan</h3>
         <div class="chart-wrap">
             <canvas id="overview-tempfan"></canvas>
         </div>
     </div>
-    <div class="chart-card" style="grid-column: 1 / -1;">
+    <div class="chart-card" id="card-pools" style="grid-column: 1 / -1;">
         <h3>Active Pools (by miner)</h3>
         <div id="overview-pools"
              style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; margin-top:8px;"></div>
@@ -131,9 +195,164 @@
     <span id="active-window-badge" style="font-size:0.9rem;color:#6b7280;"></span>
 </div>
 
+
 <!-- Attach the script -->
 <script src="{{ url_for('static', filename='js/btc_widget.js') }}?v=5"></script>
 <script src="/static/js/overview.js"></script>
+<script>
+(function(){
+  async function getPrefs(){
+    try{
+      const r = await fetch('/auth/api/user/preferences', {credentials:'include'});
+      if(!r.ok){ return {}; }
+      const j = await r.json();
+      return (j && j.preferences) || {};
+    }catch(e){ return {}; }
+  }
+  async function savePrefs(patch){
+    try{
+      await fetch('/auth/api/user/preferences', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        credentials: 'include',
+        body: JSON.stringify(patch)
+      });
+    }catch(e){}
+  }
+  function applyHidden(hidden){
+    const map = {
+      // Individual KPI cards
+      kpi_hash: document.getElementById('card-kpi-hash'),
+      kpi_power: document.getElementById('card-kpi-power'),
+      kpi_temp: document.getElementById('card-kpi-temp'),
+      kpi_workers: document.getElementById('card-kpi-workers'),
+      // Legacy whole-row toggle (back-compat)
+      kpi: document.getElementById('farm-kpis'),
+      // Main dashboard cards
+      hash: document.getElementById('card-hash'),
+      power: document.getElementById('card-power'),
+      tempfan: document.getElementById('card-tempfan'),
+      pools: document.getElementById('card-pools')
+    };
+    const hiddenSet = new Set(Array.isArray(hidden) ? hidden : []);
+    // Backward compatibility: if old 'kpi' was hidden, also hide all KPI cards
+    if (hiddenSet.has('kpi')) {
+      ['kpi_hash','kpi_power','kpi_temp','kpi_workers'].forEach(k => hiddenSet.add(k));
+    }
+    for (const [key, el] of Object.entries(map)){
+      if(!el) continue;
+      const hide = hiddenSet.has(key);
+      el.style.display = hide ? 'none' : '';
+      const chk = document.querySelector('input.pref-card[data-card="'+key+'"]');
+      if(chk){ chk.checked = !hide; }
+    }
+  }
+  function wireControls(prefs){
+    const hidden = ((prefs.dashboard||{}).hidden_cards) || [];
+    applyHidden(hidden);
+    document.querySelectorAll('input.pref-card').forEach(chk=>{
+      chk.addEventListener('change', ()=>{
+        const key = chk.getAttribute('data-card');
+        let h = new Set((((prefs.dashboard||{}).hidden_cards)||[]));
+        if(chk.checked){
+          h.delete(key);
+        }else{
+          h.add(key);
+        }
+        const next = Array.from(h);
+        // update cached object
+        prefs.dashboard = Object.assign({}, prefs.dashboard, {hidden_cards: next});
+        savePrefs({dashboard:{hidden_cards: next}});
+        applyHidden(next);
+      });
+    });
 
+    // Landing page
+    const selLanding = document.getElementById('pref-default-landing');
+    if(selLanding){
+      const curr = (((prefs.ui||{}).default_landing) || '/dashboard');
+      selLanding.value = curr;
+      selLanding.addEventListener('change', ()=>{
+        const val = selLanding.value;
+        prefs.ui = Object.assign({}, prefs.ui, {default_landing: val});
+        savePrefs({ui:{default_landing: val}});
+      });
+    }
+    // Freshness default
+    const selFresh = document.getElementById('pref-default-fresh');
+    if(selFresh){
+      const currFresh = (((prefs.ui||{}).default_fresh_minutes) || 30).toString();
+      selFresh.value = currFresh;
+      selFresh.addEventListener('change', ()=>{
+        const val = parseInt(selFresh.value, 10) || 30;
+        prefs.ui = Object.assign({}, prefs.ui, {default_fresh_minutes: val});
+        savePrefs({ui:{default_fresh_minutes: val}});
+      });
+    }
+    // Apply fresh default to page filter once on load
+    const freshSelect = document.getElementById('fresh-within');
+    if(freshSelect && (prefs.ui && prefs.ui.default_fresh_minutes)){
+      const val = prefs.ui.default_fresh_minutes.toString();
+      if(Array.from(freshSelect.options).some(o=>o.value===val)){
+        freshSelect.value = val;
+        freshSelect.dispatchEvent(new Event('change'));
+      }
+    }
+
+    // Discovery runner
+    const btn = document.getElementById('btn-run-discovery');
+    const elCidrs = document.getElementById('disc-cidrs');
+    const elTimeout = document.getElementById('disc-timeout');
+    const elWorkers = document.getElementById('disc-workers');
+    const elMdns = document.getElementById('disc-mdns');
+    const elStatus = document.getElementById('disc-status');
+    if(btn && elStatus){
+      btn.addEventListener('click', async ()=>{
+        try{
+          elStatus.textContent = 'Running…';
+          const q = new URLSearchParams();
+          if(elCidrs && elCidrs.value.trim()) q.set('cidrs', elCidrs.value.trim());
+          if(elTimeout) q.set('timeout', elTimeout.value || '1');
+          if(elWorkers) q.set('workers', elWorkers.value || '50');
+          if(elMdns) q.set('mdns', elMdns.checked ? 'true' : 'false');
+          const r = await fetch('/api/discover?' + q.toString(), {credentials:'include'});
+          const j = await r.json();
+          if(r.ok && j && j.ok){
+            const count = (j.miners && j.miners.length) || 0;
+            elStatus.textContent = `Found ${count} miner${count===1?'':'s'}`;
+          }else{
+            elStatus.textContent = (j && j.error) ? ('Error: ' + j.error) : 'Discovery failed';
+          }
+        }catch(e){
+          elStatus.textContent = 'Discovery failed';
+        }
+      });
+    }
+  }
+  document.addEventListener('DOMContentLoaded', async ()=>{
+    const prefs = await getPrefs();
+    wireControls(prefs);
+
+    // Dropdown: open/close behavior
+    const btn = document.getElementById('btn-customize');
+    const panel = document.getElementById('customize-panel');
+    const container = document.getElementById('customize-dropdown');
+    if (btn && panel && container) {
+      const toggle = (open) => { panel.style.display = open ? 'block' : 'none'; };
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const isOpen = panel.style.display === 'block';
+        toggle(!isOpen);
+      });
+      document.addEventListener('click', (e)=>{
+        if (panel.style.display === 'block' && !container.contains(e.target)) {
+          toggle(false);
+        }
+      });
+      document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') toggle(false); });
+    }
+  });
+})();
+</script>
 </body>
 </html>

@@ -89,7 +89,7 @@ def debug_tail():
 
 
 @dash_bp.route("/dashboard/miners")
-def discover_miners(timeout=1, workers=50, use_mdns=True, return_sources=False):
+def discover_miners(timeout=1, workers=50, use_mdns=True, return_sources=False, cidrs=None):
     """
     Scan the configured CIDR for TCP/4028 and optionally browse mDNS _cgminer._tcp.
 
@@ -103,7 +103,20 @@ def discover_miners(timeout=1, workers=50, use_mdns=True, return_sources=False):
         list[str] if return_sources is False
         dict[str, str] if return_sources is True
     """
-    network = ipaddress.ip_network(MINER_IP_RANGE)
+    # Determine networks to scan
+    networks = []
+    try:
+        if cidrs:
+            items = cidrs if isinstance(cidrs, (list, tuple)) else [c.strip() for c in str(cidrs).split(',') if c.strip()]
+            for c in items:
+                try:
+                    networks.append(ipaddress.ip_network(c))
+                except Exception:
+                    continue
+        if not networks:
+            networks = [ipaddress.ip_network(MINER_IP_RANGE)]
+    except Exception:
+        networks = [ipaddress.ip_network(MINER_IP_RANGE)]
 
     # noinspection PyBroadException
     def scan(ip):
@@ -115,9 +128,15 @@ def discover_miners(timeout=1, workers=50, use_mdns=True, return_sources=False):
             except Exception:
                 return None
 
-    # TCP scan once using a single executor
+    # TCP scan once using a single executor across all networks
+    hosts = []
+    for net in networks:
+        try:
+            hosts.extend(list(net.hosts()))
+        except Exception:
+            continue
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        tcp_hosts = {ip for ip in ex.map(scan, network.hosts()) if ip}
+        tcp_hosts = {ip for ip in ex.map(scan, hosts) if ip}
 
     mdns_hosts = set()
     if use_mdns:
@@ -1161,3 +1180,73 @@ def btc_history():
     last = points[-1]['y']
     updated = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     return jsonify({'ok': True, 'points': points, 'last': last, 'updated': updated})
+
+
+
+@api_bp.get('/discover')
+def api_discover():
+    """Discover miners using optional query params or the user's default discovery profile.
+    Query params:
+      - cidrs: CSV of CIDR ranges to scan (overrides user/profile if provided)
+      - timeout: per-connection timeout seconds (default 1)
+      - workers: thread pool size (default 50)
+      - mdns: 'true'/'false' to enable Zeroconf (default true)
+    Response: { ok: true, miners: [ip,...], sources: {ip: 'tcp'|'mdns'|'both'} }
+    """
+    # Parse base params with safe fallbacks
+    cidrs_param = request.args.get('cidrs')
+    try:
+        timeout = float(request.args.get('timeout', 1))
+    except Exception:
+        timeout = 1.0
+    try:
+        workers = int(request.args.get('workers', 50))
+    except Exception:
+        workers = 50
+    use_mdns = request.args.get('mdns', 'true').lower() in ('1', 'true', 'yes', 'on')
+
+    cidrs = None
+
+    # If no explicit CIDRs, try current user's default profile
+    if not cidrs_param:
+        try:
+            from auth import current_user as _current_user
+            u = _current_user()
+            if u and u.preferences:
+                disc = (u.preferences.get('discovery') or {})
+                default_id = disc.get('default_profile')
+                profiles = disc.get('profiles') or []
+                if default_id and isinstance(profiles, list):
+                    for p in profiles:
+                        if p.get('id') == default_id:
+                            cidrs = p.get('cidrs') or None
+                            try:
+                                timeout = float(p.get('timeout', timeout))
+                            except Exception:
+                                pass
+                            try:
+                                workers = int(p.get('workers', workers))
+                            except Exception:
+                                pass
+                            pm = p.get('use_mdns')
+                            if isinstance(pm, bool):
+                                use_mdns = pm
+                            break
+        except Exception:
+            pass
+    else:
+        cidrs = [c.strip() for c in cidrs_param.split(',') if c.strip()]
+
+    try:
+        sources = discover_miners(timeout=timeout, workers=workers, use_mdns=use_mdns,
+                                  return_sources=True, cidrs=cidrs)
+        if isinstance(sources, list):
+            miners = list(sources)
+            src_map = {ip: 'unknown' for ip in miners}
+        else:
+            src_map = sources
+            miners = sorted(list(src_map.keys()))
+        return jsonify({"ok": True, "miners": miners, "sources": src_map})
+    except Exception as e:
+        logger.exception('discover failed')
+        return jsonify({"ok": False, "error": str(e)}), 500
