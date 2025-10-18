@@ -294,3 +294,5 @@ cython_debug/
 
 /db_files/
 /logs/
+/.windsurf/
+/.junie/
