@@ -6,6 +6,8 @@ from scheduler import start_scheduler
 from flask_cors import CORS
 from dashboard.routes import dash_bp, get_miners
 from werkzeug.exceptions import HTTPException
+from auth import auth_bp
+import os
 
 # Expose scheduler instance for readiness checks in tests/runtime
 SCHEDULER = None
@@ -15,6 +17,11 @@ def create_app():
     app = Flask(__name__, static_url_path='/static', static_folder='static')
     CORS(app)
 
+    # Secret key for sessions (auth). In production, set SECRET_KEY env var.
+    app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key')
+
+    # Blueprints
+    app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(dash_bp, url_prefix="/dashboard")
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(alerts_bp)

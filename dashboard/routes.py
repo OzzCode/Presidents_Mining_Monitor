@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify
+from auth import login_required
 
 dash_bp = Blueprint('dashboard', __name__)
 
@@ -175,36 +176,43 @@ def miners():
 
 
 @dash_bp.route('/')
+@login_required
 def index():
     ip = request.args.get('ip')
     return render_template('dashboard.html', ip=ip)
 
 
 @dash_bp.route('/miners')
+@login_required
 def show_miners():
     return render_template('miners.html')
 
 
 @dash_bp.route('/pools')
+@login_required
 def pools_page():
     return render_template('pools.html')
 
 
 @dash_bp.route("/logs")
+@login_required
 def logs_page():
     return render_template("logs.html")
 
 
 @dash_bp.route('/alerts')
+@login_required
 def alerts_page():
     return render_template('alerts.html')
 
 
 @dash_bp.route('/profitability')
+@login_required
 def profitability_page():
     return render_template('profitability.html')
 
 
 @dash_bp.route('/analytics')
+@login_required
 def analytics_page():
     return render_template('analytics.html')

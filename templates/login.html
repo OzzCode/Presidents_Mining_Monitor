@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Antminer Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<nav>
+    <h1 style="display:flex;align-items:center;gap:10px;margin:0;">
+        <img src="{{ url_for('static', filename='img/LogoImg.png') }}" alt="Company Logo"
+             style="height:36px;width:auto;">
+        <a href="{{ url_for('home') }}" style="text-decoration:none;color:inherit;">Antminer Monitor</a>
+    </h1>
+    <ul class="nav-list">
+        <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
+        <li><a href="{{ url_for('dashboard.alerts_page') }}">Alerts</a></li>
+        <li><a href="{{ url_for('dashboard.profitability_page') }}">Profitability</a></li>
+        <li><a href="{{ url_for('dashboard.analytics_page') }}">Analytics</a></li>
+    </ul>
+</nav>
+
+<div class="container" style="max-width:420px; margin:40px auto;">
+    <h2>Sign in</h2>
+    {% if error %}
+        <div class="alert error" role="alert" style="margin:10px 0;">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="{{ url_for('auth.login', next=request.args.get('next')) }}" class="form-card">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" required autofocus>
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" required>
+
+        <button class="btn" type="submit" style="width:100%; margin-top:12px;">Login</button>
+    </form>
+    <p style="margin-top:12px;">No account yet? <a href="{{ url_for('auth.register') }}">Create one</a>.</p>
+</div>
+</body>
+</html>

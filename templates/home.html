@@ -37,6 +37,14 @@
             <span aria-hidden="true">🌓</span>
             Theme
         </button>
+        <div>
+            {% if g.user %}
+                <span style="margin-right:8px; color: var(--muted);">Hello, {{ g.user.username }}</span>
+                <a class="btn" href="{{ url_for('auth.logout') }}">Logout</a>
+            {% else %}
+                <a class="btn" href="{{ url_for('auth.login') }}">Login</a>
+            {% endif %}
+        </div>
     </div>
 </nav>
 {#<div class="header-banner" style="margin:12px 0;">#}

@@ -316,3 +316,18 @@ def init_db():
     # Ensure directory exists and create tables
     DB_DIR.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
+
+
+
+class User(Base):
+    """Basic user auth + preferences for personalization."""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=_dt.datetime.utcnow, index=True)
+
+    username = Column(String(64), unique=True, index=True, nullable=False)
+    password_hash = Column(String(256), nullable=False)
+
+    # JSON blob for user personalization, e.g. {"favorite_miners": ["10.0.0.12"], "theme": "dark"}
+    preferences = Column(SQLITE_JSON, nullable=True)
