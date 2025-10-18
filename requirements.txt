@@ -1,3 +1,4 @@
+prometheus-client
 waitress
 werkzeug
 flask-cors
