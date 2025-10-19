@@ -72,6 +72,15 @@
 
     <!-- Control Panel Tab -->
     <div id="tab-control" class="tab-content">
+        <!-- Global Filter -->
+        <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 500;">
+                <input type="checkbox" id="filter-active-only" onchange="applyMinerFilter()" checked>
+                <span>🟢 Show Active Miners Only</span>
+                <span id="miner-count-badge" style="margin-left: auto; padding: 0.25rem 0.75rem; background: var(--primary); color: white; border-radius: 999px; font-size: 0.875rem;">—</span>
+            </label>
+        </div>
+
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 2rem;">
 
             <!-- Reboot Control -->
@@ -239,28 +248,69 @@
             minersData = data.miners || [];
 
             // Populate miner lists
-            populateMinerList('reboot');
-            populateMinerList('pool');
-            populateBackupSelect();
+            applyMinerFilter();
         } catch (error) {
             console.error('Error loading miners:', error);
         }
     }
 
-    function populateMinerList(type) {
-        const container = document.getElementById(`${type}-miner-list`);
-        container.innerHTML = minersData.map(m => `
-        <label style="display: block; padding: 0.25rem;">
-            <input type="checkbox" class="miner-checkbox-${type}" value="${m.ip}">
-            ${m.ip} ${m.model ? `(${m.model})` : ''}
-        </label>
-    `).join('');
+    function getFilteredMiners() {
+        const activeOnly = document.getElementById('filter-active-only').checked;
+        if (!activeOnly) {
+            return minersData;
+        }
+        // Filter to show only active miners (not stale)
+        return minersData.filter(m => m.status === 'Active');
     }
 
-    function populateBackupSelect() {
+    function applyMinerFilter() {
+        const filtered = getFilteredMiners();
+        
+        // Update badge count
+        document.getElementById('miner-count-badge').textContent = `${filtered.length} miners`;
+        
+        // Update all lists
+        populateMinerList('reboot', filtered);
+        populateMinerList('pool', filtered);
+        populateBackupSelect(filtered);
+    }
+
+    function populateMinerList(type, miners = minersData) {
+        const container = document.getElementById(`${type}-miner-list`);
+        
+        if (miners.length === 0) {
+            container.innerHTML = '<div style="color: var(--muted); padding: 0.5rem;">No miners match filter</div>';
+            return;
+        }
+        
+        container.innerHTML = miners.map(m => {
+            const statusColor = m.status === 'Active' ? '#10b981' : 
+                               m.status === 'Lagging' ? '#f59e0b' : '#ef4444';
+            return `
+                <label style="display: block; padding: 0.25rem;">
+                    <input type="checkbox" class="miner-checkbox-${type}" value="${m.ip}">
+                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${statusColor}; margin-right: 0.25rem;"></span>
+                    ${m.ip} ${m.model ? `(${m.model})` : ''}
+                    <span style="color: var(--muted); font-size: 0.875rem;">${m.status}</span>
+                </label>
+            `;
+        }).join('');
+    }
+
+    function populateBackupSelect(miners = minersData) {
         const select = document.getElementById('backup-miner');
+        
+        if (miners.length === 0) {
+            select.innerHTML = '<option value="">-- No miners available --</option>';
+            return;
+        }
+        
         select.innerHTML = '<option value="">-- Select a miner --</option>' +
-            minersData.map(m => `<option value="${m.ip}">${m.ip} ${m.model ? `(${m.model})` : ''}</option>`).join('');
+            miners.map(m => {
+                const statusEmoji = m.status === 'Active' ? '🟢' : 
+                                   m.status === 'Lagging' ? '🟡' : '🔴';
+                return `<option value="${m.ip}">${statusEmoji} ${m.ip} ${m.model ? `(${m.model})` : ''}</option>`;
+            }).join('');
     }
 
     function toggleAllMiners(type) {

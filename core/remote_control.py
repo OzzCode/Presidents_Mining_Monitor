@@ -64,7 +64,7 @@ class RemoteControlService:
         try:
             client = MinerClient(miner_ip)
             # Use CGMiner restart command
-            result = client.send_command('restart')
+            result = client.restart()
             
             cmd.status = 'success'
             cmd.response = {'result': result}
@@ -175,15 +175,15 @@ class RemoteControlService:
             
             # Remove old pool if exists
             try:
-                client.send_command('removepool', [pool_number])
+                client.remove_pool(pool_number)
             except:
                 pass  # Pool might not exist
             
             # Add new pool
-            result = client.send_command('addpool', [pool_url, worker_name, pool_password])
+            result = client.add_pool(pool_url, worker_name, pool_password)
             
             # Switch to the new pool
-            client.send_command('switchpool', [pool_number])
+            client.switch_pool(pool_number)
             
             # Update Miner metadata
             miner = session.query(Miner).filter(Miner.miner_ip == miner_ip).first()
@@ -270,9 +270,12 @@ class RemoteControlService:
             client = MinerClient(miner_ip)
             
             # Fetch configuration data
-            stats = client.send_command('stats')
-            pools = client.send_command('pools')
-            config = client.send_command('config')  # If available
+            stats = client.get_stats()
+            pools = client.get_pools()
+            try:
+                version = client.get_version()
+            except:
+                version = None
             
             # Get miner metadata
             miner = session.query(Miner).filter(Miner.miner_ip == miner_ip).first()
@@ -280,7 +283,7 @@ class RemoteControlService:
             config_data = {
                 'stats': stats,
                 'pools': pools,
-                'config': config,
+                'version': version,
                 'timestamp': dt.datetime.utcnow().isoformat()
             }
             

@@ -288,3 +288,26 @@ class MinerClient:
         # de-dup and sort
         ids = sorted({i for i in ids if isinstance(i, int)})
         return ids
+
+    # ---- Remote control commands ----
+    def restart(self) -> dict:
+        """
+        Restart the miner.
+        Sends the 'restart' command to CGMiner/BMminer API.
+        """
+        import json
+        payload = json.dumps({"command": "restart"})
+        return self._send_command(payload)
+
+    def switch_pool(self, pool_id: int) -> dict:
+        """
+        Switch to a different pool by its index/id.
+        Example payload: {"command":"switchpool","parameter":"0"}
+        """
+        import json
+        try:
+            pid = int(pool_id)
+        except Exception:
+            raise MinerError("pool_id must be an integer")
+        payload = json.dumps({"command": "switchpool", "parameter": str(pid)})
+        return self._send_command(payload)
