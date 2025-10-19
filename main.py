@@ -2,6 +2,8 @@ from flask import Flask, render_template, jsonify
 from api.endpoints import api_bp
 from api.alerts_profitability import alerts_bp, profitability_bp
 from api.analytics import analytics_bp
+from api.electricity import bp as electricity_bp
+from api.remote_control import bp as remote_control_bp
 from scheduler import start_scheduler
 from flask_cors import CORS
 from dashboard.routes import dash_bp, get_miners
@@ -27,6 +29,8 @@ def create_app():
     app.register_blueprint(alerts_bp)
     app.register_blueprint(profitability_bp)
     app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
+    app.register_blueprint(electricity_bp)  # Already has /api/electricity prefix
+    app.register_blueprint(remote_control_bp)  # Already has /api/remote prefix
 
     @app.route("/")
     def home():

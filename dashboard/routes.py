@@ -216,3 +216,17 @@ def profitability_page():
 @login_required
 def analytics_page():
     return render_template('analytics.html')
+
+
+@dash_bp.route('/electricity')
+@login_required
+def electricity_page():
+    """Electricity cost management page."""
+    return render_template('electricity.html')
+
+
+@dash_bp.route('/remote')
+@login_required
+def remote_control_page():
+    """Remote control management page."""
+    return render_template('remote_control.html')

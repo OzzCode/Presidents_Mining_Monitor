@@ -318,7 +318,6 @@ def init_db():
     Base.metadata.create_all(bind=engine)
 
 
-
 class User(Base):
     """Basic user auth + preferences for personalization."""
     __tablename__ = "users"
@@ -331,3 +330,189 @@ class User(Base):
 
     # JSON blob for user personalization, e.g. {"favorite_miners": ["10.0.0.12"], "theme": "dark"}
     preferences = Column(SQLITE_JSON, nullable=True)
+
+
+class ElectricityRate(Base):
+    """Time-of-use electricity rate configuration."""
+    __tablename__ = "electricity_rates"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=_dt.datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=_dt.datetime.utcnow, onupdate=_dt.datetime.utcnow)
+
+    # Rate identification
+    name = Column(String(128), nullable=False)
+    description = Column(Text, nullable=True)
+    active = Column(Boolean, default=True, index=True)
+
+    # Location/scope
+    location = Column(String(128), nullable=True)
+    timezone = Column(String(64), default="UTC")
+
+    # Rate structure
+    rate_type = Column(String(32), default="flat")  # 'flat', 'tou', 'tiered'
+
+    # Flat rate
+    flat_rate_usd_per_kwh = Column(Float, nullable=True)
+
+    # Time-of-use schedules (JSON)
+    tou_schedule = Column(SQLITE_JSON, nullable=True)
+
+    # Tiered pricing (JSON)
+    tiered_rates = Column(SQLITE_JSON, nullable=True)
+
+    # Additional charges
+    daily_service_charge_usd = Column(Float, default=0.0)
+    demand_charge_usd_per_kw = Column(Float, default=0.0)
+
+    # Season dates
+    season_start_month = Column(Integer, nullable=True)
+    season_end_month = Column(Integer, nullable=True)
+
+    # Metadata
+    utility_name = Column(String(128), nullable=True)
+    account_number = Column(String(128), nullable=True)
+    notes = Column(Text, nullable=True)
+
+
+class ElectricityCost(Base):
+    """Time-series record of actual electricity costs."""
+    __tablename__ = "electricity_costs"
+
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime, default=_dt.datetime.utcnow, index=True)
+
+    # Scope
+    miner_ip = Column(String(64), nullable=True, index=True)
+    location = Column(String(128), nullable=True, index=True)
+
+    # Time period
+    period_start = Column(DateTime, nullable=False, index=True)
+    period_end = Column(DateTime, nullable=False, index=True)
+    duration_hours = Column(Float, nullable=False)
+
+    # Consumption
+    total_kwh = Column(Float, nullable=False)
+    avg_power_kw = Column(Float, nullable=True)
+    peak_power_kw = Column(Float, nullable=True)
+
+    # Rate applied
+    rate_id = Column(Integer, nullable=True, index=True)
+    rate_name = Column(String(128), nullable=True)
+    avg_rate_usd_per_kwh = Column(Float, nullable=False)
+
+    # Cost breakdown
+    energy_cost_usd = Column(Float, nullable=False)
+    demand_charge_usd = Column(Float, default=0.0)
+    service_charge_usd = Column(Float, default=0.0)
+    total_cost_usd = Column(Float, nullable=False)
+
+    # TOU breakdown (JSON)
+    tou_breakdown_usd = Column(SQLITE_JSON, nullable=True)
+
+
+class PowerSchedule(Base):
+    """Scheduled power on/off times for miners (optimize for TOU rates)."""
+    __tablename__ = "power_schedules"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=_dt.datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=_dt.datetime.utcnow, onupdate=_dt.datetime.utcnow)
+
+    # Schedule identification
+    name = Column(String(128), nullable=False)
+    description = Column(Text, nullable=True)
+    enabled = Column(Boolean, default=True, index=True)
+
+    # Scope (which miners does this apply to?)
+    miner_ip = Column(String(64), nullable=True, index=True)  # None = apply to all
+    location = Column(String(128), nullable=True, index=True)
+    tags_filter = Column(SQLITE_JSON, nullable=True)  # Filter by miner tags
+
+    # Schedule type
+    schedule_type = Column(String(32), default="weekly")  # 'weekly', 'daily', 'one-time'
+
+    # Weekly schedule (JSON array of time periods)
+    # [{"day": 0, "start_hour": 21, "end_hour": 7, "action": "off"}, ...]
+    # day: 0=Monday, 6=Sunday
+    weekly_schedule = Column(SQLITE_JSON, nullable=True)
+
+    # One-time schedule
+    one_time_start = Column(DateTime, nullable=True)
+    one_time_end = Column(DateTime, nullable=True)
+    one_time_action = Column(String(16), nullable=True)  # 'on' or 'off'
+
+    # Power settings during 'on' periods
+    power_limit_w = Column(Integer, nullable=True)  # Reduce power during expensive periods
+    
+    # Timezone for schedule
+    timezone = Column(String(64), default="UTC")
+
+    # Linked to electricity rate (optional)
+    electricity_rate_id = Column(Integer, nullable=True)
+
+    # Metadata
+    created_by = Column(String(64), nullable=True)
+    notes = Column(Text, nullable=True)
+
+
+class CommandHistory(Base):
+    """Audit log of remote commands sent to miners."""
+    __tablename__ = "command_history"
+
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime, default=_dt.datetime.utcnow, index=True)
+
+    # Command details
+    command_type = Column(String(32), nullable=False, index=True)  # 'reboot', 'pool_switch', 'power_on', 'power_off', 'config_update'
+    miner_ip = Column(String(64), nullable=False, index=True)
+    
+    # Command parameters (JSON)
+    parameters = Column(SQLITE_JSON, nullable=True)
+
+    # Execution details
+    status = Column(String(32), default='pending', index=True)  # 'pending', 'success', 'failed', 'timeout'
+    response = Column(SQLITE_JSON, nullable=True)  # Response from miner
+    error_message = Column(Text, nullable=True)
+    
+    # Timing
+    sent_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+
+    # User context
+    initiated_by = Column(String(64), nullable=True)  # Username or 'system'
+    source = Column(String(32), default='manual')  # 'manual', 'scheduled', 'automatic'
+
+    # Batch operation tracking
+    batch_id = Column(String(64), nullable=True, index=True)  # Group bulk operations
+
+
+class MinerConfigBackup(Base):
+    """Configuration backups for miners."""
+    __tablename__ = "miner_config_backups"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=_dt.datetime.utcnow, index=True)
+
+    # Miner identification
+    miner_ip = Column(String(64), nullable=False, index=True)
+    model = Column(String(128), nullable=True)
+    firmware_version = Column(String(128), nullable=True)
+
+    # Backup metadata
+    backup_name = Column(String(128), nullable=True)
+    description = Column(Text, nullable=True)
+    backup_type = Column(String(32), default='manual')  # 'manual', 'automatic', 'pre_update'
+
+    # Configuration data (JSON)
+    # Includes pools, frequencies, voltage, fan settings, etc.
+    config_data = Column(SQLITE_JSON, nullable=False)
+
+    # Validation
+    is_validated = Column(Boolean, default=False)  # Has this backup been tested?
+    validated_at = Column(DateTime, nullable=True)
+
+    # User context
+    created_by = Column(String(64), nullable=True)
+    notes = Column(Text, nullable=True)

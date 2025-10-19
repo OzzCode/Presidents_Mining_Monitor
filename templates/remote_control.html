@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>Remote Control - Antminer Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static',filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
+</head>
+<body>
+<nav>
+    <h1 style="display:flex;align-items:center;gap:10px;margin:0;">
+        <img src="{{ url_for('static', filename='img/LogoImg.png') }}" alt="Logo" style="height:36px;">
+        <a href="{{ url_for('home') }}" style="text-decoration:none;color:inherit;">Antminer Monitor</a>
+    </h1>
+    <ul class="nav-list">
+        <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
+        <li><a href="{{ url_for('dashboard.alerts_page') }}">Alerts</a></li>
+        <li><a href="{{ url_for('dashboard.profitability_page') }}">Profitability</a></li>
+        <li><a href="{{ url_for('dashboard.analytics_page') }}">Analytics</a></li>
+        <li><a href="{{ url_for('dashboard.electricity_page') }}">⚡ Electricity</a></li>
+        <li><a href="{{ url_for('dashboard.remote_control_page') }}">🎮 Remote</a></li>
+    </ul>
+    <div style="display:flex; align-items:center; gap:12px;">
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">
+            <span aria-hidden="true">🌓</span> Theme
+        </button>
+        <div>
+            {% if g.user %}
+                <span style="color: var(--muted);">{{ g.user.username }}</span>
+                <a class="btn" href="{{ url_for('auth.logout') }}">Logout</a>
+            {% else %}
+                <a class="btn" href="{{ url_for('auth.login') }}">Login</a>
+            {% endif %}
+        </div>
+    </div>
+</nav>
+
+<div class="container" style="max-width: 1600px; margin: 2rem auto; padding: 0 1rem;">
+    <h1>🎮 Remote Control Center</h1>
+
+    <!-- Command Stats -->
+    <div class="metrics" style="margin-bottom: 2rem;">
+        <div class="card">
+            <h2>Commands (24h)</h2>
+            <p id="total-commands">—</p>
+        </div>
+        <div class="card" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+            <h2>Successful</h2>
+            <p id="successful-commands">—</p>
+        </div>
+        <div class="card" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+            <h2>Failed</h2>
+            <p id="failed-commands">—</p>
+        </div>
+        <div class="card">
+            <h2>Active Schedules</h2>
+            <p id="active-schedules">—</p>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div style="border-bottom: 2px solid var(--border); margin-bottom: 2rem;">
+        <div style="display: flex; gap: 0.5rem;">
+            <button class="tab-btn active" onclick="switchTab('control')">Control Panel</button>
+            <button class="tab-btn" onclick="switchTab('schedules')">Power Schedules</button>
+            <button class="tab-btn" onclick="switchTab('backups')">Backups</button>
+            <button class="tab-btn" onclick="switchTab('history')">Command History</button>
+        </div>
+    </div>
+
+    <!-- Control Panel Tab -->
+    <div id="tab-control" class="tab-content">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 2rem;">
+
+            <!-- Reboot Control -->
+            <div class="card">
+                <h2>🔄 Reboot Miners</h2>
+                <p style="color: var(--muted); margin-bottom: 1rem;">Restart miners to apply updates or recover from
+                    errors</p>
+
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Select Miners:</label>
+                    <div id="miner-select-reboot"
+                         style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem;">
+                        <label style="display: block; padding: 0.25rem;">
+                            <input type="checkbox" id="select-all-reboot" onchange="toggleAllMiners('reboot')"> Select
+                            All
+                        </label>
+                        <div id="reboot-miner-list"></div>
+                    </div>
+                </div>
+
+                <button class="btn" onclick="executeReboot()" style="width: 100%; background: #f59e0b;">
+                    🔄 Reboot Selected Miners
+                </button>
+            </div>
+
+            <!-- Pool Switch Control -->
+            <div class="card">
+                <h2>⛏️ Switch Mining Pool</h2>
+                <p style="color: var(--muted); margin-bottom: 1rem;">Change mining pool for selected miners</p>
+
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Pool URL:</label>
+                    <input type="text" id="pool-url" placeholder="stratum+tcp://pool.example.com:3333"
+                           style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text);">
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Worker Name:</label>
+                    <input type="text" id="worker-name" placeholder="username.worker1"
+                           style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text);">
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Select Miners:</label>
+                    <div id="miner-select-pool"
+                         style="max-height: 150px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem;">
+                        <label style="display: block; padding: 0.25rem;">
+                            <input type="checkbox" id="select-all-pool" onchange="toggleAllMiners('pool')"> Select All
+                        </label>
+                        <div id="pool-miner-list"></div>
+                    </div>
+                </div>
+
+                <button class="btn" onclick="executePoolSwitch()" style="width: 100%; background: var(--primary);">
+                    ⛏️ Switch Pool for Selected Miners
+                </button>
+            </div>
+
+            <!-- Backup Control -->
+            <div class="card">
+                <h2>💾 Configuration Backup</h2>
+                <p style="color: var(--muted); margin-bottom: 1rem;">Save miner configurations for recovery</p>
+
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Select Miner:</label>
+                    <select id="backup-miner"
+                            style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text);">
+                        <option value="">-- Select a miner --</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Backup Name:</label>
+                    <input type="text" id="backup-name" placeholder="Auto-generated if empty"
+                           style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text);">
+                </div>
+
+                <button class="btn" onclick="executeBackup()" style="width: 100%; background: #10b981;">
+                    💾 Create Backup
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Power Schedules Tab -->
+    <div id="tab-schedules" class="tab-content" style="display: none;">
+        <button class="btn" onclick="openScheduleModal()" style="margin-bottom: 1rem;">➕ Create Schedule</button>
+        <div id="schedules-list"></div>
+    </div>
+
+    <!-- Backups Tab -->
+    <div id="tab-backups" class="tab-content" style="display: none;">
+        <div id="backups-list"></div>
+    </div>
+
+    <!-- Command History Tab -->
+    <div id="tab-history" class="tab-content" style="display: none;">
+        <div style="margin-bottom: 1rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+            <select id="filter-type" onchange="loadCommandHistory()"
+                    style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text);">
+                <option value="">All Types</option>
+                <option value="reboot">Reboot</option>
+                <option value="pool_switch">Pool Switch</option>
+            </select>
+            <select id="filter-status" onchange="loadCommandHistory()"
+                    style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text);">
+                <option value="">All Status</option>
+                <option value="success">Success</option>
+                <option value="failed">Failed</option>
+                <option value="pending">Pending</option>
+            </select>
+        </div>
+        <div id="history-list"></div>
+    </div>
+</div>
+
+<style>
+    .tab-btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        font-weight: 500;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s;
+    }
+
+    .tab-btn:hover {
+        color: var(--text);
+    }
+
+    .tab-btn.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+    }
+
+    .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.5rem;
+    }
+</style>
+
+<script>
+    let minersData = [];
+
+    // Load initial data
+    document.addEventListener('DOMContentLoaded', () => {
+        loadMiners();
+        loadCommandStats();
+        loadCommandHistory();
+        loadSchedules();
+        loadBackups();
+
+        // Refresh stats every 30 seconds
+        setInterval(loadCommandStats, 30000);
+    });
+
+    async function loadMiners() {
+        try {
+            const res = await fetch('/api/miners');
+            const data = await res.json();
+            minersData = data.miners || [];
+
+            // Populate miner lists
+            populateMinerList('reboot');
+            populateMinerList('pool');
+            populateBackupSelect();
+        } catch (error) {
+            console.error('Error loading miners:', error);
+        }
+    }
+
+    function populateMinerList(type) {
+        const container = document.getElementById(`${type}-miner-list`);
+        container.innerHTML = minersData.map(m => `
+        <label style="display: block; padding: 0.25rem;">
+            <input type="checkbox" class="miner-checkbox-${type}" value="${m.ip}">
+            ${m.ip} ${m.model ? `(${m.model})` : ''}
+        </label>
+    `).join('');
+    }
+
+    function populateBackupSelect() {
+        const select = document.getElementById('backup-miner');
+        select.innerHTML = '<option value="">-- Select a miner --</option>' +
+            minersData.map(m => `<option value="${m.ip}">${m.ip} ${m.model ? `(${m.model})` : ''}</option>`).join('');
+    }
+
+    function toggleAllMiners(type) {
+        const checked = document.getElementById(`select-all-${type}`).checked;
+        document.querySelectorAll(`.miner-checkbox-${type}`).forEach(cb => cb.checked = checked);
+    }
+
+    async function loadCommandStats() {
+        try {
+            const res = await fetch('/api/remote/commands/stats');
+            const data = await res.json();
+
+            if (data.ok) {
+                const stats = data.stats;
+                document.getElementById('total-commands').textContent = stats.total;
+                document.getElementById('successful-commands').textContent = stats.successful;
+                document.getElementById('failed-commands').textContent = stats.failed;
+            }
+        } catch (error) {
+            console.error('Error loading stats:', error);
+        }
+    }
+
+    async function executeReboot() {
+        const selected = Array.from(document.querySelectorAll('.miner-checkbox-reboot:checked')).map(cb => cb.value);
+
+        if (selected.length === 0) {
+            alert('Please select at least one miner');
+            return;
+        }
+
+        if (!confirm(`Reboot ${selected.length} miner(s)? This will interrupt mining for ~30 seconds.`)) {
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/remote/reboot/bulk', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({miner_ips: selected})
+            });
+
+            const data = await res.json();
+
+            if (data.ok) {
+                alert(`Reboot initiated: ${data.results.successful} successful, ${data.results.failed} failed`);
+                loadCommandHistory();
+                loadCommandStats();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function executePoolSwitch() {
+        const selected = Array.from(document.querySelectorAll('.miner-checkbox-pool:checked')).map(cb => cb.value);
+        const poolUrl = document.getElementById('pool-url').value;
+        const workerName = document.getElementById('worker-name').value;
+
+        if (selected.length === 0) {
+            alert('Please select at least one miner');
+            return;
+        }
+
+        if (!poolUrl || !workerName) {
+            alert('Please enter pool URL and worker name');
+            return;
+        }
+
+        if (!confirm(`Switch ${selected.length} miner(s) to ${poolUrl}?`)) {
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/remote/pool/switch/bulk', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    miner_ips: selected,
+                    pool_url: poolUrl,
+                    worker_name: workerName
+                })
+            });
+
+            const data = await res.json();
+
+            if (data.ok) {
+                alert(`Pool switch initiated: ${data.results.successful} successful, ${data.results.failed} failed`);
+                loadCommandHistory();
+                loadCommandStats();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function executeBackup() {
+        const minerIp = document.getElementById('backup-miner').value;
+        const backupName = document.getElementById('backup-name').value;
+
+        if (!minerIp) {
+            alert('Please select a miner');
+            return;
+        }
+
+        try {
+            const res = await fetch(`/api/remote/backup/${minerIp}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({backup_name: backupName || undefined})
+            });
+
+            const data = await res.json();
+
+            if (data.ok) {
+                alert(`Backup created: ${data.backup_name}`);
+                loadBackups();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function loadCommandHistory() {
+        const type = document.getElementById('filter-type')?.value || '';
+        const status = document.getElementById('filter-status')?.value || '';
+
+        try {
+            let url = '/api/remote/commands/history?limit=50';
+            if (type) url += `&command_type=${type}`;
+            if (status) url += `&status=${status}`;
+
+            const res = await fetch(url);
+            const data = await res.json();
+
+            if (data.ok) {
+                const container = document.getElementById('history-list');
+                container.innerHTML = data.commands.map(cmd => `
+                <div class="card" style="margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div>
+                            <strong>${cmd.command_type.toUpperCase()}</strong> - ${cmd.miner_ip}
+                            <div style="color: var(--muted); font-size: 0.875rem;">
+                                ${new Date(cmd.timestamp).toLocaleString()} by ${cmd.initiated_by}
+                            </div>
+                        </div>
+                        <span style="padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.875rem; font-weight: 500; 
+                                     background: ${cmd.status === 'success' ? '#10b981' : cmd.status === 'failed' ? '#ef4444' : '#f59e0b'}; 
+                                     color: white;">
+                            ${cmd.status.toUpperCase()}
+                        </span>
+                    </div>
+                    ${cmd.error_message ? `<div style="color: #ef4444; margin-top: 0.5rem;">${cmd.error_message}</div>` : ''}
+                    ${cmd.duration_ms ? `<div style="color: var(--muted); font-size: 0.875rem; margin-top: 0.5rem;">Duration: ${cmd.duration_ms}ms</div>` : ''}
+                </div>
+            `).join('');
+            }
+        } catch (error) {
+            console.error('Error loading history:', error);
+        }
+    }
+
+    async function loadSchedules() {
+        try {
+            const res = await fetch('/api/remote/schedule/power');
+            const data = await res.json();
+
+            if (data.ok) {
+                document.getElementById('active-schedules').textContent = data.schedules.filter(s => s.enabled).length;
+
+                const container = document.getElementById('schedules-list');
+                container.innerHTML = data.schedules.length === 0 ?
+                    '<p style="color: var(--muted);">No power schedules configured</p>' :
+                    data.schedules.map(s => `
+                    <div class="card" style="margin-bottom: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div>
+                                <h3>${s.name}</h3>
+                                <p style="color: var(--muted); margin: 0.5rem 0;">${s.description || ''}</p>
+                                <div style="font-size: 0.875rem; color: var(--muted);">
+                                    Type: ${s.schedule_type} | ${s.miner_ip || s.location || 'All miners'}
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn" onclick="toggleSchedule(${s.id})" style="font-size: 0.875rem; padding: 0.4rem 0.8rem; 
+                                               background: ${s.enabled ? '#10b981' : 'var(--muted)'};">
+                                    ${s.enabled ? '✓ Enabled' : 'Disabled'}
+                                </button>
+                                <button class="btn" onclick="deleteSchedule(${s.id})" style="font-size: 0.875rem; padding: 0.4rem 0.8rem; background: #ef4444;">
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('Error loading schedules:', error);
+        }
+    }
+
+    async function loadBackups() {
+        try {
+            const res = await fetch('/api/remote/backups?limit=20');
+            const data = await res.json();
+
+            if (data.ok) {
+                const container = document.getElementById('backups-list');
+                container.innerHTML = data.backups.length === 0 ?
+                    '<p style="color: var(--muted);">No backups available</p>' :
+                    data.backups.map(b => `
+                    <div class="card" style="margin-bottom: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div>
+                                <strong>${b.miner_ip}</strong> - ${b.backup_name}
+                                <div style="color: var(--muted); font-size: 0.875rem;">
+                                    ${new Date(b.created_at).toLocaleString()} by ${b.created_by}
+                                </div>
+                                ${b.model ? `<div style="color: var(--muted); font-size: 0.875rem;">${b.model}</div>` : ''}
+                            </div>
+                            <button class="btn" style="font-size: 0.875rem; padding: 0.4rem 0.8rem;">
+                                View Config
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('Error loading backups:', error);
+        }
+    }
+
+    function switchTab(tab) {
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+
+        // Show selected tab
+        document.getElementById(`tab-${tab}`).style.display = 'block';
+        event.target.classList.add('active');
+    }
+
+    async function toggleSchedule(id) {
+        try {
+            const res = await fetch(`/api/remote/schedule/power/${id}/toggle`, {method: 'POST'});
+            const data = await res.json();
+            if (data.ok) loadSchedules();
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function deleteSchedule(id) {
+        if (!confirm('Delete this schedule?')) return;
+        try {
+            const res = await fetch(`/api/remote/schedule/power/${id}`, {method: 'DELETE'});
+            const data = await res.json();
+            if (data.ok) loadSchedules();
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    function openScheduleModal() {
+        alert('Schedule creation UI coming soon! Use API endpoint /api/remote/schedule/power');
+    }
+</script>
+</body>
+</html>

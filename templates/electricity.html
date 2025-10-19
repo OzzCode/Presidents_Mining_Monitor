@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>Electricity Cost Management</title>
+    <link rel="stylesheet" href="{{ url_for('static',filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
+    <style>
+        .rate-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .rate-card.active {
+            border-color: var(--primary);
+            border-width: 2px;
+        }
+
+        .rate-type-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .badge-flat {
+            background: #10b981;
+            color: white;
+        }
+
+        .badge-tou {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .badge-tiered {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .tou-schedule {
+            display: grid;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .tou-period {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background: var(--surface-2);
+            border-radius: 8px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .form-group label {
+            font-weight: 500;
+            color: var(--muted-2);
+        }
+
+        .form-group input, .form-group select, .form-group textarea {
+            padding: 0.5rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface);
+            color: var(--text);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            background-color: var(--surface);
+            margin: 5% auto;
+            padding: 2rem;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            color: var(--text);
+        }
+
+        .close {
+            color: var(--muted);
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: var(--text);
+        }
+    </style>
+</head>
+<body>
+<nav>
+    <h1 style="display:flex;align-items:center;gap:10px;margin:0;">
+        <img src="{{ url_for('static', filename='img/LogoImg.png') }}" alt="Logo" style="height:36px;">
+        <a href="{{ url_for('home') }}" style="text-decoration:none;color:inherit;">Antminer Monitor</a>
+    </h1>
+    <ul class="nav-list">
+        <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
+        <li><a href="{{ url_for('dashboard.alerts_page') }}">Alerts</a></li>
+        <li><a href="{{ url_for('dashboard.profitability_page') }}">Profitability</a></li>
+        <li><a href="{{ url_for('dashboard.analytics_page') }}">Analytics</a></li>
+        <li><a href="{{ url_for('dashboard.electricity_page') }}">⚡ Electricity</a></li>
+    </ul>
+    <div style="display:flex; align-items:center; gap:12px;">
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">
+            <span aria-hidden="true">🌓</span> Theme
+        </button>
+        <div>
+            {% if g.user %}
+                <span style="color: var(--muted);">{{ g.user.username }}</span>
+                <a class="btn" href="{{ url_for('auth.logout') }}">Logout</a>
+            {% else %}
+                <a class="btn" href="{{ url_for('auth.login') }}">Login</a>
+            {% endif %}
+        </div>
+    </div>
+</nav>
+
+<div class="container" style="max-width: 1400px; margin: 2rem auto; padding: 0 1rem;">
+    <h1>⚡ Electricity Cost Management</h1>
+
+    <!-- Summary Cards -->
+    <div class="metrics" style="margin-bottom: 2rem;">
+        <div class="card">
+            <h2>Active Rates</h2>
+            <p id="active-rates-count">—</p>
+        </div>
+        <div class="card">
+            <h2>Current Rate</h2>
+            <p id="current-rate-value">—</p>
+        </div>
+        <div class="card">
+            <h2>Est. Daily Cost</h2>
+            <p id="est-daily-cost">—</p>
+        </div>
+        <div class="card">
+            <h2>Monthly Est.</h2>
+            <p id="est-monthly-cost">—</p>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div style="margin-bottom: 2rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+        <button class="btn" onclick="openCreateModal()">➕ Create New Rate</button>
+        <button class="btn" onclick="initializeDefaultRates()" style="background: var(--color-accent);">
+            🔄 Initialize Default Rates
+        </button>
+    </div>
+
+    <!-- Rates List -->
+    <div id="rates-container">
+        <h2>Electricity Rate Configurations</h2>
+        <div id="rates-list"></div>
+    </div>
+
+    <!-- Cost History (last 30 days) -->
+    <div style="margin-top: 3rem;">
+        <h2>Recent Cost Summary (Last 30 Days)</h2>
+        <div id="cost-summary"
+             style="background: var(--surface); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border);">
+            <div class="form-grid">
+                <div>
+                    <div style="font-weight: 500; color: var(--muted);">Total Cost</div>
+                    <div id="summary-total-cost" style="font-size: 1.5rem; font-weight: 600; color: var(--text);">—
+                    </div>
+                </div>
+                <div>
+                    <div style="font-weight: 500; color: var(--muted);">Total kWh</div>
+                    <div id="summary-total-kwh" style="font-size: 1.5rem; font-weight: 600; color: var(--text);">—</div>
+                </div>
+                <div>
+                    <div style="font-weight: 500; color: var(--muted);">Avg Rate</div>
+                    <div id="summary-avg-rate" style="font-size: 1.5rem; font-weight: 600; color: var(--text);">—</div>
+                </div>
+                <div>
+                    <div style="font-weight: 500; color: var(--muted);">Records</div>
+                    <div id="summary-num-records" style="font-size: 1.5rem; font-weight: 600; color: var(--text);">—
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Rate Modal -->
+<div id="rateModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <h2 id="modal-title">Create Electricity Rate</h2>
+
+        <form id="rateForm" onsubmit="saveRate(event)">
+            <input type="hidden" id="rate-id">
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Name *</label>
+                    <input type="text" id="rate-name" required>
+                </div>
+                <div class="form-group">
+                    <label>Rate Type *</label>
+                    <select id="rate-type" onchange="updateFormFields()">
+                        <option value="flat">Flat Rate</option>
+                        <option value="tou">Time-of-Use (TOU)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="rate-description" rows="2"></textarea>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Location</label>
+                    <input type="text" id="rate-location" placeholder="e.g., Main Facility">
+                </div>
+                <div class="form-group">
+                    <label>Utility Name</label>
+                    <input type="text" id="rate-utility">
+                </div>
+            </div>
+
+            <!-- Flat Rate Fields -->
+            <div id="flat-rate-fields" class="form-group">
+                <label>Flat Rate ($/kWh) *</label>
+                <input type="number" step="0.0001" id="flat-rate" placeholder="0.12">
+            </div>
+
+            <!-- TOU Schedule Fields -->
+            <div id="tou-fields" style="display: none;">
+                <h3>Time-of-Use Schedule</h3>
+                <p style="color: var(--muted); margin-bottom: 1rem;">
+                    Define different rates for different times of day and days of week
+                </p>
+                <div id="tou-periods"></div>
+                <button type="button" class="btn" onclick="addTOUPeriod()" style="margin-top: 1rem;">
+                    ➕ Add Period
+                </button>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Daily Service Charge ($)</label>
+                    <input type="number" step="0.01" id="service-charge" value="0" placeholder="0.50">
+                </div>
+                <div class="form-group">
+                    <label>Demand Charge ($/kW)</label>
+                    <input type="number" step="0.01" id="demand-charge" value="0" placeholder="5.00">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="rate-active" checked>
+                    Active (deactivates other rates for same location)
+                </label>
+            </div>
+
+            <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+                <button type="submit" class="btn">Save Rate</button>
+                <button type="button" class="btn" onclick="closeModal()" style="background: var(--muted);">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    let touPeriodCounter = 0;
+
+    // Load rates on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        loadRates();
+        loadCostSummary();
+    });
+
+    async function loadRates() {
+        try {
+            const res = await fetch('/api/electricity/rates');
+            const data = await res.json();
+
+            if (data.ok) {
+                displayRates(data.rates);
+                updateSummaryCards(data.rates);
+            }
+        } catch (error) {
+            console.error('Error loading rates:', error);
+        }
+    }
+
+    function displayRates(rates) {
+        const container = document.getElementById('rates-list');
+
+        if (rates.length === 0) {
+            container.innerHTML = '<p style="color: var(--muted);">No rates configured. Click "Create New Rate" to get started.</p>';
+            return;
+        }
+
+        container.innerHTML = rates.map(rate => `
+        <div class="rate-card ${rate.active ? 'active' : ''}">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                <div>
+                    <h3 style="margin: 0 0 0.5rem 0;">${rate.name}</h3>
+                    <span class="rate-type-badge badge-${rate.rate_type}">${rate.rate_type.toUpperCase()}</span>
+                    ${rate.active ? '<span style="margin-left: 0.5rem; color: var(--primary); font-weight: 600;">● ACTIVE</span>' : ''}
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn" onclick="editRate(${rate.id})" style="font-size: 0.875rem; padding: 0.4rem 0.8rem;">
+                        ✏️ Edit
+                    </button>
+                    ${!rate.active ? `
+                        <button class="btn" onclick="activateRate(${rate.id})" style="font-size: 0.875rem; padding: 0.4rem 0.8rem; background: var(--primary);">
+                            ✓ Activate
+                        </button>
+                    ` : ''}
+                    <button class="btn" onclick="deleteRate(${rate.id})" style="font-size: 0.875rem; padding: 0.4rem 0.8rem; background: #dc2626;">
+                        🗑️ Delete
+                    </button>
+                </div>
+            </div>
+            
+            ${rate.description ? `<p style="color: var(--muted); margin-bottom: 1rem;">${rate.description}</p>` : ''}
+            
+            <div class="form-grid">
+                ${rate.location ? `<div><strong>Location:</strong> ${rate.location}</div>` : ''}
+                ${rate.utility_name ? `<div><strong>Utility:</strong> ${rate.utility_name}</div>` : ''}
+            </div>
+            
+            ${rate.rate_type === 'flat' ? `
+                <div style="margin-top: 1rem; padding: 1rem; background: var(--surface-2); border-radius: 8px;">
+                    <strong>Flat Rate:</strong> $${rate.flat_rate_usd_per_kwh?.toFixed(4)}/kWh
+                </div>
+            ` : ''}
+            
+            ${rate.rate_type === 'tou' && rate.tou_schedule ? `
+                <div class="tou-schedule">
+                    <strong>Time-of-Use Periods:</strong>
+                    ${rate.tou_schedule.map(period => `
+                        <div class="tou-period">
+                            <span>${period.name}</span>
+                            <span>$${period.rate.toFixed(4)}/kWh</span>
+                            <span style="color: var(--muted);">${period.start_hour}:00 - ${period.end_hour}:00</span>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : ''}
+            
+            ${rate.daily_service_charge_usd > 0 || rate.demand_charge_usd_per_kw > 0 ? `
+                <div style="margin-top: 1rem; color: var(--muted); font-size: 0.875rem;">
+                    ${rate.daily_service_charge_usd > 0 ? `Daily Service Charge: $${rate.daily_service_charge_usd.toFixed(2)} • ` : ''}
+                    ${rate.demand_charge_usd_per_kw > 0 ? `Demand Charge: $${rate.demand_charge_usd_per_kw.toFixed(2)}/kW` : ''}
+                </div>
+            ` : ''}
+        </div>
+    `).join('');
+    }
+
+    function updateSummaryCards(rates) {
+        const activeRates = rates.filter(r => r.active);
+        document.getElementById('active-rates-count').textContent = activeRates.length;
+
+        if (activeRates.length > 0) {
+            const rate = activeRates[0];
+            if (rate.rate_type === 'flat') {
+                document.getElementById('current-rate-value').textContent =
+                    `$${rate.flat_rate_usd_per_kwh?.toFixed(4)}/kWh`;
+            } else {
+                document.getElementById('current-rate-value').textContent = 'TOU (varies)';
+            }
+        } else {
+            document.getElementById('current-rate-value').textContent = 'None';
+        }
+    }
+
+    async function loadCostSummary() {
+        try {
+            const res = await fetch('/api/electricity/costs/summary');
+            const data = await res.json();
+
+            if (data.ok && data.summary) {
+                const s = data.summary;
+                document.getElementById('summary-total-cost').textContent = `$${s.total_cost_usd.toFixed(2)}`;
+                document.getElementById('summary-total-kwh').textContent = `${s.total_kwh.toFixed(2)} kWh`;
+                document.getElementById('summary-avg-rate').textContent = `$${s.avg_rate_usd_per_kwh.toFixed(4)}/kWh`;
+                document.getElementById('summary-num-records').textContent = s.num_records;
+
+                // Estimate daily and monthly costs
+                const daysInPeriod = (new Date(s.period_end) - new Date(s.period_start)) / (1000 * 60 * 60 * 24);
+                const dailyCost = s.total_cost_usd / daysInPeriod;
+                document.getElementById('est-daily-cost').textContent = `$${dailyCost.toFixed(2)}`;
+                document.getElementById('est-monthly-cost').textContent = `$${(dailyCost * 30).toFixed(2)}`;
+            }
+        } catch (error) {
+            console.error('Error loading cost summary:', error);
+        }
+    }
+
+    function openCreateModal() {
+        document.getElementById('modal-title').textContent = 'Create Electricity Rate';
+        document.getElementById('rateForm').reset();
+        document.getElementById('rate-id').value = '';
+        touPeriodCounter = 0;
+        document.getElementById('tou-periods').innerHTML = '';
+        updateFormFields();
+        document.getElementById('rateModal').style.display = 'block';
+    }
+
+    function closeModal() {
+        document.getElementById('rateModal').style.display = 'none';
+    }
+
+    function updateFormFields() {
+        const rateType = document.getElementById('rate-type').value;
+        document.getElementById('flat-rate-fields').style.display =
+            rateType === 'flat' ? 'block' : 'none';
+        document.getElementById('tou-fields').style.display =
+            rateType === 'tou' ? 'block' : 'none';
+    }
+
+    function addTOUPeriod() {
+        const container = document.getElementById('tou-periods');
+        const id = touPeriodCounter++;
+
+        const periodHtml = `
+        <div id="tou-period-${id}" style="background: var(--surface-2); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h4 style="margin: 0;">Period ${id + 1}</h4>
+                <button type="button" onclick="removeTOUPeriod(${id})" style="background: #dc2626; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer;">
+                    Remove
+                </button>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Period Name</label>
+                    <input type="text" class="tou-name" placeholder="e.g., Peak" required>
+                </div>
+                <div class="form-group">
+                    <label>Rate ($/kWh)</label>
+                    <input type="number" step="0.0001" class="tou-rate" placeholder="0.18" required>
+                </div>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Start Hour (0-23)</label>
+                    <input type="number" min="0" max="23" class="tou-start" value="0" required>
+                </div>
+                <div class="form-group">
+                    <label>End Hour (0-24)</label>
+                    <input type="number" min="0" max="24" class="tou-end" value="24" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Days of Week</label>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <label><input type="checkbox" class="tou-day" value="0" checked> Mon</label>
+                    <label><input type="checkbox" class="tou-day" value="1" checked> Tue</label>
+                    <label><input type="checkbox" class="tou-day" value="2" checked> Wed</label>
+                    <label><input type="checkbox" class="tou-day" value="3" checked> Thu</label>
+                    <label><input type="checkbox" class="tou-day" value="4" checked> Fri</label>
+                    <label><input type="checkbox" class="tou-day" value="5"> Sat</label>
+                    <label><input type="checkbox" class="tou-day" value="6"> Sun</label>
+                </div>
+            </div>
+        </div>
+    `;
+
+        container.insertAdjacentHTML('beforeend', periodHtml);
+    }
+
+    function removeTOUPeriod(id) {
+        document.getElementById(`tou-period-${id}`)?.remove();
+    }
+
+    async function saveRate(event) {
+        event.preventDefault();
+
+        const rateId = document.getElementById('rate-id').value;
+        const rateType = document.getElementById('rate-type').value;
+
+        const rateData = {
+            name: document.getElementById('rate-name').value,
+            description: document.getElementById('rate-description').value,
+            active: document.getElementById('rate-active').checked,
+            location: document.getElementById('rate-location').value,
+            utility_name: document.getElementById('rate-utility').value,
+            rate_type: rateType,
+            daily_service_charge_usd: parseFloat(document.getElementById('service-charge').value) || 0,
+            demand_charge_usd_per_kw: parseFloat(document.getElementById('demand-charge').value) || 0
+        };
+
+        if (rateType === 'flat') {
+            rateData.flat_rate_usd_per_kwh = parseFloat(document.getElementById('flat-rate').value);
+        } else if (rateType === 'tou') {
+            const periods = [];
+            document.querySelectorAll('[id^="tou-period-"]').forEach(periodEl => {
+                const days = Array.from(periodEl.querySelectorAll('.tou-day:checked'))
+                    .map(cb => parseInt(cb.value));
+
+                periods.push({
+                    name: periodEl.querySelector('.tou-name').value,
+                    rate: parseFloat(periodEl.querySelector('.tou-rate').value),
+                    start_hour: parseInt(periodEl.querySelector('.tou-start').value),
+                    end_hour: parseInt(periodEl.querySelector('.tou-end').value),
+                    days: days
+                });
+            });
+            rateData.tou_schedule = periods;
+            rateData.flat_rate_usd_per_kwh = 0.12; // Fallback rate
+        }
+
+        try {
+            const url = rateId ? `/api/electricity/rates/${rateId}` : '/api/electricity/rates';
+            const method = rateId ? 'PUT' : 'POST';
+
+            const res = await fetch(url, {
+                method: method,
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(rateData)
+            });
+
+            const data = await res.json();
+
+            if (data.ok) {
+                closeModal();
+                loadRates();
+                loadCostSummary();
+            } else {
+                alert('Error saving rate: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error saving rate: ' + error.message);
+        }
+    }
+
+    async function editRate(rateId) {
+        try {
+            const res = await fetch(`/api/electricity/rates/${rateId}`);
+            const data = await res.json();
+
+            if (data.ok) {
+                const rate = data.rate;
+                document.getElementById('modal-title').textContent = 'Edit Electricity Rate';
+                document.getElementById('rate-id').value = rate.id;
+                document.getElementById('rate-name').value = rate.name;
+                document.getElementById('rate-description').value = rate.description || '';
+                document.getElementById('rate-location').value = rate.location || '';
+                document.getElementById('rate-utility').value = rate.utility_name || '';
+                document.getElementById('rate-type').value = rate.rate_type;
+                document.getElementById('service-charge').value = rate.daily_service_charge_usd || 0;
+                document.getElementById('demand-charge').value = rate.demand_charge_usd_per_kw || 0;
+                document.getElementById('rate-active').checked = rate.active;
+
+                updateFormFields();
+
+                if (rate.rate_type === 'flat') {
+                    document.getElementById('flat-rate').value = rate.flat_rate_usd_per_kwh;
+                } else if (rate.rate_type === 'tou' && rate.tou_schedule) {
+                    // TODO: Populate TOU periods
+                }
+
+                document.getElementById('rateModal').style.display = 'block';
+            }
+        } catch (error) {
+            alert('Error loading rate: ' + error.message);
+        }
+    }
+
+    async function activateRate(rateId) {
+        if (!confirm('Activate this rate? This will deactivate other rates for the same location.')) {
+            return;
+        }
+
+        try {
+            const res = await fetch(`/api/electricity/rates/${rateId}/activate`, {
+                method: 'POST'
+            });
+            const data = await res.json();
+
+            if (data.ok) {
+                loadRates();
+            } else {
+                alert('Error activating rate: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error activating rate: ' + error.message);
+        }
+    }
+
+    async function deleteRate(rateId) {
+        if (!confirm('Delete this rate configuration? This cannot be undone.')) {
+            return;
+        }
+
+        try {
+            const res = await fetch(`/api/electricity/rates/${rateId}`, {
+                method: 'DELETE'
+            });
+            const data = await res.json();
+
+            if (data.ok) {
+                loadRates();
+            } else {
+                alert('Error deleting rate: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error deleting rate: ' + error.message);
+        }
+    }
+
+    async function initializeDefaultRates() {
+        if (!confirm('Create example rate configurations? This will add example flat and TOU rates.')) {
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/electricity/initialize', {
+                method: 'POST'
+            });
+            const data = await res.json();
+
+            if (data.ok) {
+                alert(data.message);
+                loadRates();
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    // Close modal when clicking outside of it
+    window.onclick = function (event) {
+        const modal = document.getElementById('rateModal');
+        if (event.target == modal) {
+            closeModal();
+        }
+    }
+</script>
+</body>
+</html>
