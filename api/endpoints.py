@@ -107,7 +107,8 @@ def discover_miners(timeout=1, workers=50, use_mdns=True, return_sources=False, 
     networks = []
     try:
         if cidrs:
-            items = cidrs if isinstance(cidrs, (list, tuple)) else [c.strip() for c in str(cidrs).split(',') if c.strip()]
+            items = cidrs if isinstance(cidrs, (list, tuple)) else [c.strip() for c in str(cidrs).split(',') if
+                                                                    c.strip()]
             for c in items:
                 try:
                     networks.append(ipaddress.ip_network(c))
@@ -1180,7 +1181,6 @@ def btc_history():
     last = points[-1]['y']
     updated = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     return jsonify({'ok': True, 'points': points, 'last': last, 'updated': updated})
-
 
 
 @api_bp.get('/discover')

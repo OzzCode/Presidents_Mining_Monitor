@@ -4,7 +4,7 @@
     <option name="pathToExecutable" value="C:\Users\ozzco\anaconda3\Scripts\black.exe" />
     <option name="sdkName" value="Python 3.13 (.venv)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.13 virtualenv at C:\Users\ozzco\OneDrive\Documents\GitHub\Presidents_Mining_Monitor\.venv" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.13 (.venv)" project-jdk-type="Python SDK" />
   <component name="PythonCompatibilityInspectionAdvertiser">
     <option name="version" value="3" />
   </component>
