@@ -45,13 +45,13 @@ def get_miner_risk_assessment(miner_id):
                     miner = session.get(Miner, int(miner_id))
                 except (ValueError, TypeError):
                     pass
-            
+
             if not miner:
                 return jsonify({
                     'ok': False,
                     'error': 'Miner not found'
                 }), 404
-            
+
             miner_ip = miner.miner_ip
 
         assessment = analytics_engine.predict_miner_failure_risk(miner_ip)

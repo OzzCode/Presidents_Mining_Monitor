@@ -74,6 +74,7 @@ def create_app():
     def healthz():
         return jsonify({"ok": True}), 200
 
+    # noinspection PyBroadException
     @app.route('/readyz')
     def readyz():
         # DB check: try to open and close a session
@@ -119,6 +120,7 @@ if __name__ == '__main__':
     # Ensure DB is initialized with app context
     if __name__ == "__main__":
         # Ensure DB is initialized if your app relies on it.
+        # noinspection PyBroadException
         try:
             from core.db import init_db
 
@@ -128,6 +130,7 @@ if __name__ == '__main__':
             pass
 
     # Start background scheduler (no reloader in this config, so safe)
+    # noinspection PyBroadException
     try:
         SCHEDULER = start_scheduler()
     except Exception:
