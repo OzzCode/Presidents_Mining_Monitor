@@ -4,11 +4,110 @@ API endpoints for electricity cost tracking and management.
 
 from flask import Blueprint, request, jsonify
 from sqlalchemy import and_, func
-from core.db import SessionLocal, ElectricityRate, ElectricityCost
+from core.db import SessionLocal, ElectricityRate, ElectricityCost, Metric, Miner
 from core.electricity import ElectricityCostService, create_default_rates
 import datetime as dt
 
 bp = Blueprint("electricity_api", __name__, url_prefix="/api/electricity")
+
+
+def estimate_costs_from_fleet(session, location=None):
+    """Estimate costs based on current fleet power consumption."""
+    # Get active rate
+    rate = ElectricityCostService.get_active_rate(session, location)
+    
+    if not rate:
+        return {
+            "total_cost_usd": 0.0,
+            "total_kwh": 0.0,
+            "avg_rate_usd_per_kwh": 0.0,
+            "num_records": 0,
+            "tou_breakdown_usd": None,
+            "period_start": dt.datetime.utcnow() - dt.timedelta(days=30),
+            "period_end": dt.datetime.utcnow(),
+            "estimated": True
+        }
+    
+    # Get recent metrics to estimate power consumption
+    cutoff = dt.datetime.utcnow() - dt.timedelta(hours=1)
+    
+    # Query miners with location filter if provided
+    miner_query = session.query(Miner)
+    if location:
+        miner_query = miner_query.filter(Miner.location == location)
+    
+    miners = miner_query.all()
+    miner_ips = [m.miner_ip for m in miners] if miners else []
+    
+    # Get latest metrics for these miners
+    if miner_ips:
+        metrics_query = session.query(Metric).filter(
+            and_(
+                Metric.miner_ip.in_(miner_ips),
+                Metric.timestamp >= cutoff
+            )
+        )
+    else:
+        # If no location filter, get all recent metrics
+        metrics_query = session.query(Metric).filter(Metric.timestamp >= cutoff)
+    
+    # Get latest metric per miner
+    from sqlalchemy.sql import func as sql_func
+    subq = session.query(
+        Metric.miner_ip,
+        sql_func.max(Metric.timestamp).label('max_ts')
+    ).filter(Metric.timestamp >= cutoff).group_by(Metric.miner_ip).subquery()
+    
+    latest_metrics = session.query(Metric).join(
+        subq,
+        and_(
+            Metric.miner_ip == subq.c.miner_ip,
+            Metric.timestamp == subq.c.max_ts
+        )
+    ).all()
+    
+    # Calculate total fleet power
+    total_power_w = sum(m.power_w for m in latest_metrics if m.power_w)
+    
+    if total_power_w == 0:
+        return {
+            "total_cost_usd": 0.0,
+            "total_kwh": 0.0,
+            "avg_rate_usd_per_kwh": 0.0,
+            "num_records": 0,
+            "tou_breakdown_usd": None,
+            "period_start": dt.datetime.utcnow() - dt.timedelta(days=30),
+            "period_end": dt.datetime.utcnow(),
+            "estimated": True
+        }
+    
+    # Estimate daily cost (24 hours at current power)
+    now = dt.datetime.utcnow()
+    day_start = now - dt.timedelta(days=1)
+    
+    cost_calc = ElectricityCostService.calculate_cost_for_period(
+        total_power_w, day_start, now, rate
+    )
+    
+    daily_cost = cost_calc["energy_cost_usd"] + rate.daily_service_charge_usd
+    daily_kwh = cost_calc["total_kwh"]
+    
+    # Estimate monthly (30 days)
+    monthly_cost = daily_cost * 30
+    monthly_kwh = daily_kwh * 30
+    
+    return {
+        "total_cost_usd": monthly_cost,
+        "total_kwh": monthly_kwh,
+        "avg_rate_usd_per_kwh": cost_calc["avg_rate_usd_per_kwh"],
+        "num_records": 0,
+        "tou_breakdown_usd": cost_calc.get("tou_breakdown"),
+        "period_start": dt.datetime.utcnow() - dt.timedelta(days=30),
+        "period_end": dt.datetime.utcnow(),
+        "estimated": True,
+        "fleet_power_w": total_power_w,
+        "num_miners": len(latest_metrics)
+    }
 
 
 @bp.route("/rates", methods=["GET"])
@@ -341,6 +440,10 @@ def get_cost_summary():
             session, start_dt, end_dt, miner_ip, location
         )
 
+        # If no historical data, estimate based on current fleet power
+        if summary["num_records"] == 0:
+            summary = estimate_costs_from_fleet(session, location)
+
         return jsonify({
             "ok": True,
             "summary": summary
@@ -443,6 +546,171 @@ def get_current_rate():
             }
         })
 
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        session.close()
+
+
+@bp.route("/record-costs", methods=["POST"])
+def record_costs_now():
+    """Manually trigger electricity cost recording for the last hour."""
+    session = SessionLocal()
+    try:
+        # Get all active electricity rates
+        active_rates = session.query(ElectricityRate).filter(ElectricityRate.active == True).all()
+        
+        if not active_rates:
+            return jsonify({
+                "ok": False,
+                "error": "No active electricity rates configured"
+            }), 400
+        
+        # Define the recording period (last hour)
+        period_end = dt.datetime.utcnow()
+        period_start = period_end - dt.timedelta(hours=1)
+        
+        # Get all miners
+        miners = session.query(Miner).all()
+        
+        # Group miners by location for rate matching
+        location_groups = {}
+        for miner in miners:
+            location = miner.location or "default"
+            if location not in location_groups:
+                location_groups[location] = []
+            location_groups[location].append(miner.miner_ip)
+        
+        total_recorded = 0
+        failed = 0
+        
+        # Process each location group
+        for location, miner_ips in location_groups.items():
+            # Find active rate for this location
+            rate = None
+            for r in active_rates:
+                if r.location == location or (not r.location and location == "default"):
+                    rate = r
+                    break
+            
+            if not rate:
+                # Use first active rate as fallback
+                rate = active_rates[0]
+            
+            # Get average power consumption for each miner in the period
+            for miner_ip in miner_ips:
+                # Query metrics for this miner in the period
+                metrics = session.query(Metric).filter(
+                    Metric.miner_ip == miner_ip,
+                    Metric.timestamp >= period_start,
+                    Metric.timestamp <= period_end
+                ).all()
+                
+                if not metrics:
+                    continue
+                
+                # Calculate average power
+                avg_power_w = sum(m.power_w for m in metrics if m.power_w) / len(metrics)
+                
+                if avg_power_w == 0:
+                    continue
+                
+                try:
+                    # Record the cost for this miner
+                    ElectricityCostService.record_cost(
+                        session=session,
+                        period_start=period_start,
+                        period_end=period_end,
+                        power_w=avg_power_w,
+                        miner_ip=miner_ip,
+                        location=location if location != "default" else None,
+                        rate=rate
+                    )
+                    total_recorded += 1
+                except Exception as e:
+                    failed += 1
+        
+        return jsonify({
+            "ok": True,
+            "message": f"Recorded electricity costs for {total_recorded} miners",
+            "total_recorded": total_recorded,
+            "failed": failed,
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        session.close()
+
+
+@bp.route("/trends", methods=["GET"])
+def get_cost_trends():
+    """Get electricity cost trends over time (daily aggregates)."""
+    session = SessionLocal()
+    try:
+        # Query parameters
+        days = int(request.args.get("days", 30))
+        miner_ip = request.args.get("miner_ip")
+        location = request.args.get("location")
+        
+        end_date = dt.datetime.utcnow()
+        start_date = end_date - dt.timedelta(days=days)
+        
+        # Query all costs in the period
+        query = session.query(ElectricityCost).filter(
+            and_(
+                ElectricityCost.period_start >= start_date,
+                ElectricityCost.period_end <= end_date
+            )
+        )
+        
+        if miner_ip:
+            query = query.filter(ElectricityCost.miner_ip == miner_ip)
+        if location:
+            query = query.filter(ElectricityCost.location == location)
+        
+        costs = query.order_by(ElectricityCost.period_start).all()
+        
+        # Aggregate by day
+        daily_costs = {}
+        for cost in costs:
+            day = cost.period_start.date().isoformat()
+            if day not in daily_costs:
+                daily_costs[day] = {
+                    "date": day,
+                    "total_cost_usd": 0.0,
+                    "total_kwh": 0.0,
+                    "num_records": 0
+                }
+            daily_costs[day]["total_cost_usd"] += cost.total_cost_usd
+            daily_costs[day]["total_kwh"] += cost.total_kwh
+            daily_costs[day]["num_records"] += 1
+        
+        # Convert to sorted list
+        trend_data = sorted(daily_costs.values(), key=lambda x: x["date"])
+        
+        # Calculate averages
+        if trend_data:
+            avg_daily_cost = sum(d["total_cost_usd"] for d in trend_data) / len(trend_data)
+            avg_daily_kwh = sum(d["total_kwh"] for d in trend_data) / len(trend_data)
+        else:
+            avg_daily_cost = 0.0
+            avg_daily_kwh = 0.0
+        
+        return jsonify({
+            "ok": True,
+            "trends": trend_data,
+            "summary": {
+                "avg_daily_cost_usd": avg_daily_cost,
+                "avg_daily_kwh": avg_daily_kwh,
+                "total_days": len(trend_data),
+                "period_start": start_date.isoformat(),
+                "period_end": end_date.isoformat()
+            }
+        })
+        
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
     finally:

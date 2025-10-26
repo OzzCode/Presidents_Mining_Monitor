@@ -176,6 +176,9 @@
         <button class="btn" onclick="initializeDefaultRates()" style="background: var(--color-accent);">
             🔄 Initialize Default Rates
         </button>
+        <button class="btn" onclick="recordCostsNow()" style="background: #10b981;">
+            💾 Record Costs Now
+        </button>
     </div>
 
     <!-- Rates List -->
@@ -662,10 +665,32 @@
         }
     }
 
+    async function recordCostsNow() {
+        if (!confirm('Record electricity costs for the last hour? This will create cost records for all active miners.')) {
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/electricity/record-costs', {
+                method: 'POST'
+            });
+            const data = await res.json();
+
+            if (data.ok) {
+                alert(`Success! Recorded costs for ${data.total_recorded} miners.`);
+                loadCostSummary();
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
     // Close modal when clicking outside of it
     window.onclick = function (event) {
         const modal = document.getElementById('rateModal');
-        if (event.target == modal) {
+        if (event.target === modal) {
             closeModal();
         }
     }

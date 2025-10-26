@@ -1,13 +1,15 @@
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 import logging
+import datetime as dt
 from apscheduler.schedulers.background import BackgroundScheduler
 from api.endpoints import discover_miners
 from config import POLL_INTERVAL
-from core.db import Base, engine, SessionLocal, Metric
+from core.db import Base, engine, SessionLocal, Metric, Miner
 from core.miner import MinerClient, MinerError
 from core.alert_engine import AlertEngine, create_default_rules
 from core.notification_service import NotificationService
 from core.profitability import ProfitabilityEngine
+from core.electricity import ElectricityCostService
 
 
 # create tables
@@ -79,6 +81,89 @@ def calculate_profitability():
         logger.exception("Profitability calculation failed", exc_info=e)
 
 
+def record_electricity_costs():
+    """Record electricity costs for all miners based on recent power consumption."""
+    session = SessionLocal()
+    try:
+        # Get all active electricity rates
+        from core.db import ElectricityRate
+        active_rates = session.query(ElectricityRate).filter(ElectricityRate.active == True).all()
+        
+        if not active_rates:
+            logger.debug("No active electricity rates configured, skipping cost recording")
+            return
+        
+        # Define the recording period (last hour)
+        period_end = dt.datetime.utcnow()
+        period_start = period_end - dt.timedelta(hours=1)
+        
+        # Get all miners
+        miners = session.query(Miner).all()
+        
+        # Group miners by location for rate matching
+        location_groups = {}
+        for miner in miners:
+            location = miner.location or "default"
+            if location not in location_groups:
+                location_groups[location] = []
+            location_groups[location].append(miner.miner_ip)
+        
+        total_recorded = 0
+        
+        # Process each location group
+        for location, miner_ips in location_groups.items():
+            # Find active rate for this location
+            rate = None
+            for r in active_rates:
+                if r.location == location or (not r.location and location == "default"):
+                    rate = r
+                    break
+            
+            if not rate:
+                # Use first active rate as fallback
+                rate = active_rates[0]
+            
+            # Get average power consumption for each miner in the period
+            for miner_ip in miner_ips:
+                # Query metrics for this miner in the period
+                metrics = session.query(Metric).filter(
+                    Metric.miner_ip == miner_ip,
+                    Metric.timestamp >= period_start,
+                    Metric.timestamp <= period_end
+                ).all()
+                
+                if not metrics:
+                    continue
+                
+                # Calculate average power
+                avg_power_w = sum(m.power_w for m in metrics if m.power_w) / len(metrics)
+                
+                if avg_power_w == 0:
+                    continue
+                
+                try:
+                    # Record the cost for this miner
+                    ElectricityCostService.record_cost(
+                        session=session,
+                        period_start=period_start,
+                        period_end=period_end,
+                        power_w=avg_power_w,
+                        miner_ip=miner_ip,
+                        location=location if location != "default" else None,
+                        rate=rate
+                    )
+                    total_recorded += 1
+                except Exception as e:
+                    logger.warning(f"Failed to record cost for {miner_ip}: {e}")
+        
+        logger.info(f"Recorded electricity costs for {total_recorded} miners")
+        
+    except Exception as e:
+        logger.exception("Electricity cost recording failed", exc_info=e)
+    finally:
+        session.close()
+
+
 def start_scheduler():
     setup_db()
 
@@ -99,6 +184,9 @@ def start_scheduler():
 
     # Profitability calculation job (run every 15 minutes)
     scheduler.add_job(calculate_profitability, 'interval', minutes=15, id='calculate_profitability')
+    
+    # Electricity cost recording job (run every hour)
+    scheduler.add_job(record_electricity_costs, 'interval', hours=1, id='record_electricity_costs')
 
     scheduler.add_listener(_job_listener, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED)
     scheduler.start()
@@ -107,5 +195,6 @@ def start_scheduler():
     print(f"  - Polling metrics every {POLL_INTERVAL}s")
     print(f"  - Checking alerts every 2 minutes")
     print(f"  - Calculating profitability every 15 minutes")
+    print(f"  - Recording electricity costs every hour")
 
     return scheduler
