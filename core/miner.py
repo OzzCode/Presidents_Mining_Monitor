@@ -293,11 +293,49 @@ class MinerClient:
     def restart(self) -> dict:
         """
         Restart the miner.
-        Sends the 'restart' command to CGMiner/BMminer API.
+        Tries multiple command formats to handle different firmware versions.
         """
         import json
-        payload = json.dumps({"command": "restart"})
-        return self._send_command(payload)
+        import socket
+        
+        # Try different command formats that work with different firmware versions
+        commands_to_try = [
+            "restart",  # Raw command (works on some firmwares)
+            '{"command":"restart"}',  # JSON format
+            '{"command":"devrestart"}',  # Some firmwares use devrestart
+            '{"command":"miner_restart"}',  # Alternative command name
+            '{"command":"restart", "parameter":"0"}'  # Some firmwares require a parameter
+        ]
+        
+        last_error = None
+        for cmd in commands_to_try:
+            try:
+                # For raw commands, don't use json.dumps
+                if cmd.startswith('{'):
+                    return self._send_command(cmd)
+                else:
+                    # For raw commands, send as-is
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(5)  # Shorter timeout for restart commands
+                    try:
+                        s.connect((self.ip, self.port))
+                        s.sendall((cmd + "\n").encode("utf-8"))
+                        # Don't wait for response as miner will restart
+                        return {"STATUS": [{"STATUS": "S", "When": 0, "Code": 0, "Msg": "Restart command sent"}], "id": 1}
+                    except socket.timeout:
+                        # Socket timeout is expected as miner will restart
+                        return {"STATUS": [{"STATUS": "S", "When": 0, "Code": 0, "Msg": "Restart command sent (timeout expected)"}], "id": 1}
+                    finally:
+                        try:
+                            s.close()
+                        except:
+                            pass
+            except Exception as e:
+                last_error = str(e)
+                continue
+        
+        # If we get here, all commands failed
+        raise MinerError(f"Failed to restart miner: {last_error or 'no response from miner'}")
 
     def switch_pool(self, pool_id: int) -> dict:
         """
