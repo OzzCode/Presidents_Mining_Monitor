@@ -1,262 +1,226 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8"/>
-    <title>Error Logs</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-<nav>
-    <h1 style="display:flex;align-items:center;gap:10px;margin:0;">
-        <img src="{{ url_for('static', filename='img/LogoImg.png') }}" alt="Company Logo"
-             style="height:36px;width:auto;">
-        <a href="{{ url_for('home') }}" style="text-decoration:none;color:inherit;">Antminer Monitor</a>
-    </h1>
-    <ul class="nav-list">
-        <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
-        <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
-        <li><a href="{{ url_for('dashboard.alerts_page') }}">Alerts</a></li>
-        <li><a href="{{ url_for('dashboard.profitability_page') }}">Profitability</a></li>
-        <li><a href="{{ url_for('dashboard.analytics_page') }}">Analytics</a></li>
-        <li><a href="{{ url_for('logs') }}">Logs</a></li>
-    </ul>
-    <div style="display:flex; align-items:center; gap:12px;">
-        <div id="btc-header-widget"
-             style="display:flex; align-items:center; gap:12px; padding:8px 12px; border:1px solid var(--border); background: var(--surface-2); border-radius:10px; flex:1 1 420px; max-width:640px;">
-            <div style="display:flex; flex-direction:column; line-height:1.1; flex:0 0 auto;">
-                <div style="font-size:0.8rem; color: var(--muted); margin-bottom:2px;">Current BTC Price</div>
-                <div id="btc-price" style="font-weight:700; font-size:1.15rem;">—</div>
-                <div id="btc-updated" style="font-size:0.8rem; color: var(--muted);">—</div>
-            </div>
-            <div style="flex:1 1 auto; min-width:140px; height:44px;">
-                <canvas id="btc-chart" height="44"></canvas>
-            </div>
-        </div>
-        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme"><span
-                aria-hidden="true">🌓</span> Theme
-        </button>
+{% extends "base.html" %}
+
+{% block title %}Error Logs{% endblock %}
+
+{% block extra_head %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+{% endblock %}
+
+{% block content %}
+    <h1>Error Logs <span id="live-dot" style="color:#16a34a;">● LIVE</span></h1>
+
+    <div class="controls" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <label for="level">Level</label>
+        <select id="level">
+            <option value="">All</option>
+            <option>ERROR</option>
+            <option>WARNING</option>
+            <option>INFO</option>
+            <option>DEBUG</option>
+        </select>
+        <label for="ip">IP</label>
+        <input id="ip" placeholder="IP (optional)"/>
+        <span id="status" style="font-size:0.9rem;color:#6b7280;">Auto-updating…</span>
     </div>
-</nav>
-{#<div class="header-banner" style="margin:12px 0;">#}
-{#    <img src="{{ url_for('static', filename='img/Presidents_Mining_DashHeader.png') }}" alt="Dashboard Header" style="max-width:100%; height:auto; display:block; border-radius:8px;">#}
-{#</div>#}
-<h1>Error Logs <span id="live-dot" style="color:#16a34a;">● LIVE</span></h1>
 
-<div class="controls" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-    <label for="level">Level</label>
-    <select id="level">
-        <option value="">All</option>
-        <option>ERROR</option>
-        <option>WARNING</option>
-        <option>INFO</option>
-        <option>DEBUG</option>
-    </select>
-    <label for="ip">IP</label>
-    <input id="ip" placeholder="IP (optional)"/>
-    <span id="status" style="font-size:0.9rem;color:#6b7280;">Auto-updating…</span>
-</div>
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Time</th>
+            <th>Level</th>
+            <th>Component</th>
+            <th>IP</th>
+            <th>Message</th>
+        </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+    </table>
 
-<table class="table">
-    <thead>
-    <tr>
-        <th>Time</th>
-        <th>Level</th>
-        <th>Component</th>
-        <th>IP</th>
-        <th>Message</th>
-    </tr>
-    </thead>
-    <tbody id="tbody"></tbody>
-</table>
+    <h2 style="margin-top:24px;">Live Miner Logs</h2>
+    <p style="color:#6b7280;font-size:0.9rem;">Enter a miner IP above and click "Load Live Miner Logs" to fetch logs
+        directly from the device.</p>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+        <button id="load-live">Load Live Miner Logs</button>
+    </div>
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Time</th>
+            <th>Level</th>
+            <th>Message</th>
+        </tr>
+        </thead>
+        <tbody id="live-body"></tbody>
+    </table>
+{% endblock %}
 
-<h2 style="margin-top:24px;">Live Miner Logs</h2>
-<p style="color:#6b7280;font-size:0.9rem;">Enter a miner IP above and click "Load Live Miner Logs" to fetch logs
-    directly from the device.</p>
-<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-    <button id="load-live">Load Live Miner Logs</button>
-</div>
-<table class="table">
-    <thead>
-    <tr>
-        <th>Time</th>
-        <th>Level</th>
-        <th>Message</th>
-    </tr>
-    </thead>
-    <tbody id="live-body"></tbody>
-</table>
+{% block extra_scripts %}
+    <script>
+        const tbody = document.getElementById('tbody');
+        const levelEl = document.getElementById('level');
+        const ipEl = document.getElementById('ip');
+        const statusEl = document.getElementById('status');
 
-<!-- Include Chart.js and time adapter for the BTC header widget -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-<script src="{{ url_for('static', filename='js/btc_widget.js') }}?v=5"></script>
+        let pollTimer = null;
+        let lastTs = null; // ISO string of the newest seen created_at
+        const seenIds = new Set();
 
-<script>
-    const tbody = document.getElementById('tbody');
-    const levelEl = document.getElementById('level');
-    const ipEl = document.getElementById('ip');
-    const statusEl = document.getElementById('status');
-
-    let pollTimer = null;
-    let lastTs = null; // ISO string of the newest seen created_at
-    const seenIds = new Set();
-
-    function showEmptyRow() {
-        if (!document.getElementById('empty-row')) {
-            const tr = document.createElement('tr');
-            tr.id = 'empty-row';
-            const td = document.createElement('td');
-            td.colSpan = 5;
-            td.style.textAlign = 'center';
-            td.style.color = '#888';
-            td.textContent = 'No logs to display at this time.';
-            tr.appendChild(td);
-            tbody.appendChild(tr);
-        }
-    }
-
-    function removeEmptyRow() {
-        const el = document.getElementById('empty-row');
-        if (el) el.remove();
-    }
-
-    function buildUrl(incremental = false) {
-        let url = '/api/error-logs?limit=200';
-        const lvl = levelEl.value;
-        const ip = ipEl.value.trim();
-        if (lvl) url += `&level=${encodeURIComponent(lvl)}`;
-        if (ip) url += `&ip=${encodeURIComponent(ip)}`;
-        if (incremental && lastTs) url += `&since=${encodeURIComponent(lastTs)}`;
-        return url;
-    }
-
-    function renderRows(rows, {prepend = false} = {}) {
-        // rows are from API in desc order (newest first)
-        // We want to maintain newest at top. When prepending, process oldest->newest and insertBefore firstChild.
-        const toProcess = prepend ? [...rows].reverse() : rows;
-        if (toProcess.length) removeEmptyRow();
-        toProcess.forEach(r => {
-            if (seenIds.has(r.id)) return;
-            seenIds.add(r.id);
-            const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${r.created_at}</td><td>${r.level}</td><td>${r.component}</td><td>${r.miner_ip || ''}</td><td>${r.message}</td>`;
-            if (prepend) {
-                tbody.insertBefore(tr, tbody.firstChild);
-            } else {
+        function showEmptyRow() {
+            if (!document.getElementById('empty-row')) {
+                const tr = document.createElement('tr');
+                tr.id = 'empty-row';
+                const td = document.createElement('td');
+                td.colSpan = 5;
+                td.style.textAlign = 'center';
+                td.style.color = '#888';
+                td.textContent = 'No logs to display at this time.';
+                tr.appendChild(td);
                 tbody.appendChild(tr);
             }
-            // track latest timestamp
-            if (!lastTs || r.created_at > lastTs) lastTs = r.created_at;
-        });
-    }
+        }
 
-    async function initialLoad() {
-        statusEl.textContent = 'Loading…';
-        try {
-            const res = await fetch(buildUrl(false));
-            const data = await res.json();
+        function removeEmptyRow() {
+            const el = document.getElementById('empty-row');
+            if (el) el.remove();
+        }
+
+        function buildUrl(incremental = false) {
+            let url = '/api/error-logs?limit=200';
+            const lvl = levelEl.value;
+            const ip = ipEl.value.trim();
+            if (lvl) url += `&level=${encodeURIComponent(lvl)}`;
+            if (ip) url += `&ip=${encodeURIComponent(ip)}`;
+            if (incremental && lastTs) url += `&since=${encodeURIComponent(lastTs)}`;
+            return url;
+        }
+
+        function renderRows(rows, {prepend = false} = {}) {
+            // rows are from API in desc order (newest first)
+            // We want to maintain newest at top. When prepending, process oldest->newest and insertBefore firstChild.
+            const toProcess = prepend ? [...rows].reverse() : rows;
+            if (toProcess.length) removeEmptyRow();
+            toProcess.forEach(r => {
+                if (seenIds.has(r.id)) return;
+                seenIds.add(r.id);
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${r.created_at}</td><td>${r.level}</td><td>${r.component}</td><td>${r.miner_ip || ''}</td><td>${r.message}</td>`;
+                if (prepend) {
+                    tbody.insertBefore(tr, tbody.firstChild);
+                } else {
+                    tbody.appendChild(tr);
+                }
+                // track latest timestamp
+                if (!lastTs || r.created_at > lastTs) lastTs = r.created_at;
+            });
+        }
+
+        async function initialLoad() {
+            statusEl.textContent = 'Loading…';
+            try {
+                const res = await fetch(buildUrl(false));
+                const data = await res.json();
+                tbody.innerHTML = '';
+                seenIds.clear();
+                lastTs = null;
+                // Show newest first as returned
+                renderRows(data, {prepend: false});
+                // compute lastTs
+                data.forEach(r => {
+                    if (!lastTs || r.created_at > lastTs) lastTs = r.created_at;
+                });
+                if (Array.isArray(data) && data.length === 0) {
+                    showEmptyRow();
+                }
+                statusEl.textContent = 'Auto-updating…';
+            } catch (e) {
+                statusEl.textContent = 'Failed to load';
+            }
+        }
+
+        async function pollOnce() {
+            try {
+                const res = await fetch(buildUrl(true));
+                const data = await res.json();
+                if (Array.isArray(data) && data.length) {
+                    renderRows(data, {prepend: true});
+                }
+            } catch (e) {
+                // transient errors ignored
+            }
+        }
+
+        function startPolling() {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = setInterval(pollOnce, 3000);
+        }
+
+        function resetAndReload() {
             tbody.innerHTML = '';
             seenIds.clear();
             lastTs = null;
-            // Show newest first as returned
-            renderRows(data, {prepend: false});
-            // compute lastTs
-            data.forEach(r => {
-                if (!lastTs || r.created_at > lastTs) lastTs = r.created_at;
-            });
-            if (Array.isArray(data) && data.length === 0) {
-                showEmptyRow();
-            }
-            statusEl.textContent = 'Auto-updating…';
-        } catch (e) {
-            statusEl.textContent = 'Failed to load';
+            initialLoad();
         }
-    }
 
-    async function pollOnce() {
-        try {
-            const res = await fetch(buildUrl(true));
-            const data = await res.json();
-            if (Array.isArray(data) && data.length) {
-                renderRows(data, {prepend: true});
-            }
-        } catch (e) {
-            // transient errors ignored
-        }
-    }
+        // react to filter changes
+        levelEl.addEventListener('change', resetAndReload);
+        let ipDebounce;
+        ipEl.addEventListener('input', () => {
+            clearTimeout(ipDebounce);
+            ipDebounce = setTimeout(resetAndReload, 400);
+        });
 
-    function startPolling() {
-        if (pollTimer) clearInterval(pollTimer);
-        pollTimer = setInterval(pollOnce, 3000);
-    }
+        // --- Live Miner Logs (direct from device) ---
+        const liveBtn = document.getElementById('load-live');
+        const liveBody = document.getElementById('live-body');
 
-    function resetAndReload() {
-        tbody.innerHTML = '';
-        seenIds.clear();
-        lastTs = null;
-        initialLoad();
-    }
-
-    // react to filter changes
-    levelEl.addEventListener('change', resetAndReload);
-    let ipDebounce;
-    ipEl.addEventListener('input', () => {
-        clearTimeout(ipDebounce);
-        ipDebounce = setTimeout(resetAndReload, 400);
-    });
-
-    // --- Live Miner Logs (direct from device) ---
-    const liveBtn = document.getElementById('load-live');
-    const liveBody = document.getElementById('live-body');
-
-    async function loadLive() {
-        const ip = ipEl.value.trim();
-        liveBody.innerHTML = '';
-        if (!ip) {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="3">Enter an IP above to fetch live miner logs.</td>`;
-            liveBody.appendChild(tr);
-            return;
-        }
-        try {
-            const res = await fetch(`/api/miner/${encodeURIComponent(ip)}/logs`);
-            const payload = await res.json();
-            if (!payload.ok) {
+        async function loadLive() {
+            const ip = ipEl.value.trim();
+            liveBody.innerHTML = '';
+            if (!ip) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td colspan="3">Error: ${payload.error || 'Failed to fetch logs'}</td>`;
+                tr.innerHTML = `<td colspan="3">Enter an IP above to fetch live miner logs.</td>`;
                 liveBody.appendChild(tr);
                 return;
             }
-            const entries = Array.isArray(payload.entries) ? payload.entries : [];
-            if (!entries.length) {
+            try {
+                const res = await fetch(`/api/miner/${encodeURIComponent(ip)}/logs`);
+                const payload = await res.json();
+                if (!payload.ok) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td colspan="3">Error: ${payload.error || 'Failed to fetch logs'}</td>`;
+                    liveBody.appendChild(tr);
+                    return;
+                }
+                const entries = Array.isArray(payload.entries) ? payload.entries : [];
+                if (!entries.length) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td colspan="3">No live log entries returned.</td>`;
+                    liveBody.appendChild(tr);
+                    return;
+                }
+                entries.forEach(e => {
+                    const level = String(e.level || 'INFO').toUpperCase();
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td>${e.ts || '—'}</td><td>${level}</td><td>${e.message || ''}</td>`;
+                    liveBody.appendChild(tr);
+                });
+            } catch (e) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td colspan="3">No live log entries returned.</td>`;
+                tr.innerHTML = `<td colspan="3">Request failed.</td>`;
                 liveBody.appendChild(tr);
-                return;
             }
-            entries.forEach(e => {
-                const level = String(e.level || 'INFO').toUpperCase();
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${e.ts || '—'}</td><td>${level}</td><td>${e.message || ''}</td>`;
-                liveBody.appendChild(tr);
-            });
-        } catch (e) {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="3">Request failed.</td>`;
-            liveBody.appendChild(tr);
         }
-    }
 
-    liveBtn.addEventListener('click', loadLive);
+        liveBtn.addEventListener('click', loadLive);
 
-    window.addEventListener('DOMContentLoaded', async () => {
-        await initialLoad();
-        startPolling();
-    });
+        window.addEventListener('DOMContentLoaded', async () => {
+            await initialLoad();
+            startPolling();
+        });
 
-    window.addEventListener('beforeunload', () => {
-        if (pollTimer) clearInterval(pollTimer);
-    });
-</script>
-</body>
-</html>
+        window.addEventListener('beforeunload', () => {
+            if (pollTimer) clearInterval(pollTimer);
+        });
+    </script>
+{% endblock %}

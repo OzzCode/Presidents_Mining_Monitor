@@ -1,10 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alerts - Mining Monitor</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+{% extends "base.html" %}
+
+{% block title %}Alerts - Mining Monitor{% endblock %}
+
+{% block extra_head %}
     <style>
         .alerts-container {
             max-width: 1400px;
@@ -268,187 +266,177 @@
             color: #666;
         }
     </style>
-</head>
-<body>
-<nav style="background: #f8f9fa; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
-    <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-        <strong style="margin-right: 10px;">Navigation:</strong>
-        <a href="{{ url_for('dashboard.index') }}" style="color: #007bff; text-decoration: none;">Dashboard</a>
-        <a href="{{ url_for('dashboard.show_miners') }}" style="color: #007bff; text-decoration: none;">Miners</a>
-        <a href="{{ url_for('dashboard.alerts_page') }}" style="color: #333; font-weight: bold; text-decoration: none;">Alerts</a>
-        <a href="{{ url_for('dashboard.profitability_page') }}" style="color: #007bff; text-decoration: none;">Profitability</a>
-        <a href="{{ url_for('dashboard.analytics_page') }}" style="color: #007bff; text-decoration: none;">Analytics</a>
-        <a href="{{ url_for('logs') }}" style="color: #007bff; text-decoration: none;">Logs</a>
-    </div>
-</nav>
-<div class="alerts-container">
-    <h1>Alert Management</h1>
+{% endblock %}
 
-    <!-- Summary Cards -->
-    <div class="summary-cards">
-        <div class="summary-card critical">
-            <h3>Critical Active</h3>
-            <div class="value" id="critical-count">-</div>
+{% block content %}
+    <div class="alerts-container">
+        <h1>Alert Management</h1>
+
+        <!-- Summary Cards -->
+        <div class="summary-cards">
+            <div class="summary-card critical">
+                <h3>Critical Active</h3>
+                <div class="value" id="critical-count">-</div>
+            </div>
+            <div class="summary-card warning">
+                <h3>Warning Active</h3>
+                <div class="value" id="warning-count">-</div>
+            </div>
+            <div class="summary-card">
+                <h3>Total Active</h3>
+                <div class="value" id="active-count">-</div>
+            </div>
+            <div class="summary-card">
+                <h3>Last 24 Hours</h3>
+                <div class="value" id="recent-count">-</div>
+            </div>
         </div>
-        <div class="summary-card warning">
-            <h3>Warning Active</h3>
-            <div class="value" id="warning-count">-</div>
+
+        <!-- Filters -->
+        <div class="filters">
+            <div class="filters-row">
+                <div class="filter-group">
+                    <label>Status</label>
+                    <select id="filter-status">
+                        <option value="">All</option>
+                        <option value="active" selected>Active</option>
+                        <option value="acknowledged">Acknowledged</option>
+                        <option value="resolved">Resolved</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>Severity</label>
+                    <select id="filter-severity">
+                        <option value="">All</option>
+                        <option value="critical">Critical</option>
+                        <option value="warning">Warning</option>
+                        <option value="info">Info</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>Type</label>
+                    <select id="filter-type">
+                        <option value="">All</option>
+                        <option value="offline">Offline</option>
+                        <option value="temp">Temperature</option>
+                        <option value="hashrate">Hashrate</option>
+                        <option value="fan">Fan</option>
+                        <option value="power">Power</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>Miner IP</label>
+                    <input type="text" id="filter-ip" placeholder="e.g., 192.168.1.100">
+                </div>
+
+                <div class="filter-group" style="justify-content: flex-end;">
+                    <label>&nbsp;</label>
+                    <button class="btn btn-primary" onclick="loadAlerts()">Apply Filters</button>
+                </div>
+
+                <div class="filter-group" style="justify-content: flex-end; margin-left: auto;">
+                    <label>&nbsp;</label>
+                    <button class="btn btn-success" onclick="triggerAlertCheck()">Check Now</button>
+                </div>
+            </div>
         </div>
-        <div class="summary-card">
-            <h3>Total Active</h3>
-            <div class="value" id="active-count">-</div>
-        </div>
-        <div class="summary-card">
-            <h3>Last 24 Hours</h3>
-            <div class="value" id="recent-count">-</div>
-        </div>
-    </div>
 
-    <!-- Filters -->
-    <div class="filters">
-        <div class="filters-row">
-            <div class="filter-group">
-                <label>Status</label>
-                <select id="filter-status">
-                    <option value="">All</option>
-                    <option value="active" selected>Active</option>
-                    <option value="acknowledged">Acknowledged</option>
-                    <option value="resolved">Resolved</option>
-                </select>
-            </div>
-
-            <div class="filter-group">
-                <label>Severity</label>
-                <select id="filter-severity">
-                    <option value="">All</option>
-                    <option value="critical">Critical</option>
-                    <option value="warning">Warning</option>
-                    <option value="info">Info</option>
-                </select>
-            </div>
-
-            <div class="filter-group">
-                <label>Type</label>
-                <select id="filter-type">
-                    <option value="">All</option>
-                    <option value="offline">Offline</option>
-                    <option value="temp">Temperature</option>
-                    <option value="hashrate">Hashrate</option>
-                    <option value="fan">Fan</option>
-                    <option value="power">Power</option>
-                </select>
-            </div>
-
-            <div class="filter-group">
-                <label>Miner IP</label>
-                <input type="text" id="filter-ip" placeholder="e.g., 192.168.1.100">
-            </div>
-
-            <div class="filter-group" style="justify-content: flex-end;">
-                <label>&nbsp;</label>
-                <button class="btn btn-primary" onclick="loadAlerts()">Apply Filters</button>
-            </div>
-
-            <div class="filter-group" style="justify-content: flex-end; margin-left: auto;">
-                <label>&nbsp;</label>
-                <button class="btn btn-success" onclick="triggerAlertCheck()">Check Now</button>
-            </div>
+        <!-- Alerts List -->
+        <div class="alerts-list" id="alerts-container">
+            <div class="loading">Loading alerts...</div>
         </div>
     </div>
 
-    <!-- Alerts List -->
-    <div class="alerts-list" id="alerts-container">
-        <div class="loading">Loading alerts...</div>
-    </div>
-</div>
+    <script>
+        let autoRefresh = true;
 
-<script>
-    let autoRefresh = true;
+        async function loadSummary() {
+            try {
+                const response = await fetch('/api/alerts/summary');
+                const data = await response.json();
 
-    async function loadSummary() {
-        try {
-            const response = await fetch('/api/alerts/summary');
-            const data = await response.json();
-
-            if (data.ok) {
-                document.getElementById('critical-count').textContent = data.summary.critical_active;
-                document.getElementById('warning-count').textContent = data.summary.warning_active;
-                document.getElementById('active-count').textContent = data.summary.active;
-                document.getElementById('recent-count').textContent = data.summary.last_24h;
+                if (data.ok) {
+                    document.getElementById('critical-count').textContent = data.summary.critical_active;
+                    document.getElementById('warning-count').textContent = data.summary.warning_active;
+                    document.getElementById('active-count').textContent = data.summary.active;
+                    document.getElementById('recent-count').textContent = data.summary.last_24h;
+                }
+            } catch (error) {
+                console.error('Failed to load summary:', error);
             }
-        } catch (error) {
-            console.error('Failed to load summary:', error);
         }
-    }
 
-    async function loadAlerts() {
-        const container = document.getElementById('alerts-container');
+        async function loadAlerts() {
+            const container = document.getElementById('alerts-container');
 
-        // Build query params
-        const params = new URLSearchParams();
-        const status = document.getElementById('filter-status').value;
-        const severity = document.getElementById('filter-severity').value;
-        const type = document.getElementById('filter-type').value;
-        const ip = document.getElementById('filter-ip').value.trim();
+            // Build query params
+            const params = new URLSearchParams();
+            const status = document.getElementById('filter-status').value;
+            const severity = document.getElementById('filter-severity').value;
+            const type = document.getElementById('filter-type').value;
+            const ip = document.getElementById('filter-ip').value.trim();
 
-        if (status) params.append('status', status);
-        if (severity) params.append('severity', severity);
-        if (type) params.append('alert_type', type);
-        if (ip) params.append('miner_ip', ip);
-        params.append('limit', '100');
+            if (status) params.append('status', status);
+            if (severity) params.append('severity', severity);
+            if (type) params.append('alert_type', type);
+            if (ip) params.append('miner_ip', ip);
+            params.append('limit', '100');
 
-        try {
-            const response = await fetch(`/api/alerts/?${params}`);
-            const data = await response.json();
+            try {
+                const response = await fetch(`/api/alerts/?${params}`);
+                const data = await response.json();
 
-            if (!data.ok) {
-                container.innerHTML = '<div class="loading">Error loading alerts</div>';
-                return;
-            }
+                if (!data.ok) {
+                    container.innerHTML = '<div class="loading">Error loading alerts</div>';
+                    return;
+                }
 
-            if (data.alerts.length === 0) {
-                container.innerHTML = `
+                if (data.alerts.length === 0) {
+                    container.innerHTML = `
                         <div class="empty-state">
                             <div style="font-size: 64px;">✓</div>
                             <h2>No alerts found</h2>
                             <p>All systems operating normally</p>
                         </div>
                     `;
-                return;
+                    return;
+                }
+
+                container.innerHTML = data.alerts.map(alert => renderAlert(alert)).join('');
+            } catch (error) {
+                console.error('Failed to load alerts:', error);
+                container.innerHTML = '<div class="loading">Error loading alerts</div>';
             }
-
-            container.innerHTML = data.alerts.map(alert => renderAlert(alert)).join('');
-        } catch (error) {
-            console.error('Failed to load alerts:', error);
-            container.innerHTML = '<div class="loading">Error loading alerts</div>';
         }
-    }
 
-    function renderAlert(alert) {
-        const severityEmoji = {
-            critical: '🚨',
-            warning: '⚠️',
-            info: 'ℹ️'
-        };
+        function renderAlert(alert) {
+            const severityEmoji = {
+                critical: '🚨',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
 
-        const details = alert.details || {};
-        const detailsHtml = Object.keys(details).map(key => `
+            const details = alert.details || {};
+            const detailsHtml = Object.keys(details).map(key => `
                 <div class="alert-detail-item">
                     <strong>${key}:</strong>
                     <span>${details[key]}</span>
                 </div>
             `).join('');
 
-        const actionsHtml = alert.status === 'active' ? `
+            const actionsHtml = alert.status === 'active' ? `
                 <button class="btn btn-primary" onclick="acknowledgeAlert(${alert.id})">Acknowledge</button>
                 <button class="btn btn-success" onclick="resolveAlert(${alert.id})">Resolve</button>
             ` : alert.status === 'acknowledged' ? `
                 <button class="btn btn-success" onclick="resolveAlert(${alert.id})">Resolve</button>
             ` : '';
 
-        const timeAgo = getTimeAgo(alert.created_at);
+            const timeAgo = getTimeAgo(alert.created_at);
 
-        return `
+            return `
                 <div class="alert-item" id="alert-${alert.id}">
                     <div class="alert-severity ${alert.severity}">
                         ${severityEmoji[alert.severity] || '•'}
@@ -470,97 +458,96 @@
                     </div>
                 </div>
             `;
-    }
+        }
 
-    async function acknowledgeAlert(alertId) {
-        try {
-            const response = await fetch(`/api/alerts/${alertId}/acknowledge`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({user: 'web_user'})
-            });
+        async function acknowledgeAlert(alertId) {
+            try {
+                const response = await fetch(`/api/alerts/${alertId}/acknowledge`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({user: 'web_user'})
+                });
 
-            const data = await response.json();
-            if (data.ok) {
-                loadAlerts();
-                loadSummary();
-            } else {
-                alert('Failed to acknowledge alert: ' + data.error);
+                const data = await response.json();
+                if (data.ok) {
+                    loadAlerts();
+                    loadSummary();
+                } else {
+                    alert('Failed to acknowledge alert: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error acknowledging alert: ' + error.message);
             }
-        } catch (error) {
-            alert('Error acknowledging alert: ' + error.message);
         }
-    }
 
-    async function resolveAlert(alertId) {
-        const note = prompt('Resolution note (optional):');
-        if (note === null) return; // User cancelled
+        async function resolveAlert(alertId) {
+            const note = prompt('Resolution note (optional):');
+            if (note === null) return; // User cancelled
 
-        try {
-            const response = await fetch(`/api/alerts/${alertId}/resolve`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({note: note || undefined, user: 'web_user'})
-            });
+            try {
+                const response = await fetch(`/api/alerts/${alertId}/resolve`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({note: note || undefined, user: 'web_user'})
+                });
 
-            const data = await response.json();
-            if (data.ok) {
-                loadAlerts();
-                loadSummary();
-            } else {
-                alert('Failed to resolve alert: ' + data.error);
+                const data = await response.json();
+                if (data.ok) {
+                    loadAlerts();
+                    loadSummary();
+                } else {
+                    alert('Failed to resolve alert: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error resolving alert: ' + error.message);
             }
-        } catch (error) {
-            alert('Error resolving alert: ' + error.message);
         }
-    }
 
-    async function triggerAlertCheck() {
-        const btn = event.target;
-        btn.disabled = true;
-        btn.textContent = 'Checking...';
+        async function triggerAlertCheck() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = 'Checking...';
 
-        try {
-            const response = await fetch('/api/alerts/check', {method: 'POST'});
-            const data = await response.json();
+            try {
+                const response = await fetch('/api/alerts/check', {method: 'POST'});
+                const data = await response.json();
 
-            if (data.ok) {
-                alert(`Alert check complete: ${data.message}`);
-                loadAlerts();
-                loadSummary();
-            } else {
-                alert('Alert check failed: ' + data.error);
+                if (data.ok) {
+                    alert(`Alert check complete: ${data.message}`);
+                    loadAlerts();
+                    loadSummary();
+                } else {
+                    alert('Alert check failed: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error triggering alert check: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Check Now';
             }
-        } catch (error) {
-            alert('Error triggering alert check: ' + error.message);
-        } finally {
-            btn.disabled = false;
-            btn.textContent = 'Check Now';
         }
-    }
 
-    function getTimeAgo(timestamp) {
-        if (!timestamp) return 'Unknown';
-        const date = new Date(timestamp);
-        const seconds = Math.floor((new Date() - date) / 1000);
+        function getTimeAgo(timestamp) {
+            if (!timestamp) return 'Unknown';
+            const date = new Date(timestamp);
+            const seconds = Math.floor((new Date() - date) / 1000);
 
-        if (seconds < 60) return `${seconds}s ago`;
-        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-        return `${Math.floor(seconds / 86400)}d ago`;
-    }
-
-    // Initial load
-    loadSummary();
-    loadAlerts();
-
-    // Auto-refresh every 30 seconds
-    setInterval(() => {
-        if (autoRefresh) {
-            loadSummary();
-            loadAlerts();
+            if (seconds < 60) return `${seconds}s ago`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+            if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+            return `${Math.floor(seconds / 86400)}d ago`;
         }
-    }, 30000);
-</script>
-</body>
-</html>
+
+        // Initial load
+        loadSummary();
+        loadAlerts();
+
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            if (autoRefresh) {
+                loadSummary();
+                loadAlerts();
+            }
+        }, 30000);
+    </script>
+{% endblock %}

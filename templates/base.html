@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+    <title>{% block title %}Antminer Monitor{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+<!-- Navigation Header -->
+<nav>
+    <h1 style="display:flex;align-items:center;gap:10px;margin:0;">
+        <img src="{{ url_for('static', filename='img/LogoImg.png') }}" alt="Company Logo"
+             style="height:36px;width:auto;">
+        <a href="{{ url_for('home') }}" style="text-decoration:none;color:inherit;">Antminer Monitor</a>
+    </h1>
+    <ul class="nav-list">
+        <li><a href="{{ url_for('home') }}">Home</a></li>
+        <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
+        <li><a href="{{ url_for('dashboard.pools_page') }}">Pools</a></li>
+        <li><a href="{{ url_for('dashboard.alerts_page') }}">Alerts</a></li>
+        <li><a href="{{ url_for('dashboard.profitability_page') }}">Profitability</a></li>
+        <li><a href="{{ url_for('dashboard.analytics_page') }}">Analytics</a></li>
+        <li><a href="{{ url_for('dashboard.electricity_page') }}">⚡ Electricity</a></li>
+        <li><a href="{{ url_for('dashboard.remote_control_page') }}">🎮 Remote</a></li>
+        <li><a href="{{ url_for('dashboard.logs_page') }}">Logs</a></li>
+    </ul>
+    <div style="display:flex; align-items:center; gap:12px;">
+        <div id="btc-header-widget"
+             style="display:flex; align-items:center; gap:12px; padding:8px 12px; border:1px solid var(--border); background: var(--surface-2); border-radius:10px; flex:1 1 420px; max-width:640px;">
+            <div style="display:flex; flex-direction:column; line-height:1.1; flex:0 0 auto;">
+                <div style="font-size:0.8rem; color: var(--muted); margin-bottom:2px;">Current BTC Price</div>
+                <div id="btc-price" style="font-weight:700; font-size:1.15rem;">—</div>
+                <div id="btc-updated" style="font-size:0.8rem; color: var(--muted);">—</div>
+            </div>
+            <div style="flex:1 1 auto; min-width:140px; height:44px;">
+                <canvas id="btc-chart" height="44"></canvas>
+            </div>
+        </div>
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme">
+            <span aria-hidden="true">🌓</span>
+            Theme
+        </button>
+        <div>
+            {% if g.user %}
+                <span style="margin-right:8px; color: var(--muted);">Hello, {{ g.user.username }}</span>
+                <a class="btn" href="{{ url_for('auth.logout') }}">Logout</a>
+            {% else %}
+                <a class="btn" href="{{ url_for('auth.login') }}">Login</a>
+            {% endif %}
+        </div>
+    </div>
+</nav>
+
+<!-- Main Content -->
+{% block content %}{% endblock %}
+
+<!-- BTC Price Widget Script -->
+<script>
+    // BTC Price Widget - Shared across all pages
+    (function () {
+        const priceEl = document.getElementById('btc-price');
+        const updatedEl = document.getElementById('btc-updated');
+        const chartCanvas = document.getElementById('btc-chart');
+
+        if (!priceEl || !chartCanvas) return;
+
+        let chart = null;
+        const history = [];
+        const MAX_POINTS = 20;
+
+        async function fetchBTC() {
+            try {
+                const res = await fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot');
+                const data = await res.json();
+                const price = parseFloat(data.data.amount);
+                const now = Date.now();
+
+                priceEl.textContent = '$' + price.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+                updatedEl.textContent = new Date().toLocaleTimeString();
+
+                history.push({x: now, y: price});
+                if (history.length > MAX_POINTS) history.shift();
+
+                updateChart();
+            } catch (err) {
+                console.error('BTC fetch error:', err);
+            }
+        }
+
+        function updateChart() {
+            if (!window.Chart) return;
+
+            const ctx = chartCanvas.getContext('2d');
+            if (!chart) {
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            data: history,
+                            borderColor: '#f7931a',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            pointRadius: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {display: false},
+                            y: {display: false}
+                        },
+                        plugins: {legend: {display: false}, tooltip: {enabled: false}}
+                    }
+                });
+            } else {
+                chart.data.datasets[0].data = history;
+                chart.update('none');
+            }
+        }
+
+        fetchBTC();
+        setInterval(fetchBTC, 60000);
+    })();
+</script>
+
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

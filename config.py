@@ -48,6 +48,10 @@ ROLLING_WINDOW_SAMPLES = int(os.getenv('ROLLING_WINDOW_SAMPLES', 10))
 # CGMiner client behavior
 CGMINER_TIMEOUT = float(os.getenv('CGMINER_TIMEOUT', 1.0))  # seconds
 
+# Miner web interface credentials (for reboot and configuration)
+MINER_USERNAME = os.getenv('MINER_USERNAME', 'root')
+MINER_PASSWORD = os.getenv('MINER_PASSWORD', 'root')
+
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_DIR = os.getenv("LOG_DIR", "logs")
 LOG_FORMAT = os.getenv("LOG_FORMAT", "json")  # or 'text'

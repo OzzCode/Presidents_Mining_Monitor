@@ -255,7 +255,6 @@ class MinerClient:
         payload = json.dumps({"command": "poolpriority", "parameter": param})
         return self._send_command(payload)
 
-
     def remove_pool(self, pool_id: int) -> dict:
         """
         Remove a pool by its index/id as reported by the miner (CGMiner/BMminer).
@@ -292,50 +291,111 @@ class MinerClient:
     # ---- Remote control commands ----
     def restart(self) -> dict:
         """
-        Restart the miner.
-        Tries multiple command formats to handle different firmware versions.
+        Restart the miner using web interface.
+        This performs a full hardware reboot, not just a mining software restart.
         """
-        import json
-        import socket
-        
-        # Try different command formats that work with different firmware versions
-        commands_to_try = [
-            "restart",  # Raw command (works on some firmwares)
-            '{"command":"restart"}',  # JSON format
-            '{"command":"devrestart"}',  # Some firmwares use devrestart
-            '{"command":"miner_restart"}',  # Alternative command name
-            '{"command":"restart", "parameter":"0"}'  # Some firmwares require a parameter
+        import requests
+        from requests.auth import HTTPDigestAuth
+        from config import MINER_USERNAME, MINER_PASSWORD
+
+        # Try configured credentials first, then common defaults
+        credentials = [
+            (MINER_USERNAME, MINER_PASSWORD),  # From config/env
+            ('root', 'root'),
+            ('admin', 'admin'),
+            ('root', 'admin'),
         ]
-        
+
+        # Try different reboot endpoints for various firmware versions
+        reboot_endpoints = [
+            '/cgi-bin/reboot.cgi',  # Standard Antminer endpoint
+            '/cgi-bin/restart.cgi',  # Alternative endpoint
+            '/api/reboot',  # Some custom firmwares
+        ]
+
         last_error = None
-        for cmd in commands_to_try:
-            try:
-                # For raw commands, don't use json.dumps
-                if cmd.startswith('{'):
-                    return self._send_command(cmd)
-                else:
-                    # For raw commands, send as-is
-                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    s.settimeout(5)  # Shorter timeout for restart commands
-                    try:
-                        s.connect((self.ip, self.port))
-                        s.sendall((cmd + "\n").encode("utf-8"))
-                        # Don't wait for response as miner will restart
-                        return {"STATUS": [{"STATUS": "S", "When": 0, "Code": 0, "Msg": "Restart command sent"}], "id": 1}
-                    except socket.timeout:
-                        # Socket timeout is expected as miner will restart
-                        return {"STATUS": [{"STATUS": "S", "When": 0, "Code": 0, "Msg": "Restart command sent (timeout expected)"}], "id": 1}
-                    finally:
-                        try:
-                            s.close()
-                        except:
-                            pass
-            except Exception as e:
-                last_error = str(e)
-                continue
-        
-        # If we get here, all commands failed
-        raise MinerError(f"Failed to restart miner: {last_error or 'no response from miner'}")
+
+        for username, password in credentials:
+            for endpoint in reboot_endpoints:
+                try:
+                    url = f"http://{self.ip}{endpoint}"
+
+                    # Try with Digest Auth (most Antminers use this)
+                    response = requests.get(
+                        url,
+                        auth=HTTPDigestAuth(username, password),
+                        timeout=10,
+                        allow_redirects=True
+                    )
+
+                    # If we get a response (even if it's an error page), the command was sent
+                    if response.status_code in [200, 401, 403]:
+                        # 200 = success, 401/403 = auth issue but endpoint exists
+                        if response.status_code == 200:
+                            return {
+                                "STATUS": [{
+                                    "STATUS": "S",
+                                    "When": 0,
+                                    "Code": 0,
+                                    "Msg": f"Reboot command sent via {endpoint}"
+                                }],
+                                "id": 1
+                            }
+                        elif response.status_code in [401, 403]:
+                            # Try Basic Auth as fallback
+                            response = requests.get(
+                                url,
+                                auth=(username, password),
+                                timeout=10,
+                                allow_redirects=True
+                            )
+                            if response.status_code == 200:
+                                return {
+                                    "STATUS": [{
+                                        "STATUS": "S",
+                                        "When": 0,
+                                        "Code": 0,
+                                        "Msg": f"Reboot command sent via {endpoint}"
+                                    }],
+                                    "id": 1
+                                }
+
+                except requests.exceptions.Timeout:
+                    # Timeout is actually expected - miner is rebooting
+                    return {
+                        "STATUS": [{
+                            "STATUS": "S",
+                            "When": 0,
+                            "Code": 0,
+                            "Msg": f"Reboot initiated (connection timeout - miner is restarting)"
+                        }],
+                        "id": 1
+                    }
+                except requests.exceptions.ConnectionError:
+                    # Connection error after sending command = miner is rebooting
+                    return {
+                        "STATUS": [{
+                            "STATUS": "S",
+                            "When": 0,
+                            "Code": 0,
+                            "Msg": "Reboot initiated (connection lost - miner is restarting)"
+                        }],
+                        "id": 1
+                    }
+                except Exception as e:
+                    last_error = str(e)
+                    continue
+
+        # If web interface fails, try CGMiner API as fallback
+        try:
+            import json
+            payload = json.dumps({"command": "restart"})
+            result = self._send_command(payload)
+            return result
+        except Exception as e:
+            last_error = f"Web interface and CGMiner API both failed. Last error: {str(e)}"
+
+        raise MinerError(f"Failed to restart miner: {last_error}")
 
     def switch_pool(self, pool_id: int) -> dict:
         """

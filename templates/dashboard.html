@@ -1,224 +1,189 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
-    <title>Antminer Monitor Dashboard</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% if ip %} - {{ ip }}{% endif %}{% endblock %}
+
+{% block extra_head %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-</head>
-<body>
-<div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
-    <div><strong>Miner:</strong> <code>{{ ip }}</code></div>
-    <div id="miner-model" style="font-size:0.95rem;color:#333;"><strong>Model:</strong> <span id="model-name">—</span>
-    </div>
-    <div id="last-update" style="font-size:0.9rem;color:#555;">Last update: —</div>
-    {% if ip %}
-        <a class="btn" href="http://{{ ip }}/" target="_blank" rel="noopener">Open Miner Firmware UI</a>
-    {% endif %}
-</div>
-<nav>
-    <h1 style="display:flex;align-items:center;gap:10px;margin:0;">
-        <img src="{{ url_for('static', filename='img/LogoImg.png') }}" alt="Company Logo"
-             style="height:36px;width:auto;">
-        <a href="{{ url_for('home') }}" style="text-decoration:none;color:inherit;">Antminer Monitor</a>
-    </h1>
-    <ul class="nav-list">
-        <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
-        <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
-        <li><a href="{{ url_for('dashboard.alerts_page') }}">Alerts</a></li>
-        <li><a href="{{ url_for('dashboard.profitability_page') }}">Profitability</a></li>
-        <li><a href="{{ url_for('dashboard.analytics_page') }}">Analytics</a></li>
-        <li><a href="{{ url_for('logs') }}">Logs</a></li>
-    </ul>
-    <div style="display:flex; align-items:center; gap:12px;">
-        <div id="btc-header-widget"
-             style="display:flex; align-items:center; gap:12px; padding:8px 12px; border:1px solid var(--border); background: var(--surface-2); border-radius:10px; flex:1 1 420px; max-width:640px;">
-            <div style="display:flex; flex-direction:column; line-height:1.1; flex:0 0 auto;">
-                <div style="font-size:0.8rem; color: var(--muted); margin-bottom:2px;">Current BTC Price</div>
-                <div id="btc-price" style="font-weight:700; font-size:1.15rem;">—</div>
-                <div id="btc-updated" style="font-size:0.8rem; color: var(--muted);">—</div>
-            </div>
-            <div style="flex:1 1 auto; min-width:140px; height:44px;">
-                <canvas id="btc-chart" height="44"></canvas>
-            </div>
+{% endblock %}
+
+{% block content %}
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
+        <div><strong>Miner:</strong> <code>{{ ip }}</code></div>
+        <div id="miner-model" style="font-size:0.95rem;color:var(--text);"><strong>Model:</strong> <span
+                id="model-name">—</span>
         </div>
-        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme"><span
-                aria-hidden="true">🌓</span> Theme
-        </button>
+        <div id="last-update" style="font-size:0.9rem;color:var(--muted);">Last update: —</div>
+        {% if ip %}
+            <a class="btn" href="http://{{ ip }}/" target="_blank" rel="noopener">Open Miner Firmware UI</a>
+        {% endif %}
     </div>
-</nav>
-{#<div class="header-banner" style="margin:12px 0;">#}
-{#    <img src="{{ url_for('static', filename='img/Presidents_Mining_DashHeader.png') }}" alt="Dashboard Header" style="max-width:100%; height:auto; display:block; border-radius:8px;">#}
-{#</div>#}
-<div class="container">
-    <h1>Dashboard{% if ip %} — {{ ip }}{% endif %}      <span id="live-indicator"
-                                                              style="color:#16a34a; font-weight:bold;">● LIVE</span>
-    </h1>
-    <div class="metrics">
-        <div class="card"><h2>Total Power</h2>
-            <p id="total-power">-- W</p></div>
-        <div class="card"><h2>Hashrate</h2>
-            <p id="total-hashrate">-- TH/s</p></div>
-        <div class="card"><h2>Uptime</h2>
-            <p id="total-uptime">-- s</p></div>
-        <div class="card"><h2>Avg Temp</h2>
-            <p id="avg-temp">-- °C</p></div>
-        <div class="card"><h2>Avg Fan</h2>
-            <p id="avg-fan-speed">-- RPM</p></div>
-        <div class="card"><h2>Workers</h2>
-            <p id="total-workers">--</p></div>
-    </div>
-    <div id="filters-badge" class="filters-badge" aria-live="polite"></div>
-    <div class="controls-bar" id="controls-bar"
-         style="margin:8px 0 12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-        <label style="display:flex;align-items:center;gap:6px;">
-            <input type="checkbox" id="ctl-active-only" checked>
-            Active-only
-        </label>
-
-        <label>
-            Freshness
-            <select id="ctl-fresh-mins" style="margin-left:6px;">
-                <option value="15">15 min</option>
-                <option value="30" selected>30 min</option>
-                <option value="60">60 min</option>
-                <option value="180">3 h</option>
-            </select>
-        </label>
-
-        <label>
-            Charts window
-            <select id="ctl-chart-hours" style="margin-left:6px;">
-                <option value="6">6 h</option>
-                <option value="12">12 h</option>
-                <option value="24" selected>24 h</option>
-                <option value="48">48 h</option>
-                <option value="168">7 d</option>
-            </select>
-        </label>
-
-    </div>
-
-    <h2>Hashrate (recent)</h2>
-    <div class="dashboard-grid" style="margin-top:12px;">
-        <div class="chart-card">
-            <h3>Hashrate (TH/s)</h3>
-            <div class="chart-wrap">
-                <canvas id="chart-hashrate"></canvas>
-            </div>
+    <div class="container">
+        <h1>Dashboard{% if ip %} — {{ ip }}{% endif %}      <span id="live-indicator"
+                                                                  style="color:#16a34a; font-weight:bold;">● LIVE</span>
+        </h1>
+        <div class="metrics">
+            <div class="card"><h2>Total Power</h2>
+                <p id="total-power">-- W</p></div>
+            <div class="card"><h2>Hashrate</h2>
+                <p id="total-hashrate">-- TH/s</p></div>
+            <div class="card"><h2>Uptime</h2>
+                <p id="total-uptime">-- s</p></div>
+            <div class="card"><h2>Avg Temp</h2>
+                <p id="avg-temp">-- °C</p></div>
+            <div class="card"><h2>Avg Fan</h2>
+                <p id="avg-fan-speed">-- RPM</p></div>
+            <div class="card"><h2>Workers</h2>
+                <p id="total-workers">--</p></div>
         </div>
-        <div class="chart-card">
-            <h3>Power (W)</h3>
-            <div class="chart-wrap">
-                <canvas id="chart-power"></canvas>
-            </div>
-        </div>
-        <div class="chart-card">
-            <h3>Temp / Fan</h3>
-            <div class="chart-wrap">
-                <canvas id="chart-tempfan"></canvas>
-            </div>
-        </div>
-        <div id="kpi-hash">Loading...</div>
-    </div>
+        <div id="filters-badge" class="filters-badge" aria-live="polite"></div>
+        <div class="controls-bar" id="controls-bar"
+             style="margin:8px 0 12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:6px;">
+                <input type="checkbox" id="ctl-active-only" checked>
+                Active-only
+            </label>
 
-    <details id="stats-log-collapsible">
-        <summary style="font-size:1.5rem; font-weight:600; cursor:pointer;">Statistics Log (click to expand)</summary>
-        <div style="margin-top:8px;">
-            <table>
+            <label>
+                Freshness
+                <select id="ctl-fresh-mins" style="margin-left:6px;">
+                    <option value="15">15 min</option>
+                    <option value="30" selected>30 min</option>
+                    <option value="60">60 min</option>
+                    <option value="180">3 h</option>
+                </select>
+            </label>
+
+            <label>
+                Charts window
+                <select id="ctl-chart-hours" style="margin-left:6px;">
+                    <option value="6">6 h</option>
+                    <option value="12">12 h</option>
+                    <option value="24" selected>24 h</option>
+                    <option value="48">48 h</option>
+                    <option value="168">7 d</option>
+                </select>
+            </label>
+
+        </div>
+
+        <h2>Hashrate (recent)</h2>
+        <div class="dashboard-grid" style="margin-top:12px;">
+            <div class="chart-card">
+                <h3>Hashrate (TH/s)</h3>
+                <div class="chart-wrap">
+                    <canvas id="chart-hashrate"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>Power (W)</h3>
+                <div class="chart-wrap">
+                    <canvas id="chart-power"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>Temp / Fan</h3>
+                <div class="chart-wrap">
+                    <canvas id="chart-tempfan"></canvas>
+                </div>
+            </div>
+            <div id="kpi-hash">Loading...</div>
+        </div>
+
+        <details id="stats-log-collapsible">
+            <summary style="font-size:1.5rem; font-weight:600; cursor:pointer;">Statistics Log (click to expand)
+            </summary>
+            <div style="margin-top:8px;">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>Model</th>
+                        <th>Last Seen</th>
+                        <th>IP</th>
+                        <th>Hash (TH/s)</th>
+                        <th>Power (W)</th>
+                        <th>Temp (°C)</th>
+                        <th>Fan (RPM)</th>
+                    </tr>
+                    </thead>
+                    <tbody id="stats-log"></tbody>
+                </table>
+            </div>
+        </details>
+
+        {% if ip %}
+            <h2 style="margin-top:20px;">Current Mining Pools</h2>
+            <div id="pools-controls" style="margin:8px 0; display:flex; gap:8px; align-items:center;">
+                <button id="btn-refresh-pools" class="btn" type="button">Refresh Pools</button>
+                <span id="pools-status" style="font-size:0.9rem;color:#6b7280;">—</span>
+            </div>
+            <table id="pools-table" class="table" style="width:100%;">
                 <thead>
                 <tr>
-                    <th>Model</th>
-                    <th>Last Seen</th>
-                    <th>IP</th>
-                    <th>Hash (TH/s)</th>
-                    <th>Power (W)</th>
-                    <th>Temp (°C)</th>
-                    <th>Fan (RPM)</th>
+                    <th>#</th>
+                    <th>URL</th>
+                    <th>User</th>
+                    <th>Status</th>
+                    <th>Priority</th>
+                    <th>Stratum</th>
+                    <th>Accepted</th>
+                    <th>Rejected</th>
+                    <th>Stale</th>
+                    <th>Reject %</th>
                 </tr>
                 </thead>
-                <tbody id="stats-log"></tbody>
+                <tbody id="pools-tbody">
+                <tr>
+                    <td colspan="10" style="text-align:center;color:#888;">Loading…</td>
+                </tr>
+                </tbody>
             </table>
-        </div>
-    </details>
+        {% endif %}
+    </div>
 
-    {% if ip %}
-        <h2 style="margin-top:20px;">Current Mining Pools</h2>
-        <div id="pools-controls" style="margin:8px 0; display:flex; gap:8px; align-items:center;">
-            <button id="btn-refresh-pools" class="btn" type="button">Refresh Pools</button>
-            <span id="pools-status" style="font-size:0.9rem;color:#6b7280;">—</span>
-        </div>
-        <table id="pools-table" class="table" style="width:100%;">
-            <thead>
-            <tr>
-                <th>#</th>
-                <th>URL</th>
-                <th>User</th>
-                <th>Status</th>
-                <th>Priority</th>
-                <th>Stratum</th>
-                <th>Accepted</th>
-                <th>Rejected</th>
-                <th>Stale</th>
-                <th>Reject %</th>
-            </tr>
-            </thead>
-            <tbody id="pools-tbody">
-            <tr>
-                <td colspan="10" style="text-align:center;color:#888;">Loading…</td>
-            </tr>
-            </tbody>
-        </table>
-    {% endif %}
-</div>
+    <!-- just inside the <body> after your Overview section -->
+    {#<ul class="tabs">#}
+    {#    <li class="tab active" data-tab="overview">Overview</li>#}
+    {#    <li class="tab" data-tab="history">History</li>#}
+    {#</ul>#}
+    {##}
+    {#<div id="history" class="tab-content hidden">#}
+    {#    <h2>Historical Metrics</h2>#}
+    {#    <div class="controls">#}
+    {#        <label>Since:#}
+    {#            <input type="datetime-local" id="since-input"/>#}
+    {#        </label>#}
+    {#        <button id="load-history">Load</button>#}
+    {#    </div>#}
+    {#    <canvas id="history-chart"></canvas>#}
+    {#</div>#}
+    {##}
+    {#<!-- In the History tab controls area -->#}
+    {#<div class="controls">#}
+    {#    <label>Since: <input type="datetime-local" id="since-input"></label>#}
+    {#    <button id="load-history">Load</button>#}
+    {#    <label style="margin-left:1rem;">#}
+    {#        <input type="checkbox" id="auto-refresh-history"> Auto refresh#}
+    {#    </label>#}
+    {#    <select id="quick-range" aria-label="Quick range">#}
+    {#        <option value="">Quick range…</option>#}
+    {#        <option value="3600">Last 1h</option>#}
+    {#        <option value="21600">Last 6h</option>#}
+    {#        <option value="86400">Last 24h</option>#}
+    {#    </select>#}
+    {#</div>#}
+    {#<canvas id="history-chart"></canvas>#}
 
-<!-- just inside the <body> after your Overview section -->
-{#<ul class="tabs">#}
-{#    <li class="tab active" data-tab="overview">Overview</li>#}
-{#    <li class="tab" data-tab="history">History</li>#}
-{#</ul>#}
-{##}
-{#<div id="history" class="tab-content hidden">#}
-{#    <h2>Historical Metrics</h2>#}
-{#    <div class="controls">#}
-{#        <label>Since:#}
-{#            <input type="datetime-local" id="since-input"/>#}
-{#        </label>#}
-{#        <button id="load-history">Load</button>#}
-{#    </div>#}
-{#    <canvas id="history-chart"></canvas>#}
-{#</div>#}
-{##}
-{#<!-- In the History tab controls area -->#}
-{#<div class="controls">#}
-{#    <label>Since: <input type="datetime-local" id="since-input"></label>#}
-{#    <button id="load-history">Load</button>#}
-{#    <label style="margin-left:1rem;">#}
-{#        <input type="checkbox" id="auto-refresh-history"> Auto refresh#}
-{#    </label>#}
-{#    <select id="quick-range" aria-label="Quick range">#}
-{#        <option value="">Quick range…</option>#}
-{#        <option value="3600">Last 1h</option>#}
-{#        <option value="21600">Last 6h</option>#}
-{#        <option value="86400">Last 24h</option>#}
-{#    </select>#}
-{#</div>#}
-{#<canvas id="history-chart"></canvas>#}
+    <footer style="text-align:center; margin:20px;">
+        <a href="{{ url_for('home') }}">Back to Home</a>
+    </footer>
+{% endblock %}
 
-<script>const MINER_IP = {{ '\"'+ip+'\"' if ip else 'null' }};</script>
-<script src="{{ url_for('static', filename='js/tabs.js') }}"></script>
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
-<script src="{{ url_for('static', filename='js/history.js') }}"></script>
-<script src="{{ url_for('static', filename='js/overview_history.js') }}"></script>
-<script src="{{ url_for('static', filename='js/overview.js') }}"></script>
-<script src="{{ url_for('static', filename='js/btc_widget.js') }}?v=5"></script>
-
-<footer style="text-align:center; margin:20px;">
-    <a href="{{ url_for('home') }}">Back to Home</a>
-</footer>
-</body>
-</html>
+{% block extra_scripts %}
+    <script>const MINER_IP = {{ '"'+ip+'"' if ip else 'null' }};</script>
+    <script src="{{ url_for('static', filename='js/tabs.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/history.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/overview_history.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/overview.js') }}"></script>
+{% endblock %}

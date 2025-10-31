@@ -1,118 +1,82 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <title>Discovered Miners</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
-</head>
-<body>
-<nav>
-    <h1 style="display:flex;align-items:center;gap:10px;margin:0;">
-        <img src="{{ url_for('static', filename='img/LogoImg.png') }}" alt="Company Logo"
-             style="height:36px;width:auto;">
-        <a href="{{ url_for('home') }}" style="text-decoration:none;color:inherit;">Antminer Monitor</a>
-    </h1>
-    <ul class="nav-list">
-        <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
-        <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
-        <li><a href="{{ url_for('dashboard.alerts_page') }}">Alerts</a></li>
-        <li><a href="{{ url_for('dashboard.profitability_page') }}">Profitability</a></li>
-        <li><a href="{{ url_for('dashboard.analytics_page') }}">Analytics</a></li>
-        <li><a href="{{ url_for('logs') }}">Logs</a></li>
-    </ul>
-    <div style="display:flex; align-items:center; gap:12px;">
-        <div id="btc-header-widget"
-             style="display:flex; align-items:center; gap:12px; padding:8px 12px; border:1px solid var(--border); background: var(--surface-2); border-radius:10px; flex:1 1 420px; max-width:640px;">
-            <div style="display:flex; flex-direction:column; line-height:1.1; flex:0 0 auto;">
-                <div style="font-size:0.8rem; color: var(--muted); margin-bottom:2px;">Current BTC Price</div>
-                <div id="btc-price" style="font-weight:700; font-size:1.15rem;">—</div>
-                <div id="btc-updated" style="font-size:0.8rem; color: var(--muted);">—</div>
-            </div>
-            <div style="flex:1 1 auto; min-width:140px; height:44px;">
-                <canvas id="btc-chart" height="44"></canvas>
+{% extends "base.html" %}
+
+{% block title %}Discovered Miners{% endblock %}
+
+{% block extra_head %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+{% endblock %}
+
+{% block content %}
+    <div class="container">
+        <h1>Discovered Miners</h1>
+
+        <h2 style="margin-top:10px;">Live Miners</h2>
+        <table class="miners-table" id="active-miners">
+            <thead>
+            <tr>
+                <th>Status</th>
+                <th>Model</th>
+                <th>IP</th>
+                <th>Last Seen</th>
+                <th>Est. Power (W)</th>
+                <th>Firmware Link</th>
+            </tr>
+            </thead>
+            <tbody id="miner-table"></tbody>
+        </table>
+
+        <div id="stale-wrapper" style="margin-top:16px;">
+            <button id="toggle-stale" type="button" class="btn" style="margin-bottom:8px;">
+                Show Stale Miners (<span id="stale-count">0</span>)
+            </button>
+            <div id="stale-section" style="display:none;">
+                <table class="miners-table" id="stale-miners">
+                    <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Model</th>
+                        <th>IP</th>
+                        <th>Last Seen</th>
+                        <th>Est. Power (W)</th>
+                        <th>Firmware Link</th>
+                    </tr>
+                    </thead>
+                    <tbody id="stale-table"></tbody>
+                </table>
             </div>
         </div>
-        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme"><span
-                aria-hidden="true">🌓</span> Theme
-        </button>
-    </div>
-</nav>
-{#<div class="header-banner" style="margin:12px 0;">#}
-{#    <img src="{{ url_for('static', filename='img/Presidents_Mining_DashHeader.png') }}" alt="Dashboard Header" style="max-width:100%; height:auto; display:block; border-radius:8px;">#}
-{#</div>#}
-<div class="container">
-    <h1>Discovered Miners</h1>
 
-    <h2 style="margin-top:10px;">Live Miners</h2>
-    <table class="miners-table" id="active-miners">
-        <thead>
-        <tr>
-            <th>Status</th>
-            <th>Model</th>
-            <th>IP</th>
-            <th>Last Seen</th>
-            <th>Est. Power (W)</th>
-            <th>Firmware Link</th>
-        </tr>
-        </thead>
-        <tbody id="miner-table"></tbody>
-    </table>
-
-    <div id="stale-wrapper" style="margin-top:16px;">
-        <button id="toggle-stale" type="button" class="btn" style="margin-bottom:8px;">
-            Show Stale Miners (<span id="stale-count">0</span>)
-        </button>
-        <div id="stale-section" style="display:none;">
-            <table class="miners-table" id="stale-miners">
+        <h2 style="margin-top:20px;">Active Miner Metadata</h2>
+        <div style="overflow:auto;">
+            <table class="miners-table" id="metadata-table">
                 <thead>
                 <tr>
-                    <th>Status</th>
-                    <th>Model</th>
                     <th>IP</th>
-                    <th>Last Seen</th>
-                    <th>Est. Power (W)</th>
-                    <th>Firmware Link</th>
+                    <th>Model</th>
+                    <th>Vendor</th>
+                    <th>Hostname</th>
+                    <th>Rack</th>
+                    <th>Row</th>
+                    <th>Location</th>
+                    <th>Room</th>
+                    <th>Owner</th>
+                    <th>Notes</th>
+                    <th>Nominal TH/s</th>
+                    <th>Nominal J/TH</th>
+                    <th>Power $/kWh</th>
+                    <th>Tags</th>
                 </tr>
                 </thead>
-                <tbody id="stale-table"></tbody>
+                <tbody id="metadata-body"></tbody>
             </table>
         </div>
     </div>
+    <footer style="text-align:center; margin:20px;">
+        <a href="{{ url_for('home') }}">Back to Home</a>
+    </footer>
+{% endblock %}
 
-    <h2 style="margin-top:20px;">Active Miner Metadata</h2>
-    <div style="overflow:auto;">
-        <table class="miners-table" id="metadata-table">
-            <thead>
-            <tr>
-                <th>IP</th>
-                <th>Model</th>
-                <th>Vendor</th>
-                <th>Hostname</th>
-                <th>Rack</th>
-                <th>Row</th>
-                <th>Location</th>
-                <th>Room</th>
-                <th>Owner</th>
-                <th>Notes</th>
-                <th>Nominal TH/s</th>
-                <th>Nominal J/TH</th>
-                <th>Power $/kWh</th>
-                <th>Tags</th>
-            </tr>
-            </thead>
-            <tbody id="metadata-body"></tbody>
-        </table>
-    </div>
-</div>
-<!-- Include Chart.js and time adapter for the BTC header widget -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-<script src="{{ url_for('static', filename='js/btc_widget.js') }}?v=5"></script>
-<script src="{{ url_for('static', filename='js/miners.js') }}?v=2"></script>
-<footer style="text-align:center; margin:20px;">
-    <a href="{{ url_for('home') }}">Back to Home</a>
-</footer>
-</body>
-</html>
+{% block extra_scripts %}
+    <script src="{{ url_for('static', filename='js/miners.js') }}?v=2"></script>
+{% endblock %}

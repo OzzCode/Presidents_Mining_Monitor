@@ -1,11 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Add Mining Pool</title>
-    <link rel="stylesheet" href="/static/css/style.css"/>
-    <script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
+{% extends "base.html" %}
+
+{% block title %}Add Mining Pool{% endblock %}
+
+{% block extra_head %}
     <style>
         .container {
             max-width: 720px;
@@ -72,112 +69,86 @@
             color: #8ab4ff;
         }
     </style>
-</head>
-<body>
-<nav>
-    <h1><a href="{{ url_for('home') }}" style="text-decoration:none;color:inherit;">Antminer Monitor</a></h1>
-    <ul class="nav-list">
-        <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
-        <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
-        <li><a href="{{ url_for('dashboard.analytics_page') }}">Analytics</a></li>
-        <li><a href="{{ url_for('logs') }}">Logs</a></li>
-    </ul>
-    <div style="display:flex; align-items:center; gap:12px;">
-        <div id="btc-header-widget" style="display:flex; align-items:center; gap:12px; padding:8px 12px; border:1px solid var(--border); background: var(--surface-2); border-radius:10px; flex:1 1 420px; max-width:640px;">
-            <div style="display:flex; flex-direction:column; line-height:1.1; flex:0 0 auto;">
-                <div style="font-size:0.8rem; color: var(--muted); margin-bottom:2px;">Current BTC Price</div>
-                <div id="btc-price" style="font-weight:700; font-size:1.15rem;">—</div>
-                <div id="btc-updated" style="font-size:0.8rem; color: var(--muted);">—</div>
+{% endblock %}
+
+{% block content %}
+    <div class="container">
+        <h2>Add Mining Pool</h2>
+        <p class="hint">Use this form to add a pool to a miner via its CGMiner/BMminer API (TCP 4028). Password is
+            optional.</p>
+
+        <form id="poolForm">
+            <label>Miner IP address
+                <input required type="text" id="ip" placeholder="e.g. 192.168.1.123"/>
+            </label>
+            <label>Stratum URL
+                <input required type="text" id="stratum" placeholder="e.g. stratum+tcp://pool.example.com:3333"/>
+            </label>
+            <div class="row">
+                <div>
+                    <label>Username / Worker
+                        <input required type="text" id="username" placeholder="wallet.worker or user"/>
+                    </label>
+                </div>
+                <div>
+                    <label>Password (optional)
+                        <input type="password" id="password" placeholder="x or blank"/>
+                    </label>
+                </div>
             </div>
-            <div style="flex:1 1 auto; min-width:140px; height:44px;">
-                <canvas id="btc-chart" height="44"></canvas>
-            </div>
-        </div>
-        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme"><span aria-hidden="true">🌓</span> Theme</button>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+                <input type="checkbox" id="overwrite" checked>
+                Overwrite all existing pools on this miner
+            </label>
+            <button id="submitBtn" type="submit">Apply</button>
+            <span class="hint" id="status"></span>
+        </form>
+
+        <div class="result" id="result" style="display:none"></div>
+
+        <p style="margin-top:1rem"><a href="/dashboard/miners">Back to Miners</a></p>
     </div>
-</nav>
-<div class="container">
-    <h2>Add Mining Pool</h2>
-    <p class="hint">Use this form to add a pool to a miner via its CGMiner/BMminer API (TCP 4028). Password is
-        optional.</p>
+    <script>
+        const form = document.getElementById('poolForm');
+        const btn = document.getElementById('submitBtn');
+        const statusEl = document.getElementById('status');
+        const resultEl = document.getElementById('result');
 
-    <form id="poolForm">
-        <label>Miner IP address
-            <input required type="text" id="ip" placeholder="e.g. 192.168.1.123"/>
-        </label>
-        <label>Stratum URL
-            <input required type="text" id="stratum" placeholder="e.g. stratum+tcp://pool.example.com:3333"/>
-        </label>
-        <div class="row">
-            <div>
-                <label>Username / Worker
-                    <input required type="text" id="username" placeholder="wallet.worker or user"/>
-                </label>
-            </div>
-            <div>
-                <label>Password (optional)
-                    <input type="password" id="password" placeholder="x or blank"/>
-                </label>
-            </div>
-        </div>
-        <label style="display:flex;align-items:center;gap:8px;margin-top:8px;">
-            <input type="checkbox" id="overwrite" checked>
-            Overwrite all existing pools on this miner
-        </label>
-        <button id="submitBtn" type="submit">Apply</button>
-        <span class="hint" id="status"></span>
-    </form>
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const ip = document.getElementById('ip').value.trim();
+            const stratum = document.getElementById('stratum').value.trim();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const overwrite = document.getElementById('overwrite').checked;
 
-    <div class="result" id="result" style="display:none"></div>
+            if (!ip || !stratum || !username) {
+                alert('IP, Stratum, and Username are required.');
+                return;
+            }
 
-    <p style="margin-top:1rem"><a href="/dashboard/miners">Back to Miners</a></p>
-</div>
-<script>
-    const form = document.getElementById('poolForm');
-    const btn = document.getElementById('submitBtn');
-    const statusEl = document.getElementById('status');
-    const resultEl = document.getElementById('result');
+            btn.disabled = true;
+            statusEl.textContent = 'Sending...';
+            resultEl.style.display = 'none';
+            resultEl.textContent = '';
 
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const ip = document.getElementById('ip').value.trim();
-        const stratum = document.getElementById('stratum').value.trim();
-        const username = document.getElementById('username').value.trim();
-        const password = document.getElementById('password').value;
-        const overwrite = document.getElementById('overwrite').checked;
-
-        if (!ip || !stratum || !username) {
-            alert('IP, Stratum, and Username are required.');
-            return;
-        }
-
-        btn.disabled = true;
-        statusEl.textContent = 'Sending...';
-        resultEl.style.display = 'none';
-        resultEl.textContent = '';
-
-        try {
-            const resp = await fetch(`/api/miners/${encodeURIComponent(ip)}/pools`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({stratum, username, password, overwrite})
-            });
-            const data = await resp.json().catch(() => ({}));
-            statusEl.textContent = resp.ok ? 'Done' : 'Failed';
-            resultEl.style.display = 'block';
-            resultEl.textContent = JSON.stringify(data, null, 2);
-        } catch (err) {
-            statusEl.textContent = 'Error';
-            resultEl.style.display = 'block';
-            resultEl.textContent = String(err);
-        } finally {
-            btn.disabled = false;
-        }
-    });
-</script>
-<!-- Include Chart.js and time adapter for the BTC header widget -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-<script src="{{ url_for('static', filename='js/btc_widget.js') }}?v=5"></script>
-</body>
-</html>
+            try {
+                const resp = await fetch(`/api/miners/${encodeURIComponent(ip)}/pools`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({stratum, username, password, overwrite})
+                });
+                const data = await resp.json().catch(() => ({}));
+                statusEl.textContent = resp.ok ? 'Done' : 'Failed';
+                resultEl.style.display = 'block';
+                resultEl.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                statusEl.textContent = 'Error';
+                resultEl.style.display = 'block';
+                resultEl.textContent = String(err);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    </script>
+{% endblock %}
