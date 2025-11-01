@@ -291,8 +291,9 @@ class MinerClient:
     # ---- Remote control commands ----
     def restart(self) -> dict:
         """
-        Restart the miner using web interface.
-        This performs a full hardware reboot, not just a mining software restart.
+        Reboot the miner using its web interface where possible.
+        Tries a variety of common vendor endpoints (Antminer/BOSMiner/etc.).
+        Falls back to CGMiner 'restart' (software only) if device reboot endpoints fail.
         """
         import requests
         from requests.auth import HTTPDigestAuth
@@ -301,92 +302,93 @@ class MinerClient:
         # Try configured credentials first, then common defaults
         credentials = [
             (MINER_USERNAME, MINER_PASSWORD),  # From config/env
-            ('root', 'root'),
-            ('admin', 'admin'),
-            ('root', 'admin'),
+            ("root", "root"),
+            ("admin", "admin"),
+            ("root", "admin"),
         ]
 
-        # Try different reboot endpoints for various firmware versions
-        reboot_endpoints = [
-            '/cgi-bin/reboot.cgi',  # Standard Antminer endpoint
-            '/cgi-bin/restart.cgi',  # Alternative endpoint
-            '/api/reboot',  # Some custom firmwares
+        # Endpoint candidates: (method, path, data, headers)
+        candidates = [
+            ("GET", "/cgi-bin/reboot.cgi", None, None),  # Classic Antminer
+            ("POST", "/cgi-bin/reboot.cgi", {"reboot": "Reboot"}, None),
+            ("POST", "/cgi-bin/reboot.cgi", {"reboot": "1"}, None),
+            ("POST", "/cgi-bin/system.cgi", {"action": "reboot"}, None),  # Some firmwares
+            ("POST", "/api/reboot", None, {"Content-Type": "application/json"}),
+            ("POST", "/cgi-bin/restart.cgi", None, None),
         ]
 
+        acceptable = {200, 204, 301, 302, 303, 307, 308}
         last_error = None
 
+        try:
+            s = requests.Session()
+        except Exception:
+            # session creation should not block; fallback to direct requests
+            s = None
+
+        def _request(method, url, **kwargs):
+            if s is not None:
+                return s.request(method, url, **kwargs)
+            import requests as _r
+            return _r.request(method, url, **kwargs)
+
         for username, password in credentials:
-            for endpoint in reboot_endpoints:
-                try:
-                    url = f"http://{self.ip}{endpoint}"
-
-                    # Try with Digest Auth (most Antminers use this)
-                    response = requests.get(
-                        url,
-                        auth=HTTPDigestAuth(username, password),
-                        timeout=10,
-                        allow_redirects=True
-                    )
-
-                    # If we get a response (even if it's an error page), the command was sent
-                    if response.status_code in [200, 401, 403]:
-                        # 200 = success, 401/403 = auth issue but endpoint exists
-                        if response.status_code == 200:
+            # Try with Digest first, then Basic
+            auth_methods = [HTTPDigestAuth(username, password), (username, password)]
+            for auth in auth_methods:
+                for method, path, data, headers in candidates:
+                    url = f"http://{self.ip}{path}"
+                    try:
+                        resp = _request(
+                            method,
+                            url,
+                            timeout=8,
+                            auth=auth,
+                            data=data,
+                            headers=headers,
+                            allow_redirects=False,
+                        )
+                        # If endpoint accepts the request, many firmwares redirect then reboot
+                        if resp.status_code in acceptable:
                             return {
                                 "STATUS": [{
                                     "STATUS": "S",
                                     "When": 0,
                                     "Code": 0,
-                                    "Msg": f"Reboot command sent via {endpoint}"
+                                    "Msg": f"Reboot command accepted via {path} ({method})"
                                 }],
                                 "id": 1
                             }
-                        elif response.status_code in [401, 403]:
-                            # Try Basic Auth as fallback
-                            response = requests.get(
-                                url,
-                                auth=(username, password),
-                                timeout=10,
-                                allow_redirects=True
-                            )
-                            if response.status_code == 200:
-                                return {
-                                    "STATUS": [{
-                                        "STATUS": "S",
-                                        "When": 0,
-                                        "Code": 0,
-                                        "Msg": f"Reboot command sent via {endpoint}"
-                                    }],
-                                    "id": 1
-                                }
+                        # 401/403 -> wrong credentials/auth type; try next
+                        if resp.status_code in (401, 403):
+                            continue
+                    except requests.exceptions.Timeout:
+                        # Timeouts commonly happen when the device starts rebooting
+                        return {
+                            "STATUS": [{
+                                "STATUS": "S",
+                                "When": 0,
+                                "Code": 0,
+                                "Msg": "Reboot initiated (timeout while applying command)"
+                            }],
+                            "id": 1
+                        }
+                    except requests.exceptions.ConnectionError:
+                        # Connection drop is typical immediately after reboot is triggered
+                        return {
+                            "STATUS": [{
+                                "STATUS": "S",
+                                "When": 0,
+                                "Code": 0,
+                                "Msg": "Reboot initiated (connection dropped)"
+                            }],
+                            "id": 1
+                        }
+                    except Exception as e:
+                        last_error = str(e)
+                        continue
 
-                except requests.exceptions.Timeout:
-                    # Timeout is actually expected - miner is rebooting
-                    return {
-                        "STATUS": [{
-                            "STATUS": "S",
-                            "When": 0,
-                            "Code": 0,
-                            "Msg": f"Reboot initiated (connection timeout - miner is restarting)"
-                        }],
-                        "id": 1
-                    }
-                except requests.exceptions.ConnectionError:
-                    # Connection error after sending command = miner is rebooting
-                    return {
-                        "STATUS": [{
-                            "STATUS": "S",
-                            "When": 0,
-                            "Code": 0,
-                            "Msg": "Reboot initiated (connection lost - miner is restarting)"
-                        }],
-                        "id": 1
-                    }
-                except Exception as e:
-                    last_error = str(e)
-                    continue
-
-        # If web interface fails, try CGMiner API as fallback
+        # If web interface fails, try CGMiner API as a last resort (software restart)
         try:
             import json
             payload = json.dumps({"command": "restart"})
