@@ -527,78 +527,96 @@ def get_profitability_history():
 
     try:
         with ProfitabilityEngine() as engine:
+            aggregated_mode = False
             if active_only and not miner_ip:
                 # Get active miners for fleet-wide history filtering
                 active_miners = engine.get_active_miners(hours_threshold=1)
                 if not active_miners:
-                    return jsonify({'error': 'No active miners found'}), 404
+                    # Fallback to fleet-wide snapshots so the chart still renders
+                    history = engine.get_profitability_history(None, days)
+                    aggregated_mode = False
+                else:
+                    # Get snapshots only for active miners and aggregate them by hour
+                    cutoff = datetime.utcnow() - timedelta(days=days)
 
-                # Get snapshots only for active miners
-                cutoff = datetime.utcnow() - timedelta(days=days)
-
-                snapshots = (
-                    engine.session.query(ProfitabilitySnapshot)
-                    .filter(
-                        and_(
-                            ProfitabilitySnapshot.timestamp >= cutoff,
-                            ProfitabilitySnapshot.miner_ip.in_(active_miners)
+                    snapshots = (
+                        engine.session.query(ProfitabilitySnapshot)
+                        .filter(
+                            and_(
+                                ProfitabilitySnapshot.timestamp >= cutoff,
+                                ProfitabilitySnapshot.miner_ip.in_(active_miners)
+                            )
                         )
+                        .order_by(ProfitabilitySnapshot.timestamp.asc())
+                        .all()
                     )
-                    .order_by(ProfitabilitySnapshot.timestamp.asc())
-                    .all()
-                )
 
-                # Group by timestamp and aggregate
-                history_by_time = {}
-                for snapshot in snapshots:
-                    timestamp = snapshot.timestamp.replace(minute=0, second=0, microsecond=0)
-                    if timestamp not in history_by_time:
-                        history_by_time[timestamp] = {
-                            'timestamp': timestamp,
-                            'btc_price_usd': snapshot.btc_price_usd,
-                            'network_difficulty': snapshot.network_difficulty,
-                            'total_hashrate': 0,
-                            'total_power': 0,
-                            'total_cost': 0,
-                            'total_revenue': 0,
-                            'miner_count': 0
-                        }
+                    # Group by timestamp and aggregate
+                    history_by_time = {}
+                    for snapshot in snapshots:
+                        timestamp = snapshot.timestamp.replace(minute=0, second=0, microsecond=0)
+                        if timestamp not in history_by_time:
+                            history_by_time[timestamp] = {
+                                'timestamp': timestamp,
+                                'btc_price_usd': snapshot.btc_price_usd,
+                                'network_difficulty': snapshot.network_difficulty,
+                                'total_hashrate': 0,
+                                'total_power': 0,
+                                'total_cost': 0,
+                                'total_revenue': 0,
+                                'miner_count': 0
+                            }
 
-                    entry = history_by_time[timestamp]
-                    if snapshot.hashrate_ths:
-                        entry['total_hashrate'] += snapshot.hashrate_ths
-                    if snapshot.power_w:
-                        entry['total_power'] += snapshot.power_w
-                    if snapshot.daily_power_cost_usd:
-                        entry['total_cost'] += snapshot.daily_power_cost_usd
-                    if snapshot.estimated_revenue_usd_per_day:
-                        entry['total_revenue'] += snapshot.estimated_revenue_usd_per_day
-                    entry['miner_count'] += 1
+                        entry = history_by_time[timestamp]
+                        if snapshot.hashrate_ths:
+                            entry['total_hashrate'] += snapshot.hashrate_ths
+                        if snapshot.power_w:
+                            entry['total_power'] += snapshot.power_w
+                        if snapshot.daily_power_cost_usd:
+                            entry['total_cost'] += snapshot.daily_power_cost_usd
+                        if snapshot.estimated_revenue_usd_per_day:
+                            entry['total_revenue'] += snapshot.estimated_revenue_usd_per_day
+                        entry['miner_count'] += 1
 
-                # Convert to list and calculate aggregated values
-                aggregated_history = []
-                for entry in history_by_time.values():
-                    daily_profit = entry['total_revenue'] - entry['total_cost']
-                    aggregated_history.append({
-                        'timestamp': entry['timestamp'],
-                        'daily_profit_usd': daily_profit,
-                        'estimated_revenue_usd_per_day': entry['total_revenue'],
-                        'daily_power_cost_usd': entry['total_cost'],
-                        'hashrate_ths': entry['total_hashrate'],
-                        'power_w': entry['total_power'],
-                        'btc_price_usd': entry['btc_price_usd'],
-                        'network_difficulty': entry['network_difficulty'],
-                        'miner_count': entry['miner_count']
-                    })
+                    # Convert to list and calculate aggregated values
+                    aggregated_history = []
+                    for entry in history_by_time.values():
+                        daily_profit = entry['total_revenue'] - entry['total_cost']
+                        aggregated_history.append({
+                            'timestamp': entry['timestamp'],
+                            'daily_profit_usd': daily_profit,
+                            'estimated_revenue_usd_per_day': entry['total_revenue'],
+                            'daily_power_cost_usd': entry['total_cost'],
+                            'hashrate_ths': entry['total_hashrate'],
+                            'power_w': entry['total_power'],
+                            'btc_price_usd': entry['btc_price_usd'],
+                            'network_difficulty': entry['network_difficulty'],
+                            'miner_count': entry['miner_count']
+                        })
 
-                history = sorted(aggregated_history, key=lambda x: x['timestamp'])
+                    history = sorted(aggregated_history, key=lambda x: x['timestamp'])
+                    aggregated_mode = True
             else:
                 history = engine.get_profitability_history(miner_ip, days)
+                aggregated_mode = False
+
+        # Prepare history payload depending on data type
+        history_payload = []
+        if active_only and not miner_ip:
+            # Aggregated dicts already built above; normalize timestamp format
+            for entry in history:
+                item = dict(entry)
+                ts = item.get('timestamp')
+                item['timestamp'] = ts.isoformat() + 'Z' if ts else None
+                history_payload.append(item)
+        else:
+            # ORM snapshots → serialize
+            history_payload = [_serialize_profitability_snapshot(s) for s in history]
 
         return jsonify({
             'ok': True,
-            'count': len(history),
-            'history': [_serialize_profitability_snapshot(s) for s in history],
+            'count': len(history_payload),
+            'history': history_payload,
             'active_only': active_only if not miner_ip else False
         })
 

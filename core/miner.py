@@ -292,7 +292,7 @@ class MinerClient:
     def restart(self) -> dict:
         """
         Reboot the miner using its web interface where possible.
-        Tries a variety of common vendor endpoints (Antminer/BOSMiner/etc.).
+        Tries a variety of common vendor endpoints (Antminer/BOSMiner/VNish/etc.).
         Falls back to CGMiner 'restart' (software only) if device reboot endpoints fail.
         """
         import requests
@@ -302,19 +302,29 @@ class MinerClient:
         # Try configured credentials first, then common defaults
         credentials = [
             (MINER_USERNAME, MINER_PASSWORD),  # From config/env
+            ("admin", "admin"),  # VNish common default
             ("root", "root"),
-            ("admin", "admin"),
             ("root", "admin"),
         ]
 
         # Endpoint candidates: (method, path, data, headers)
+        # Note: Many firmwares show a confirmation page at GET /cgi-bin/reboot.cgi (200)
+        # and only reboot when a subsequent POST/GET with a query param is sent.
         candidates = [
-            ("GET", "/cgi-bin/reboot.cgi", None, None),  # Classic Antminer
+            # VNish/Antminer typical form submits
             ("POST", "/cgi-bin/reboot.cgi", {"reboot": "Reboot"}, None),
             ("POST", "/cgi-bin/reboot.cgi", {"reboot": "1"}, None),
-            ("POST", "/cgi-bin/system.cgi", {"action": "reboot"}, None),  # Some firmwares
-            ("POST", "/api/reboot", None, {"Content-Type": "application/json"}),
+            ("POST", "/cgi-bin/reboot.cgi", {"confirm": "1"}, None),
+            # VNish often uses a JS confirm that hits reboot.cgi?reboot=yes
+            ("GET", "/cgi-bin/reboot.cgi?reboot=yes", None, None),
+            ("GET", "/cgi-bin/reboot.cgi?confirm=1", None, None),
+            ("GET", "/cgi-bin/reboot.cgi?reboot=1", None, None),
+            # Other common variants
+            ("POST", "/cgi-bin/system.cgi", {"action": "reboot"}, None),
             ("POST", "/cgi-bin/restart.cgi", None, None),
+            ("POST", "/api/reboot", None, {"Content-Type": "application/json"}),
+            # As a last detection step only, fetch the page (but do not treat 200 as success)
+            ("GET", "/cgi-bin/reboot.cgi", None, None),
         ]
 
         acceptable = {200, 204, 301, 302, 303, 307, 308}
@@ -336,6 +346,8 @@ class MinerClient:
             # Try with Digest first, then Basic
             auth_methods = [HTTPDigestAuth(username, password), (username, password)]
             for auth in auth_methods:
+                https_hint = False
+                # First pass: attempt explicit reboot actions, skip the plain GET success
                 for method, path, data, headers in candidates:
                     url = f"http://{self.ip}{path}"
                     try:
@@ -348,8 +360,14 @@ class MinerClient:
                             headers=headers,
                             allow_redirects=False,
                         )
-                        # If endpoint accepts the request, many firmwares redirect then reboot
-                        if resp.status_code in acceptable:
+                        # Detect HTTP->HTTPS redirect hints
+                        if resp.status_code in (301, 308) and (
+                            resp.headers.get("Location", "").startswith("https://")
+                        ):
+                            https_hint = True
+                        # Treat acceptance only for actions that actually trigger reboot
+                        triggers_reboot = not (method == "GET" and path == "/cgi-bin/reboot.cgi")
+                        if triggers_reboot and resp.status_code in acceptable:
                             return {
                                 "STATUS": [{
                                     "STATUS": "S",
@@ -387,6 +405,47 @@ class MinerClient:
                     except Exception as e:
                         last_error = str(e)
                         continue
+
+                # If server indicated HTTPS is required, retry with https:// for trigger endpoints
+                if https_hint:
+                    for method, path, data, headers in candidates:
+                        if method == "GET" and path == "/cgi-bin/reboot.cgi":
+                            continue  # skip non-trigger page
+                        url = f"https://{self.ip}{path}"
+                        try:
+                            resp = _request(
+                                method,
+                                url,
+                                timeout=8,
+                                auth=auth,
+                                data=data,
+                                headers=headers,
+                                allow_redirects=False,
+                                verify=False,  # many miner UIs use self-signed certs
+                            )
+                            if resp.status_code in acceptable:
+                                return {
+                                    "STATUS": [{
+                                        "STATUS": "S",
+                                        "When": 0,
+                                        "Code": 0,
+                                        "Msg": f"Reboot command accepted via {path} ({method}) over HTTPS"
+                                    }],
+                                    "id": 1
+                                }
+                        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+                            return {
+                                "STATUS": [{
+                                    "STATUS": "S",
+                                    "When": 0,
+                                    "Code": 0,
+                                    "Msg": "Reboot initiated (HTTPS path caused disconnect/timeout)"
+                                }],
+                                "id": 1
+                            }
+                        except Exception as e:
+                            last_error = str(e)
+                            continue
 
         # If web interface fails, try CGMiner API as a last resort (software restart)
         try:

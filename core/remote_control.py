@@ -147,6 +147,7 @@ class RemoteControlService:
             
         Returns:
             CommandHistory record
+            :param session:
         """
         params = {
             'pool_url': pool_url,
