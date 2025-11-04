@@ -1,5 +1,5 @@
 """API endpoints for alerts and profitability features."""
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, render_template
 from datetime import datetime, timedelta
 from sqlalchemy import and_, or_, desc, func
 import logging
@@ -793,3 +793,19 @@ def _serialize_profitability_snapshot(snapshot: ProfitabilitySnapshot) -> dict:
         'profit_margin_pct': round(snapshot.profit_margin_pct, 2) if snapshot.profit_margin_pct else None,
         'break_even_btc_price': round(snapshot.break_even_btc_price, 2) if snapshot.break_even_btc_price else None
     }
+
+
+# ============================================================================
+# HTML PAGE ROUTES
+# ============================================================================
+
+@alerts_bp.route('/page')
+def alerts_page():
+    """Render the alerts dashboard HTML page."""
+    return render_template('alerts.html')
+
+
+@profitability_bp.route('/page')
+def profitability_page():
+    """Render the profitability dashboard HTML page."""
+    return render_template('profitability.html')

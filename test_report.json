@@ -1,0 +1,337 @@
+[
+  {
+    "category": "Miner Connection",
+    "test_name": "Get Summary",
+    "status": "FAIL",
+    "message": "timed out",
+    "details": {},
+    "timestamp": "2025-11-04T18:09:47.396240"
+  },
+  {
+    "category": "Miner Connection",
+    "test_name": "Get Stats",
+    "status": "FAIL",
+    "message": "timed out",
+    "details": {},
+    "timestamp": "2025-11-04T18:09:52.406229"
+  },
+  {
+    "category": "Miner Connection",
+    "test_name": "Get Pools",
+    "status": "FAIL",
+    "message": "timed out",
+    "details": {},
+    "timestamp": "2025-11-04T18:09:57.415145"
+  },
+  {
+    "category": "Miner Connection",
+    "test_name": "Get Version",
+    "status": "FAIL",
+    "message": "timed out",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:02.427127"
+  },
+  {
+    "category": "Miner Connection",
+    "test_name": "Fetch Normalized",
+    "status": "FAIL",
+    "message": "timed out",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:07.432689"
+  },
+  {
+    "category": "API Endpoints",
+    "test_name": "Health Check",
+    "status": "PASS",
+    "message": "Health endpoint responding",
+    "details": {
+      "response": {
+        "ok": true
+      }
+    },
+    "timestamp": "2025-11-04T18:10:09.466073"
+  },
+  {
+    "category": "API Endpoints",
+    "test_name": "Readiness Check",
+    "status": "PASS",
+    "message": "Readiness endpoint responding",
+    "details": {
+      "db_ok": false,
+      "ok": true,
+      "scheduler_ok": true
+    },
+    "timestamp": "2025-11-04T18:10:11.537610"
+  },
+  {
+    "category": "API Endpoints",
+    "test_name": "Get Miners",
+    "status": "PASS",
+    "message": "Found 22 miners",
+    "details": {
+      "miner_count": 22,
+      "sample": {
+        "age_sec": 1124090,
+        "est_power_w": 3358.0,
+        "hostname": null,
+        "ip": "192.168.1.101",
+        "is_stale": true,
+        "last_seen": "2025-10-22T17:55:23.372510Z",
+        "location": null,
+        "model": "",
+        "nominal_efficiency_j_per_th": null,
+        "nominal_ths": null,
+        "notes": null,
+        "owner": null,
+        "power_price_usd_per_kwh": null,
+        "rack": null,
+        "room": null,
+        "row": null,
+        "status": "Stale",
+        "tags": null,
+        "vendor": null
+      }
+    },
+    "timestamp": "2025-11-04T18:10:16.633281"
+  },
+  {
+    "category": "API Endpoints",
+    "test_name": "Get Summary",
+    "status": "PASS",
+    "message": "Summary endpoint responding",
+    "details": {
+      "total_hashrate": null,
+      "total_power": null,
+      "miner_count": null
+    },
+    "timestamp": "2025-11-04T18:10:26.841522"
+  },
+  {
+    "category": "API Endpoints",
+    "test_name": "Get Metrics",
+    "status": "FAIL",
+    "message": "'list' object has no attribute 'get'",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:28.915602"
+  },
+  {
+    "category": "API Endpoints",
+    "test_name": "Get Miners Summary",
+    "status": "FAIL",
+    "message": "'list' object has no attribute 'get'",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:30.958052"
+  },
+  {
+    "category": "API Endpoints",
+    "test_name": "Get Current Miners",
+    "status": "FAIL",
+    "message": "'list' object has no attribute 'get'",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:34.020447"
+  },
+  {
+    "category": "Alerts API",
+    "test_name": "Get Alerts",
+    "status": "PASS",
+    "message": "Found 100 alerts",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:38.135225"
+  },
+  {
+    "category": "Alerts API",
+    "test_name": "Get Alert Rules",
+    "status": "PASS",
+    "message": "Found 4 rules",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:40.192020"
+  },
+  {
+    "category": "Profitability API",
+    "test_name": "Get Profitability",
+    "status": "PASS",
+    "message": "Profitability endpoint responding",
+    "details": {
+      "daily_revenue": null,
+      "daily_cost": null,
+      "daily_profit": null
+    },
+    "timestamp": "2025-11-04T18:10:43.343123"
+  },
+  {
+    "category": "Analytics API",
+    "test_name": "Fleet Summary",
+    "status": "PASS",
+    "message": "Fleet summary endpoint responding",
+    "details": {
+      "fleet_health": null,
+      "total_miners": null,
+      "high_risk_count": null
+    },
+    "timestamp": "2025-11-04T18:10:45.861425"
+  },
+  {
+    "category": "Analytics API",
+    "test_name": "BTC Forecast",
+    "status": "PASS",
+    "message": "BTC forecast endpoint responding",
+    "details": {
+      "forecast_days": 0
+    },
+    "timestamp": "2025-11-04T18:10:47.908551"
+  },
+  {
+    "category": "Analytics API",
+    "test_name": "High Risk Miners",
+    "status": "PASS",
+    "message": "Found 0 high-risk miners",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:50.434747"
+  },
+  {
+    "category": "Electricity API",
+    "test_name": "Get Rates",
+    "status": "PASS",
+    "message": "Found 1 electricity rates",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:52.489758"
+  },
+  {
+    "category": "Electricity API",
+    "test_name": "Get Costs",
+    "status": "PASS",
+    "message": "Retrieved 7 cost records",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:54.548300"
+  },
+  {
+    "category": "Remote Control API",
+    "test_name": "Get Command History",
+    "status": "FAIL",
+    "message": "Status code: 404",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:56.580634"
+  },
+  {
+    "category": "Remote Control API",
+    "test_name": "Get Power Schedules",
+    "status": "FAIL",
+    "message": "Status code: 404",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:58.613018"
+  },
+  {
+    "category": "Database",
+    "test_name": "Metrics Table",
+    "status": "PASS",
+    "message": "Found 414 total metrics",
+    "details": {
+      "recent_count": 5
+    },
+    "timestamp": "2025-11-04T18:10:58.651760"
+  },
+  {
+    "category": "Database",
+    "test_name": "Miners Table",
+    "status": "PASS",
+    "message": "Found 22 miners in database",
+    "details": {
+      "miner_ips": [
+        "192.168.1.202",
+        "192.168.1.62",
+        "192.168.1.101",
+        "192.168.1.183",
+        "192.168.1.26"
+      ]
+    },
+    "timestamp": "2025-11-04T18:10:58.665809"
+  },
+  {
+    "category": "Database",
+    "test_name": "Alerts Table",
+    "status": "PASS",
+    "message": "Found 102 total alerts (92 active)",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:58.674779"
+  },
+  {
+    "category": "Database",
+    "test_name": "Alert Rules Table",
+    "status": "PASS",
+    "message": "Found 4 rules (4 enabled)",
+    "details": {},
+    "timestamp": "2025-11-04T18:10:58.681968"
+  },
+  {
+    "category": "Web Pages",
+    "test_name": "Home Page",
+    "status": "PASS",
+    "message": "Page accessible at /",
+    "details": {},
+    "timestamp": "2025-11-04T18:11:00.741278"
+  },
+  {
+    "category": "Web Pages",
+    "test_name": "Dashboard",
+    "status": "PASS",
+    "message": "Page accessible at /dashboard/",
+    "details": {},
+    "timestamp": "2025-11-04T18:11:04.863655"
+  },
+  {
+    "category": "Web Pages",
+    "test_name": "Miners Page",
+    "status": "PASS",
+    "message": "Page accessible at /dashboard/miners",
+    "details": {},
+    "timestamp": "2025-11-04T18:11:08.971561"
+  },
+  {
+    "category": "Web Pages",
+    "test_name": "Logs Page",
+    "status": "PASS",
+    "message": "Page accessible at /dashboard/logs",
+    "details": {},
+    "timestamp": "2025-11-04T18:11:13.091208"
+  },
+  {
+    "category": "Web Pages",
+    "test_name": "Alerts Page",
+    "status": "FAIL",
+    "message": "Status code: 404",
+    "details": {},
+    "timestamp": "2025-11-04T18:11:15.170001"
+  },
+  {
+    "category": "Web Pages",
+    "test_name": "Profitability Page",
+    "status": "FAIL",
+    "message": "Status code: 404",
+    "details": {},
+    "timestamp": "2025-11-04T18:11:17.254688"
+  },
+  {
+    "category": "Web Pages",
+    "test_name": "Analytics Page",
+    "status": "FAIL",
+    "message": "Status code: 404",
+    "details": {},
+    "timestamp": "2025-11-04T18:11:19.274073"
+  },
+  {
+    "category": "Web Pages",
+    "test_name": "Electricity Page",
+    "status": "FAIL",
+    "message": "Status code: 404",
+    "details": {},
+    "timestamp": "2025-11-04T18:11:21.347450"
+  },
+  {
+    "category": "Web Pages",
+    "test_name": "Remote Control Page",
+    "status": "FAIL",
+    "message": "Status code: 404",
+    "details": {},
+    "timestamp": "2025-11-04T18:11:23.379881"
+  }
+]

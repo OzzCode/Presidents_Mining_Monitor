@@ -2,7 +2,7 @@
 API endpoints for electricity cost tracking and management.
 """
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, render_template
 from sqlalchemy import and_, func
 from core.db import SessionLocal, ElectricityRate, ElectricityCost, Metric, Miner
 from core.electricity import ElectricityCostService, create_default_rates
@@ -715,3 +715,13 @@ def get_cost_trends():
         return jsonify({"ok": False, "error": str(e)}), 500
     finally:
         session.close()
+
+
+# ============================================================================
+# HTML PAGE ROUTE
+# ============================================================================
+
+@bp.route('/page', methods=['GET'])
+def electricity_page():
+    """Render the electricity cost tracking dashboard HTML page."""
+    return render_template('electricity.html')

@@ -9,7 +9,7 @@ Provides endpoints for:
 - Power scheduling
 """
 
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, render_template
 from sqlalchemy import and_, func
 from core.db import SessionLocal, CommandHistory, PowerSchedule, MinerConfigBackup, Miner
 from core.remote_control import RemoteControlService, PowerScheduleService
@@ -557,3 +557,13 @@ def check_schedules():
         return jsonify({"ok": False, "error": str(e)}), 500
     finally:
         session.close()
+
+
+# ============================================================================
+# HTML PAGE ROUTE
+# ============================================================================
+
+@bp.route('/page', methods=['GET'])
+def remote_control_page():
+    """Render the remote control dashboard HTML page."""
+    return render_template('remote_control.html')

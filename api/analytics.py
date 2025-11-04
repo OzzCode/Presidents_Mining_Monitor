@@ -2,7 +2,7 @@
 API endpoints for predictive analytics dashboard
 """
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, render_template
 from datetime import datetime, timedelta
 import logging
 from core.predictive_analytics import analytics_engine
@@ -348,3 +348,13 @@ def get_model_status():
             'ok': False,
             'error': str(e)
         }), 500
+
+
+# ============================================================================
+# HTML PAGE ROUTE
+# ============================================================================
+
+@analytics_bp.route('/page', methods=['GET'])
+def analytics_page():
+    """Render the predictive analytics dashboard HTML page."""
+    return render_template('analytics.html')
