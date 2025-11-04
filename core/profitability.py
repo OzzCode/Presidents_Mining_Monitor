@@ -283,7 +283,7 @@ class ProfitabilityEngine:
             response = requests.get(
                 'https://api.coingecko.com/api/v3/simple/price',
                 params={'ids': 'bitcoin', 'vs_currencies': 'usd'},
-                timeout=5
+                timeout=10  # Increased timeout to 10 seconds
             )
 
             if response.ok:
@@ -292,7 +292,10 @@ class ProfitabilityEngine:
                 if price:
                     self._btc_price_cache = float(price)
                     self._btc_price_cache_time = datetime.now(timezone.utc)
+                    logger.info(f"Fetched BTC price from CoinGecko: ${price}")
                     return self._btc_price_cache
+                else:
+                    logger.warning(f"CoinGecko API returned status code {response.status_code}: {response.text}")
         except Exception as e:
             logger.warning(f"CoinGecko API failed: {e}")
 
@@ -300,7 +303,7 @@ class ProfitabilityEngine:
             # Fallback to CoinCap
             response = requests.get(
                 'https://api.coincap.io/v2/assets/bitcoin',
-                timeout=5
+                timeout=10  # Increased timeout to 10 seconds
             )
 
             if response.ok:
@@ -309,9 +312,34 @@ class ProfitabilityEngine:
                 if price:
                     self._btc_price_cache = float(price)
                     self._btc_price_cache_time = datetime.now(timezone.utc)
+                    logger.info(f"Fetched BTC price from CoinCap: ${price}")
                     return self._btc_price_cache
+                else:
+                    logger.warning(f"CoinCap API returned status code {response.status_code}: {response.text}")
         except Exception as e:
             logger.warning(f"CoinCap API failed: {e}")
+
+        try:
+            # Fallback to Binance API (alternative)
+            response = requests.get(
+                'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT',
+                timeout=10
+            )
+
+            if response.ok:
+                data = response.json()
+                price = data.get('price')
+                if price:
+                    self._btc_price_cache = float(price)
+                    self._btc_price_cache_time = datetime.now(timezone.utc)
+                    logger.info(f"Fetched BTC price from Binance: ${price}")
+                    return self._btc_price_cache
+                else:
+                    logger.warning(f"Binance API returned status code {response.status_code}: {response.text}")
+            else:
+                logger.warning(f"Binance API returned status code {response.status_code}: {response.text}")
+        except Exception as e:
+            logger.warning(f"Binance API failed: {e}")
 
         logger.error("Failed to fetch BTC price from all sources")
         return None
