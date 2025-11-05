@@ -11,7 +11,7 @@ from core.db import SessionLocal, Metric, Miner, Alert, AlertRule
 from config import MINER_IP_RANGE, POLL_INTERVAL
 
 # Test configuration
-LIVE_MINER_IP = "192.168.1.96"
+LIVE_MINER_IP = "192.168.1.194"
 BASE_URL = "http://localhost:5000"
 TEST_RESULTS = []
 
@@ -493,7 +493,7 @@ def generate_report():
             print(f"  Error: {result.message}")
     
     # Save detailed report to file
-    report_file = "test_report.json"
+    report_file = "../test_report.json"
     with open(report_file, "w") as f:
         json.dump([{
             "category": r.category,
