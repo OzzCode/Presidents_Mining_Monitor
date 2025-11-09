@@ -292,7 +292,8 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 .idea/
 
-/db_files/
+#/db_files/
 /logs/
 /.windsurf/
 /.junie/
+#!/db_files/

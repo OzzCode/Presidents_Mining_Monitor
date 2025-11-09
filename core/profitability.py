@@ -1,13 +1,23 @@
 """Profitability calculation engine for mining operations."""
 from __future__ import annotations
 import logging
-import requests
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List, Any
 from sqlalchemy import func, and_
 from core.db import SessionLocal, ProfitabilitySnapshot, Metric, Miner
 from helpers.utils import csv_efficiency_for_model
 from config import DEFAULT_POWER_COST
+
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+_session = requests.Session()
+_adapter = HTTPAdapter(max_retries=Retry(
+    total=2, backoff_factor=0.3, status_forcelist=[429, 500, 502, 503, 504],
+))
+_session.mount("http://", _adapter)
+_session.mount("https://", _adapter)
 
 logger = logging.getLogger(__name__)
 
@@ -280,7 +290,7 @@ class ProfitabilityEngine:
 
         try:
             # Try CoinGecko first
-            response = requests.get(
+            response = _session.get(
                 'https://api.coingecko.com/api/v3/simple/price',
                 params={'ids': 'bitcoin', 'vs_currencies': 'usd'},
                 timeout=10  # Increased timeout to 10 seconds
@@ -301,7 +311,7 @@ class ProfitabilityEngine:
 
         try:
             # Fallback to CoinCap
-            response = requests.get(
+            response = _session.get(
                 'https://api.coincap.io/v2/assets/bitcoin',
                 timeout=10  # Increased timeout to 10 seconds
             )
@@ -321,7 +331,7 @@ class ProfitabilityEngine:
 
         try:
             # Fallback to Binance API (alternative)
-            response = requests.get(
+            response = _session.get(
                 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT',
                 timeout=10
             )
@@ -362,7 +372,7 @@ class ProfitabilityEngine:
 
         try:
             # Try blockchain.info
-            response = requests.get(
+            response = _session.get(
                 'https://blockchain.info/q/getdifficulty',
                 timeout=5
             )
@@ -377,7 +387,7 @@ class ProfitabilityEngine:
 
         try:
             # Fallback to mempool.space
-            response = requests.get(
+            response = _session.get(
                 'https://mempool.space/api/v1/difficulty-adjustment',
                 timeout=5
             )

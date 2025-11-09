@@ -11,50 +11,64 @@
 </head>
 <body>
 <!-- Navigation Header -->
-<nav>
-    <h1 style="display:flex;align-items:center;gap:10px;margin:0;">
-        <img src="{{ url_for('static', filename='img/LogoImg.png') }}" alt="Company Logo"
-             style="height:36px;width:auto;">
-        <a href="{{ url_for('home') }}" style="text-decoration:none;color:inherit;">Antminer Monitor</a>
-    </h1>
-    <ul class="nav-list">
-        <li><a href="{{ url_for('home') }}">Home</a></li>
-        <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
-        <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
-        <li><a href="{{ url_for('dashboard.pools_page') }}">Pools</a></li>
-        <li><a href="{{ url_for('dashboard.alerts_page') }}">Alerts</a></li>
-        <li><a href="{{ url_for('dashboard.profitability_page') }}">Profitability</a></li>
-        <li><a href="{{ url_for('dashboard.analytics_page') }}">Analytics</a></li>
-        <li><a href="{{ url_for('dashboard.electricity_page') }}">⚡ Electricity</a></li>
-        <li><a href="{{ url_for('dashboard.remote_control_page') }}">🎮 Remote</a></li>
-        <li><a href="{{ url_for('dashboard.logs_page') }}">Logs</a></li>
-    </ul>
-    <div style="display:flex; align-items:center; gap:12px;">
-        <div id="btc-header-widget"
-             style="display:flex; align-items:center; gap:12px; padding:8px 12px; border:1px solid var(--border); background: var(--surface-2); border-radius:10px; flex:1 1 420px; max-width:640px;">
-            <div style="display:flex; flex-direction:column; line-height:1.1; flex:0 0 auto;">
-                <div style="font-size:0.8rem; color: var(--muted); margin-bottom:2px;">Current BTC Price</div>
-                <div id="btc-price" style="font-weight:700; font-size:1.15rem;">—</div>
-                <div id="btc-updated" style="font-size:0.8rem; color: var(--muted);">—</div>
-            </div>
-            <div style="flex:1 1 auto; min-width:140px; height:44px;">
-                <canvas id="btc-chart" height="44"></canvas>
-            </div>
+<header class="site-header">
+    <div class="header-row">
+        <div class="brand">
+            <a href="{{ url_for('home') }}" class="brand-link">
+                <img src="{{ url_for('static', filename='img/LogoImg.png') }}" alt="Logo" class="brand-logo">
+                <span class="brand-name">Antminer Monitor</span>
+            </a>
         </div>
-        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme">
-            <span aria-hidden="true">🌓</span>
-            Theme
-        </button>
-        <div>
-            {% if g.user %}
-                <span style="margin-right:8px; color: var(--muted);">Hello, {{ g.user.username }}</span>
-                <a class="btn" href="{{ url_for('auth.logout') }}">Logout</a>
-            {% else %}
-                <a class="btn" href="{{ url_for('auth.login') }}">Login</a>
-            {% endif %}
+
+        <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="primaryNav">☰</button>
+
+        <nav class="primary-nav" id="primaryNav">
+            <ul class="nav-primary">
+                <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+                <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
+                <li><a href="{{ url_for('dashboard.pools_page') }}">Pools</a></li>
+                <li class="dropdown">
+                    <button class="dropdown-toggle" aria-haspopup="true" aria-expanded="false">More ▾</button>
+                    <ul class="dropdown-menu" role="menu">
+                        <li><a href="{{ url_for('dashboard.alerts_page') }}" role="menuitem">Alerts</a></li>
+                        <li><a href="{{ url_for('dashboard.profitability_page') }}" role="menuitem">Profitability</a></li>
+                        <li><a href="{{ url_for('dashboard.analytics_page') }}" role="menuitem">Analytics</a></li>
+                        <li><a href="{{ url_for('dashboard.electricity_page') }}" role="menuitem">⚡ Electricity</a></li>
+                        <li><a href="{{ url_for('dashboard.remote_control_page') }}" role="menuitem">🎮 Remote</a></li>
+                        <li><a href="{{ url_for('dashboard.logs_page') }}" role="menuitem">Logs</a></li>
+                        <li class="menu-sep" role="separator"></li>
+                        <li><a href="{{ url_for('home') }}" role="menuitem">Home</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </nav>
+
+        <div class="nav-actions">
+            <div id="btc-header-widget" class="btc-widget">
+                <div class="btc-meta">
+                    <div class="btc-label">Current BTC Price</div>
+                    <div id="btc-price" class="btc-price">—</div>
+                    <div id="btc-updated" class="btc-updated">—</div>
+                </div>
+                <div class="btc-chart-wrap"><canvas id="btc-chart" height="44"></canvas></div>
+            </div>
+
+            <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme">
+                <span aria-hidden="true">🌓</span>
+                Theme
+            </button>
+
+            <div class="auth-area">
+                {% if g.user %}
+                    <span class="hello">Hi, {{ g.user.username }}</span>
+                    <a class="btn" href="{{ url_for('auth.logout') }}">Logout</a>
+                {% else %}
+                    <a class="btn" href="{{ url_for('auth.login') }}">Login</a>
+                {% endif %}
+            </div>
         </div>
     </div>
-</nav>
+</header>
 
 <!-- Main Content -->
 {% block content %}{% endblock %}
@@ -129,6 +143,48 @@
 
         fetchBTC();
         setInterval(fetchBTC, 60000);
+    })();
+</script>
+
+<script>
+    // Header interactions: mobile menu & dropdown
+    (function(){
+        const menuToggle = document.getElementById('menuToggle');
+        const primaryNav = document.getElementById('primaryNav');
+        const dropdown = document.querySelector('.dropdown');
+        const ddToggle = dropdown ? dropdown.querySelector('.dropdown-toggle') : null;
+
+        if (menuToggle && primaryNav) {
+            menuToggle.addEventListener('click', () => {
+                const isOpen = primaryNav.classList.toggle('open');
+                menuToggle.setAttribute('aria-expanded', String(isOpen));
+            });
+        }
+
+        if (dropdown && ddToggle) {
+            ddToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const open = dropdown.classList.toggle('open');
+                ddToggle.setAttribute('aria-expanded', String(open));
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!dropdown.contains(e.target)) {
+                    dropdown.classList.remove('open');
+                    ddToggle.setAttribute('aria-expanded', 'false');
+                }
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    dropdown.classList.remove('open');
+                    ddToggle.setAttribute('aria-expanded', 'false');
+                    if (document.activeElement && dropdown.contains(document.activeElement)) {
+                        ddToggle.focus();
+                    }
+                }
+            });
+        }
     })();
 </script>
 

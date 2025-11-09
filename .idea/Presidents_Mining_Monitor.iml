@@ -9,6 +9,7 @@
       <excludeFolder url="file://$MODULE_DIR$/.idea/dictionaries" />
       <excludeFolder url="file://$MODULE_DIR$/.idea/httpRequests" />
       <excludeFolder url="file://$MODULE_DIR$/logs" />
+      <excludeFolder url="file://$MODULE_DIR$/.windsurf" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.13 (.venv)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
