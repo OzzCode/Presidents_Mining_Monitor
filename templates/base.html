@@ -20,7 +20,9 @@
             </a>
         </div>
 
-        <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="primaryNav">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation" aria-expanded="false"
+                aria-controls="primaryNav">☰
+        </button>
 
         <nav class="primary-nav" id="primaryNav">
             <ul class="nav-primary">
@@ -31,10 +33,12 @@
                     <button class="dropdown-toggle" aria-haspopup="true" aria-expanded="false">More ▾</button>
                     <ul class="dropdown-menu" role="menu">
                         <li><a href="{{ url_for('dashboard.alerts_page') }}" role="menuitem">Alerts</a></li>
-                        <li><a href="{{ url_for('dashboard.profitability_page') }}" role="menuitem">Profitability</a></li>
+                        <li><a href="{{ url_for('dashboard.profitability_page') }}" role="menuitem">Profitability</a>
+                        </li>
                         <li><a href="{{ url_for('dashboard.analytics_page') }}" role="menuitem">Analytics</a></li>
                         <li><a href="{{ url_for('dashboard.electricity_page') }}" role="menuitem">⚡ Electricity</a></li>
                         <li><a href="{{ url_for('dashboard.remote_control_page') }}" role="menuitem">🎮 Remote</a></li>
+                        <li><a href="{{ url_for('dashboard.firmware_flash_page') }}" role="menuitem">🧰 Firmware</a></li>
                         <li><a href="{{ url_for('dashboard.logs_page') }}" role="menuitem">Logs</a></li>
                         <li class="menu-sep" role="separator"></li>
                         <li><a href="{{ url_for('home') }}" role="menuitem">Home</a></li>
@@ -50,7 +54,9 @@
                     <div id="btc-price" class="btc-price">—</div>
                     <div id="btc-updated" class="btc-updated">—</div>
                 </div>
-                <div class="btc-chart-wrap"><canvas id="btc-chart" height="44"></canvas></div>
+                <div class="btc-chart-wrap">
+                    <canvas id="btc-chart" height="44"></canvas>
+                </div>
             </div>
 
             <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle color theme">
@@ -148,7 +154,7 @@
 
 <script>
     // Header interactions: mobile menu & dropdown
-    (function(){
+    (function () {
         const menuToggle = document.getElementById('menuToggle');
         const primaryNav = document.getElementById('primaryNav');
         const dropdown = document.querySelector('.dropdown');

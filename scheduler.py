@@ -10,6 +10,7 @@ from core.alert_engine import AlertEngine, create_default_rules
 from core.notification_service import NotificationService
 from core.profitability import ProfitabilityEngine
 from core.electricity import ElectricityCostService
+from core.firmware import FirmwareFlashService
 
 
 # create tables
@@ -88,18 +89,18 @@ def record_electricity_costs():
         # Get all active electricity rates
         from core.db import ElectricityRate
         active_rates = session.query(ElectricityRate).filter(ElectricityRate.active == True).all()
-        
+
         if not active_rates:
             logger.debug("No active electricity rates configured, skipping cost recording")
             return
-        
+
         # Define the recording period (last hour)
         period_end = dt.datetime.utcnow()
         period_start = period_end - dt.timedelta(hours=1)
-        
+
         # Get all miners
         miners = session.query(Miner).all()
-        
+
         # Group miners by location for rate matching
         location_groups = {}
         for miner in miners:
@@ -107,9 +108,9 @@ def record_electricity_costs():
             if location not in location_groups:
                 location_groups[location] = []
             location_groups[location].append(miner.miner_ip)
-        
+
         total_recorded = 0
-        
+
         # Process each location group
         for location, miner_ips in location_groups.items():
             # Find active rate for this location
@@ -118,11 +119,11 @@ def record_electricity_costs():
                 if r.location == location or (not r.location and location == "default"):
                     rate = r
                     break
-            
+
             if not rate:
                 # Use first active rate as fallback
                 rate = active_rates[0]
-            
+
             # Get average power consumption for each miner in the period
             for miner_ip in miner_ips:
                 # Query metrics for this miner in the period
@@ -131,16 +132,16 @@ def record_electricity_costs():
                     Metric.timestamp >= period_start,
                     Metric.timestamp <= period_end
                 ).all()
-                
+
                 if not metrics:
                     continue
-                
+
                 # Calculate average power
                 avg_power_w = sum(m.power_w for m in metrics if m.power_w) / len(metrics)
-                
+
                 if avg_power_w == 0:
                     continue
-                
+
                 try:
                     # Record the cost for this miner
                     ElectricityCostService.record_cost(
@@ -155,11 +156,27 @@ def record_electricity_costs():
                     total_recorded += 1
                 except Exception as e:
                     logger.warning(f"Failed to record cost for {miner_ip}: {e}")
-        
+
         logger.info(f"Recorded electricity costs for {total_recorded} miners")
-        
+
     except Exception as e:
         logger.exception("Electricity cost recording failed", exc_info=e)
+    finally:
+        session.close()
+
+
+def process_firmware_jobs():
+    """Run firmware flash job processing simulations."""
+    session = SessionLocal()
+    try:
+        summary = FirmwareFlashService.process_jobs(session)
+        if summary["checked"]:
+            logger.debug(
+                "firmware_jobs_processed",
+                extra={"component": "scheduler", **summary},
+            )
+    except Exception:
+        logger.exception("Firmware job processing failed")
     finally:
         session.close()
 
@@ -184,9 +201,12 @@ def start_scheduler():
 
     # Profitability calculation job (run every 15 minutes)
     scheduler.add_job(calculate_profitability, 'interval', minutes=15, id='calculate_profitability')
-    
+
     # Electricity cost recording job (run every hour)
     scheduler.add_job(record_electricity_costs, 'interval', hours=1, id='record_electricity_costs')
+
+    # Firmware flash job processor (run every minute)
+    scheduler.add_job(process_firmware_jobs, 'interval', minutes=1, id='process_firmware_jobs')
 
     scheduler.add_listener(_job_listener, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED)
     scheduler.start()

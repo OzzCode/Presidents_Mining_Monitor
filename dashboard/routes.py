@@ -80,7 +80,7 @@ def get_miners():
                     from helpers.utils import _normalize_model
                     raw_model_name = models.get(ip, '')
                     model_name, firmware_version = _normalize_model(raw_model_name, extract_firmware=True)
-                    
+
                     # Guess vendor from model prefix
                     vendor = None
                     if model_name:
@@ -91,22 +91,22 @@ def get_miners():
                             vendor = 'MicroBT'
                         elif 'avalon' in low or 'canaan' in low:
                             vendor = 'Canaan'
-                    
+
                     try:
                         # Add debug logging
                         import logging
                         logging.basicConfig(level=logging.DEBUG)
                         logger = logging.getLogger(__name__)
                         logger.debug(f"Processing miner: IP={ip}, Model='{model_name}', Firmware='{firmware_version}'")
-                        
+
                         # Get efficiency data with multiple fallback strategies
                         # Use the raw model name for lookups as it includes firmware info if present
                         nominal_ths, csv_eff = 0.0, 0.0
-                        
+
                         # Try to get from CSV first (uses raw model name internally)
                         nominal_ths, csv_eff = csv_efficiency_for_model(raw_model_name)
                         logger.debug(f"CSV lookup - Model: '{model_name}', Result: TH/s={nominal_ths}, J/TH={csv_eff}")
-                        
+
                         # If CSV lookup failed or returned zeros, try the full efficiency lookup
                         if not (nominal_ths and csv_eff) and model_name:
                             eff = efficiency_for_model(raw_model_name)
@@ -117,18 +117,19 @@ def get_miners():
                                 if not nominal_ths:
                                     # Try to extract TH/s from model name (e.g., 'S19 Pro 110T' -> 110)
                                     if model_name:
-                                        ths_match = re.search(r'(\d+)\s*(?:t|th|ths|terahash)', model_name, re.IGNORECASE)
+                                        ths_match = re.search(r'(\d+)\s*(?:t|th|ths|terahash)', model_name,
+                                                              re.IGNORECASE)
                                         if ths_match:
                                             nominal_ths = float(ths_match.group(1))
                                             logger.debug(f"Extracted TH/s from model name: {nominal_ths}")
-                                    
+
                                     # Default fallback if we couldn't determine from model name
                                     if not nominal_ths:
                                         nominal_ths = 100.0  # Reasonable default
                                         logger.debug(f"Using default TH/s: {nominal_ths}")
-                        
+
                         logger.debug(f"Final values - TH/s: {nominal_ths}, J/TH: {csv_eff}")
-                        
+
                         # Create the miner with the best data we have
                         miner = Miner(
                             miner_ip=ip,
@@ -285,3 +286,10 @@ def electricity_page():
 def remote_control_page():
     """Remote control management page."""
     return render_template('remote_control.html')
+
+
+@dash_bp.route('/firmware')
+@login_required
+def firmware_flash_page():
+    """Firmware flashing management page."""
+    return render_template('firmware_flash.html')

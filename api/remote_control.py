@@ -9,14 +9,77 @@ Provides endpoints for:
 - Power scheduling
 """
 
-from flask import Blueprint, request, jsonify, g, render_template
-from sqlalchemy import and_, func
-from core.db import SessionLocal, CommandHistory, PowerSchedule, MinerConfigBackup, Miner
-from core.remote_control import RemoteControlService, PowerScheduleService
 import datetime as dt
+import hashlib
+import uuid
+from pathlib import Path
 from typing import List
 
+from flask import Blueprint, request, jsonify, g, render_template
+from sqlalchemy import and_, func
+from werkzeug.utils import secure_filename
+
+from config import (
+    FIRMWARE_UPLOAD_DIR,
+    MAX_FIRMWARE_SIZE_BYTES,
+    FIRMWARE_ALLOWED_EXTENSIONS,
+)
+from core.db import (
+    SessionLocal,
+    CommandHistory,
+    PowerSchedule,
+    MinerConfigBackup,
+    Miner,
+    FirmwareImage,
+)
+from core.remote_control import RemoteControlService, PowerScheduleService
+from core.firmware import FirmwareService, FirmwareFlashService
+
 bp = Blueprint("remote_control_api", __name__, url_prefix="/api/remote")
+
+
+# ----------------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------------
+
+
+def _serialize_firmware_image(image: FirmwareImage) -> dict:
+    return {
+        "id": image.id,
+        "file_name": image.file_name,
+        "vendor": image.vendor,
+        "model": image.model,
+        "version": image.version,
+        "checksum": image.checksum,
+        "size_bytes": image.size_bytes,
+        "uploaded_by": image.uploaded_by,
+        "is_active": image.is_active,
+        "created_at": image.created_at.isoformat() if image.created_at else None,
+    }
+
+
+def _serialize_flash_job(job, firmware: FirmwareImage | None = None) -> dict:
+    firmware_payload = None
+    if firmware:
+        firmware_payload = {
+            "id": firmware.id,
+            "file_name": firmware.file_name,
+            "version": firmware.version,
+        }
+
+    return {
+        "job_id": job.job_id,
+        "miner_ip": job.miner_ip,
+        "status": job.status,
+        "progress": job.progress,
+        "initiated_by": job.initiated_by,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        "error_message": job.error_message,
+        "metadata": job.extra_metadata or {},
+        "firmware": firmware_payload,
+    }
 
 
 # ============================================================================
@@ -567,3 +630,192 @@ def check_schedules():
 def remote_control_page():
     """Render the remote control dashboard HTML page."""
     return render_template('remote_control.html')
+
+
+# ============================================================================
+# Firmware Flashing (Scaffold)
+# ============================================================================
+
+
+@bp.route('/firmware/images', methods=['GET'])
+def list_firmware_images():
+    """List available firmware images."""
+    session = SessionLocal()
+    try:
+        images = FirmwareService.list_images(session)
+        return jsonify({
+            "ok": True,
+            "images": [_serialize_firmware_image(image) for image in images]
+        })
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    finally:
+        session.close()
+
+
+@bp.route('/firmware/upload', methods=['POST'])
+def upload_firmware_image():
+    """Upload a firmware image and register its metadata."""
+    session = SessionLocal()
+    try:
+        if 'file' not in request.files:
+            return jsonify({"ok": False, "error": "No file provided"}), 400
+
+        file_storage = request.files['file']
+        if not file_storage or not file_storage.filename:
+            return jsonify({"ok": False, "error": "Filename is required"}), 400
+
+        original_name = file_storage.filename
+        filename = secure_filename(original_name)
+        if not filename:
+            return jsonify({"ok": False, "error": "Invalid filename"}), 400
+
+        lower_name = filename.lower()
+        if not any(
+                lower_name.endswith(f".{ext}")
+                for ext in FIRMWARE_ALLOWED_EXTENSIONS
+        ):
+            return jsonify({"ok": False, "error": "Unsupported file extension"}), 400
+
+        file_bytes = file_storage.read()
+        size_bytes = len(file_bytes)
+        if size_bytes == 0:
+            return jsonify({"ok": False, "error": "File is empty"}), 400
+        if size_bytes > MAX_FIRMWARE_SIZE_BYTES:
+            return jsonify({"ok": False, "error": "File exceeds maximum allowed size"}), 400
+
+        checksum = hashlib.sha256(file_bytes).hexdigest()
+
+        existing = session.query(FirmwareImage).filter(FirmwareImage.checksum == checksum).first()
+        if existing:
+            return jsonify({
+                "ok": True,
+                "message": "Firmware already uploaded",
+                "duplicate": True,
+                "image": _serialize_firmware_image(existing),
+            }), 200
+
+        unique_name = f"{uuid.uuid4().hex}_{filename}"
+        storage_path = Path(FIRMWARE_UPLOAD_DIR) / unique_name
+        with open(storage_path, 'wb') as fh:
+            fh.write(file_bytes)
+
+        username = getattr(g, 'user', None)
+        uploaded_by = username.username if username else 'anonymous'
+
+        metadata = {
+            'file_name': filename,
+            'storage_path': str(storage_path.resolve()),
+            'checksum': checksum,
+            'size_bytes': size_bytes,
+            'vendor': request.form.get('vendor') or None,
+            'model': request.form.get('model') or None,
+            'version': request.form.get('version') or None,
+            'notes': request.form.get('notes') or None,
+            'uploaded_by': uploaded_by,
+        }
+
+        image = FirmwareService.create_image(session, **metadata)
+
+        return jsonify({
+            "ok": True,
+            "message": "Firmware uploaded",
+            "image": _serialize_firmware_image(image)
+        }), 201
+    except Exception as exc:
+        session.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    finally:
+        session.close()
+
+
+@bp.route('/firmware/jobs', methods=['POST'])
+def create_firmware_flash_job():
+    """Create a firmware flash job placeholder."""
+    session = SessionLocal()
+    try:
+        data = request.json or {}
+        firmware_id = data.get('firmware_id')
+        miner_ips = data.get('miner_ips') or []
+
+        if not firmware_id:
+            return jsonify({"ok": False, "error": "firmware_id is required"}), 400
+        if not miner_ips:
+            return jsonify({"ok": False, "error": "miner_ips is required"}), 400
+
+        firmware = FirmwareService.get_image(session, firmware_id)
+        if firmware and not firmware.is_active:
+            firmware = None
+        if not firmware:
+            return jsonify({"ok": False, "error": "Firmware image not found or inactive"}), 404
+
+        username = getattr(g, 'user', None)
+        initiated_by = username.username if username else 'anonymous'
+
+        jobs = []
+        for miner_ip in miner_ips:
+            job = FirmwareFlashService.create_job(
+                session,
+                firmware_id=firmware.id,
+                miner_ip=miner_ip,
+                initiated_by=initiated_by,
+                metadata={"request_source": "api"},
+            )
+            jobs.append(_serialize_flash_job(job, firmware))
+
+        return jsonify({
+            "ok": True,
+            "message": f"Created {len(jobs)} firmware flash jobs",
+            "jobs": jobs,
+        }), 201
+    except Exception as exc:
+        session.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    finally:
+        session.close()
+
+
+@bp.route('/firmware/jobs', methods=['GET'])
+def list_firmware_flash_jobs():
+    """List recent firmware flash jobs."""
+    session = SessionLocal()
+    try:
+        miner_ip = request.args.get('miner_ip')
+        jobs = FirmwareFlashService.list_jobs(session, miner_ip=miner_ip)
+
+        firmware_map = {}
+        for job in jobs:
+            if job.firmware_id not in firmware_map:
+                firmware_map[job.firmware_id] = FirmwareService.get_image(session, job.firmware_id)
+
+        return jsonify({
+            "ok": True,
+            "jobs": [
+                _serialize_flash_job(job, firmware_map.get(job.firmware_id))
+                for job in jobs
+            ]
+        })
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    finally:
+        session.close()
+
+
+@bp.route('/firmware/jobs/<job_id>', methods=['GET'])
+def get_firmware_flash_job(job_id: str):
+    """Retrieve status for a firmware flash job."""
+    session = SessionLocal()
+    try:
+        job = FirmwareFlashService.get_job_by_public_id(session, job_id)
+        if not job:
+            return jsonify({"ok": False, "error": "Job not found"}), 404
+
+        firmware = FirmwareService.get_image(session, job.firmware_id)
+        return jsonify({
+            "ok": True,
+            "job": _serialize_flash_job(job, firmware)
+        })
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    finally:
+        session.close()

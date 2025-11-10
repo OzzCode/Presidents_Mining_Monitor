@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 try:
     from dotenv import load_dotenv  # optional
@@ -60,6 +61,15 @@ LOG_TO_DB = os.getenv("LOG_TO_DB", "1") in ("1", "true", "True")
 
 # API behavior
 API_MAX_LIMIT = int(os.getenv('API_MAX_LIMIT', 10000))
+
+FIRMWARE_UPLOAD_DIR = Path(os.getenv("FIRMWARE_UPLOAD_DIR", "uploads/firmware"))
+FIRMWARE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+MAX_FIRMWARE_SIZE_BYTES = int(os.getenv("MAX_FIRMWARE_SIZE_BYTES", 100 * 1024 * 1024))
+FIRMWARE_ALLOWED_EXTENSIONS = {
+    ext.strip().lower()
+    for ext in os.getenv("FIRMWARE_ALLOWED_EXTENSIONS", "bin,tar,tar.gz,zip,img").split(",")
+    if ext.strip()
+}
 
 
 def efficiency_for_model(model: str | None) -> float:

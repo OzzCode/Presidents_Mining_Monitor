@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+
+{% block title %}Firmware Flashing - Miner Monitor{% endblock %}
+
+{% block content %}
+    <div class="container" style="max-width: 1400px; margin: 2rem auto; padding: 0 1rem;">
+        <h1>🧰 Firmware Flashing Workbench</h1>
+        <p style="color: var(--muted); max-width: 720px;">
+            Prepare and execute firmware flash jobs for miners on your network. This is an early preview –
+            firmware uploads and actual device flashing are not wired up yet, but you can stage jobs
+            and review available firmware metadata.
+        </p>
+
+        <div class="grid"
+             style="display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
+            <section class="card">
+                <h2>📦 Firmware Library</h2>
+                <p style="color: var(--muted);">Upload new firmware images and review existing ones.</p>
+
+                <form id="upload-form" enctype="multipart/form-data"
+                      style="display: grid; gap: 0.75rem; margin-bottom: 1rem;">
+                    <div>
+                        <label class="form-label">Firmware File</label>
+                        <input type="file" id="firmware-file" name="file" class="form-control"
+                               accept=".bin,.tar,.tar.gz,.zip,.img" required>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem;">
+                        <input type="text" name="vendor" placeholder="Vendor" class="form-control">
+                        <input type="text" name="model" placeholder="Model" class="form-control">
+                        <input type="text" name="version" placeholder="Version" class="form-control">
+                    </div>
+                    <textarea name="notes" rows="2" placeholder="Notes (optional)" class="form-control"></textarea>
+                    <button type="submit" class="btn" style="justify-self: start;">
+                        ⬆️ Upload Firmware
+                    </button>
+                    <div id="upload-status" style="font-size: 0.85rem; color: var(--muted);"></div>
+                </form>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <strong>Available Images</strong>
+                    <button class="btn" type="button" style="padding: 0.35rem 0.75rem; font-size: 0.85rem;"
+                            onclick="loadFirmwareImages()">Refresh
+                    </button>
+                </div>
+                <div id="firmware-list" style="max-height: 260px; overflow-y: auto;"></div>
+            </section>
+
+            <section class="card">
+                <h2>🛠️ Create Flash Job</h2>
+                <div style="margin-bottom: 1rem;">
+                    <label class="form-label">Select Firmware Image</label>
+                    <select id="firmware-select" class="form-control"></select>
+                </div>
+                <div style="margin-bottom: 1rem;">
+                    <label class="form-label">Choose Miners</label>
+                    <div id="miner-checkboxes"
+                         style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem;"></div>
+                </div>
+                <button class="btn" style="width: 100%; background: var(--primary);" onclick="createFlashJobs()">
+                    🚀 Stage Firmware Flash
+                </button>
+                <p style="color: var(--muted); font-size: 0.875rem; margin-top: 0.75rem;">
+                    The queued jobs are placeholders – backend flashing mechanics still need to be implemented.
+                </p>
+            </section>
+
+            <section class="card" style="grid-column: 1 / -1;">
+                <h2>📋 Recent Flash Jobs</h2>
+                <div id="job-list"></div>
+            </section>
+        </div>
+    </div>
+
+    <style>
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface);
+            color: var(--text);
+        }
+    </style>
+
+    <script>
+        let miners = [];
+        let firmwareImages = [];
+        let activeJobs = [];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFirmwareImages();
+            loadMiners();
+            pollJobs();
+
+            const form = document.getElementById('upload-form');
+            form.addEventListener('submit', handleUpload);
+        });
+
+        async function loadFirmwareImages() {
+            try {
+                const res = await fetch('/api/remote/firmware/images');
+                const data = await res.json();
+                if (!data.ok) throw new Error(data.error || 'Failed to load firmware images');
+
+                firmwareImages = data.images || [];
+                renderFirmwareList();
+                populateFirmwareSelect();
+            } catch (error) {
+                document.getElementById('firmware-list').innerHTML = `<div class="alert">${error.message}</div>`;
+            }
+        }
+
+        function renderFirmwareList() {
+            const container = document.getElementById('firmware-list');
+            if (firmwareImages.length === 0) {
+                container.innerHTML = '<p style="color: var(--muted);">No firmware images registered yet.</p>';
+                return;
+            }
+
+            container.innerHTML = firmwareImages.map(image => {
+                const badges = [];
+                if (image.vendor) badges.push(`<span class="badge">${image.vendor}</span>`);
+                if (image.model) badges.push(`<span class="badge">${image.model}</span>`);
+                if (image.version) badges.push(`<span class="badge">v${image.version}</span>`);
+
+                return `
+                <div class="firmware-item">
+                    <div class="top-row">
+                        <div>
+                            <strong>${image.file_name}</strong>
+                            <div class="badges">${badges.join(' ')}</div>
+                        </div>
+                        <div class="meta">
+                            ${formatBytes(image.size_bytes)} · ${image.checksum.slice(0, 8)}
+                        </div>
+                    </div>
+                    <div class="bottom-row">
+                        Uploaded ${formatDate(image.created_at)} by ${image.uploaded_by || 'N/A'}
+                    </div>
+                </div>
+            `;
+            }).join('');
+        }
+
+        function populateFirmwareSelect() {
+            const select = document.getElementById('firmware-select');
+            if (firmwareImages.length === 0) {
+                select.innerHTML = '<option value="">-- No firmware available --</option>';
+                select.disabled = true;
+                return;
+            }
+            select.disabled = false;
+            select.innerHTML = '<option value="">-- Choose firmware --</option>' + firmwareImages.map(image => (
+                `<option value="${image.id}">${image.file_name} (${image.version || 'version ?'})</option>`
+            )).join('');
+        }
+
+        async function loadMiners() {
+            try {
+                const res = await fetch('/api/miners');
+                const data = await res.json();
+                miners = data.miners || [];
+                renderMinerCheckboxes();
+            } catch (error) {
+                document.getElementById('miner-checkboxes').innerHTML = `<div class="alert">${error.message}</div>`;
+            }
+        }
+
+        function renderMinerCheckboxes() {
+            const container = document.getElementById('miner-checkboxes');
+            if (miners.length === 0) {
+                container.innerHTML = '<p style="color: var(--muted);">No miners available.</p>';
+                return;
+            }
+            container.innerHTML = miners.map(miner => `
+            <label style="display: block; padding: 0.25rem 0;">
+                <input type="checkbox" value="${miner.ip}"> ${miner.ip}
+                <span style="color: var(--muted); font-size: 0.85rem;">${miner.model || ''}</span>
+            </label>
+        `).join('');
+        }
+
+        async function createFlashJobs() {
+            const firmwareId = document.getElementById('firmware-select').value;
+            if (!firmwareId) {
+                alert('Please choose a firmware image.');
+                return;
+            }
+
+            const selectedMinerIps = Array.from(document.querySelectorAll('#miner-checkboxes input:checked')).map(cb => cb.value);
+            if (selectedMinerIps.length === 0) {
+                alert('Select at least one miner.');
+                return;
+            }
+
+            if (!confirm(`Stage firmware flash for ${selectedMinerIps.length} miner(s)?`)) {
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/remote/firmware/jobs', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        firmware_id: Number(firmwareId),
+                        miner_ips: selectedMinerIps,
+                    })
+                });
+                const data = await res.json();
+                if (!data.ok) throw new Error(data.error || 'Failed to create jobs');
+
+                alert(data.message);
+                activeJobs.push(...data.jobs.map(job => job.job_id));
+                await loadRecentJobs(data.jobs.map(job => job.job_id));
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        async function loadRecentJobs(jobIds = []) {
+            const container = document.getElementById('job-list');
+            if (jobIds.length === 0 && activeJobs.length === 0) {
+                container.innerHTML = '<p style="color: var(--muted);">Jobs will appear here once created.</p>';
+                return;
+            }
+
+            const idsToFetch = jobIds.length ? jobIds : activeJobs;
+            container.innerHTML = 'Loading jobs...';
+            try {
+                const results = await Promise.all(idsToFetch.map(async (jobId) => {
+                    const res = await fetch(`/api/remote/firmware/jobs/${jobId}`);
+                    return res.json();
+                }));
+
+                const cards = results.map(result => {
+                    if (!result.ok) {
+                        return `<div class="alert">${result.error || 'Unable to fetch job'}</div>`;
+                    }
+                    const job = result.job;
+                    if (job.status === 'success' || job.status === 'failed') {
+                        activeJobs = activeJobs.filter(id => id !== job.job_id);
+                    }
+                    return `
+                    <div class="job-card" style="padding: 1rem; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.75rem;">
+                        <div style="display: flex; justify-content: space-between; gap: 1rem;">
+                            <div>
+                                <strong>${job.miner_ip}</strong>
+                                <div style="color: var(--muted); font-size: 0.9rem;">${job.firmware?.file_name || 'Unknown firmware'}</div>
+                                <div style="color: var(--muted); font-size: 0.8rem;">Created ${formatDate(job.created_at)}</div>
+                            </div>
+                            <span style="align-self: flex-start; padding: 0.35rem 0.8rem; border-radius: 999px; font-size: 0.85rem; background: ${job.status === 'success' ? '#10b981' : job.status === 'failed' ? '#ef4444' : '#f59e0b'}; color: white;">
+                                ${job.status.toUpperCase()}
+                            </span>
+                        </div>
+                        <div style="margin-top: 0.75rem; background: var(--border); height: 8px; border-radius: 999px; overflow: hidden;">
+                            <div style="width: ${job.progress || 0}%; height: 100%; background: var(--primary);"></div>
+                        </div>
+                        ${job.error_message ? `<div style="color: #ef4444; margin-top: 0.5rem;">${job.error_message}</div>` : ''}
+                    </div>
+                `;
+                }).join('');
+
+                container.innerHTML = cards || '<p style="color: var(--muted);">No jobs found.</p>';
+            } catch (error) {
+                container.innerHTML = `<div class="alert">${error.message}</div>`;
+            }
+        }
+
+        async function handleUpload(event) {
+            event.preventDefault();
+            const statusEl = document.getElementById('upload-status');
+            const formData = new FormData(event.target);
+
+            if (!formData.get('file') || !formData.get('file').name) {
+                statusEl.textContent = 'Please choose a file to upload.';
+                return;
+            }
+
+            statusEl.textContent = 'Uploading...';
+            try {
+                const res = await fetch('/api/remote/firmware/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const data = await res.json();
+                if (!data.ok) throw new Error(data.error || 'Upload failed');
+
+                statusEl.textContent = data.message;
+                event.target.reset();
+                await loadFirmwareImages();
+            } catch (error) {
+                statusEl.textContent = error.message;
+                statusEl.style.color = '#ef4444';
+            }
+        }
+
+        async function pollJobs() {
+            try {
+                const res = await fetch('/api/remote/firmware/jobs');
+                const data = await res.json();
+                if (data.ok) {
+                    const active = data.jobs.filter(job => job.status === 'pending' || job.status === 'in_progress');
+                    activeJobs = active.map(job => job.job_id);
+                    await loadRecentJobs();
+                }
+            } catch (error) {
+                console.warn('Job polling failed:', error);
+            } finally {
+                setTimeout(pollJobs, 10000);
+            }
+        }
+
+        function formatBytes(value) {
+            if (!value && value !== 0) return '—';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let idx = 0;
+            let val = value;
+            while (val >= 1024 && idx < units.length - 1) {
+                val /= 1024;
+                idx += 1;
+            }
+            return `${val.toFixed(val >= 10 || idx === 0 ? 0 : 1)} ${units[idx]}`;
+        }
+
+        function formatDate(isoString) {
+            if (!isoString) return '—';
+            try {
+                return new Date(isoString).toLocaleString();
+            } catch (error) {
+                return isoString;
+            }
+        }
+    </script>
+{% endblock %}

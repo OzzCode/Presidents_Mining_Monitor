@@ -3,7 +3,7 @@ import datetime as _dt
 from pathlib import Path
 import sqlite3
 from sqlalchemy import (
-    create_engine, event, Column, Integer, Float, String, DateTime, Text, Boolean
+    create_engine, event, Column, Integer, Float, String, DateTime, Text, Boolean, ForeignKey
 )
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.dialects.sqlite import JSON as SQLITE_JSON
@@ -444,7 +444,7 @@ class PowerSchedule(Base):
 
     # Power settings during 'on' periods
     power_limit_w = Column(Integer, nullable=True)  # Reduce power during expensive periods
-    
+
     # Timezone for schedule
     timezone = Column(String(64), default="UTC")
 
@@ -456,6 +456,47 @@ class PowerSchedule(Base):
     notes = Column(Text, nullable=True)
 
 
+class FirmwareImage(Base):
+    """Metadata for stored firmware images."""
+    __tablename__ = "firmware_images"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=_dt.datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=_dt.datetime.utcnow, onupdate=_dt.datetime.utcnow, index=True)
+
+    file_name = Column(String(255), nullable=False)
+    vendor = Column(String(64), nullable=True, index=True)
+    model = Column(String(128), nullable=True, index=True)
+    version = Column(String(128), nullable=True, index=True)
+    checksum = Column(String(128), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    storage_path = Column(String(512), nullable=False)
+    notes = Column(Text, nullable=True)
+    uploaded_by = Column(String(64), nullable=True)
+    is_active = Column(Boolean, default=True, index=True)
+
+
+class FirmwareFlashJob(Base):
+    """Tracks firmware flashing operations against miners."""
+    __tablename__ = "firmware_flash_jobs"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=_dt.datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=_dt.datetime.utcnow, onupdate=_dt.datetime.utcnow, index=True)
+
+    job_id = Column(String(64), unique=True, nullable=False, index=True)
+    firmware_id = Column(Integer, ForeignKey("firmware_images.id"), nullable=False, index=True)
+    miner_ip = Column(String(64), nullable=False, index=True)
+    status = Column(String(32), default="pending", index=True)  # pending, in_progress, success, failed
+    progress = Column(Integer, default=0)  # 0-100
+    initiated_by = Column(String(64), nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+    # Use a non-reserved Python attribute while keeping the DB column name "metadata"
+    extra_metadata = Column("metadata", SQLITE_JSON, nullable=True)  # Additional context (e.g., firmware payload info)
+
+
 class CommandHistory(Base):
     """Audit log of remote commands sent to miners."""
     __tablename__ = "command_history"
@@ -464,9 +505,10 @@ class CommandHistory(Base):
     timestamp = Column(DateTime, default=_dt.datetime.utcnow, index=True)
 
     # Command details
-    command_type = Column(String(32), nullable=False, index=True)  # 'reboot', 'pool_switch', 'power_on', 'power_off', 'config_update'
+    command_type = Column(String(32), nullable=False,
+                          index=True)  # 'reboot', 'pool_switch', 'power_on', 'power_off', 'config_update'
     miner_ip = Column(String(64), nullable=False, index=True)
-    
+
     # Command parameters (JSON)
     parameters = Column(SQLITE_JSON, nullable=True)
 
@@ -474,7 +516,7 @@ class CommandHistory(Base):
     status = Column(String(32), default='pending', index=True)  # 'pending', 'success', 'failed', 'timeout'
     response = Column(SQLITE_JSON, nullable=True)  # Response from miner
     error_message = Column(Text, nullable=True)
-    
+
     # Timing
     sent_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
