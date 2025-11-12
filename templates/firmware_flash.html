@@ -3,95 +3,527 @@
 {% block title %}Firmware Flashing - Miner Monitor{% endblock %}
 
 {% block content %}
-    <div class="container" style="max-width: 1400px; margin: 2rem auto; padding: 0 1rem;">
-        <h1>🧰 Firmware Flashing Workbench</h1>
-        <p style="color: var(--muted); max-width: 720px;">
-            Prepare and execute firmware flash jobs for miners on your network. This is an early preview –
-            firmware uploads and actual device flashing are not wired up yet, but you can stage jobs
-            and review available firmware metadata.
-        </p>
-
-        <div class="grid"
-             style="display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
-            <section class="card">
-                <h2>📦 Firmware Library</h2>
-                <p style="color: var(--muted);">Upload new firmware images and review existing ones.</p>
-
-                <form id="upload-form" enctype="multipart/form-data"
-                      style="display: grid; gap: 0.75rem; margin-bottom: 1rem;">
-                    <div>
-                        <label class="form-label">Firmware File</label>
-                        <input type="file" id="firmware-file" name="file" class="form-control"
-                               accept=".bin,.tar,.tar.gz,.zip,.img" required>
-                    </div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem;">
-                        <input type="text" name="vendor" placeholder="Vendor" class="form-control">
-                        <input type="text" name="model" placeholder="Model" class="form-control">
-                        <input type="text" name="version" placeholder="Version" class="form-control">
-                    </div>
-                    <textarea name="notes" rows="2" placeholder="Notes (optional)" class="form-control"></textarea>
-                    <button type="submit" class="btn" style="justify-self: start;">
-                        ⬆️ Upload Firmware
+    <div class="container" style="max-width: 1400px; margin: 2rem auto; padding: 0 2rem;">
+        <header class="page-header" style="margin-bottom: 2.5rem; padding: 1.5rem 0;">
+            <div class="header-content"
+                 style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <h1 style="margin: 0 0 0.5rem 0; font-size: 2rem; font-weight: 700; color: var(--text);">
+                        <span style="display: inline-flex; align-items: center; gap: 0.5rem;">
+                            <span style="font-size: 1.2em;">🛠️</span>
+                            <span>Firmware Flashing Workbench</span>
+                        </span>
+                    </h1>
+                    <p style="margin: 0; color: var(--muted); max-width: 720px; line-height: 1.5;">
+                        Manage and deploy firmware updates to your mining hardware. Upload new firmware images,
+                        schedule updates, and monitor flash job progress across your mining fleet.
+                    </p>
+                </div>
+                <div class="header-actions" style="display: flex; gap: 0.75rem;">
+                    <button onclick="document.getElementById('firmware-file').click()" class="btn"
+                            style="background: var(--primary); color: white; display: inline-flex; align-items: center; gap: 0.5rem;">
+                        <span>📤 Upload Firmware</span>
                     </button>
-                    <div id="upload-status" style="font-size: 0.85rem; color: var(--muted);"></div>
-                </form>
-
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                    <strong>Available Images</strong>
-                    <button class="btn" type="button" style="padding: 0.35rem 0.75rem; font-size: 0.85rem;"
-                            onclick="loadFirmwareImages()">Refresh
+                    <button onclick="loadFirmwareImages()" class="btn"
+                            style="border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 0.5rem;">
+                        <span>🔄 Refresh</span>
                     </button>
                 </div>
-                <div id="firmware-list" style="max-height: 260px; overflow-y: auto;"></div>
+            </div>
+        </header>
+
+        <div class="dashboard-grid"
+             style="display: grid; gap: 2rem; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: 'library jobs' 'recent recent';">
+            <!-- Firmware Library Card -->
+            <section class="card"
+                     style="grid-area: library; background: var(--surface-1); border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); transition: transform 0.2s ease, box-shadow 0.2s ease; padding: 1.75rem;">
+                <div class="card-inner" style="height: 100%; display: flex; flex-direction: column;">
+                    <div class="card-header"
+                         style="margin-bottom: 1.25rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border);">
+                        <h2 style="margin: 0; font-size: 1.25rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+                            <span>📦</span>
+                            <span>Firmware Library</span>
+                        </h2>
+                        <p style="margin: 0.5rem 0 0; color: var(--muted); font-size: 0.9rem;">
+                            Manage and organize your firmware images. Upload new or update existing firmware.
+                        </p>
+                    </div>
+
+                    <!-- Upload Form (Hidden by default) -->
+                    <div id="upload-form-container" style="margin-bottom: 1.5rem; display: none;">
+                        <form id="upload-form" enctype="multipart/form-data" style="display: grid; gap: 1rem;">
+                            <div>
+                                <label class="form-label"
+                                       style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-muted);">Firmware
+                                    File</label>
+                                <input type="file" id="firmware-file" name="file" class="form-control"
+                                       accept=".bin,.tar,.tar.gz,.zip,.img" required
+                                       style="width: 100%; padding: 0.75rem; border: 1px dashed var(--border); border-radius: 8px; background: var(--surface-2);">
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem;">
+                                <div>
+                                    <label class="form-label"
+                                           style="display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">Vendor</label>
+                                    <input type="text" name="vendor" placeholder="e.g. Bitmain" class="form-control">
+                                </div>
+                                <div>
+                                    <label class="form-label"
+                                           style="display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">Model</label>
+                                    <input type="text" name="model" placeholder="e.g. S19 Pro" class="form-control">
+                                </div>
+                                <div>
+                                    <label class="form-label"
+                                           style="display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">Version</label>
+                                    <input type="text" name="version" placeholder="e.g. v1.2.3" class="form-control">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="form-label"
+                                       style="display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">Notes</label>
+                                <textarea name="notes" rows="2"
+                                          placeholder="Add any relevant notes about this firmware..."
+                                          class="form-control"
+                                          style="width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; resize: vertical;"></textarea>
+                            </div>
+
+                            <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 0.5rem;">
+                                <button type="button" class="btn"
+                                        onclick="document.getElementById('upload-form-container').style.display='none'"
+                                        style="padding: 0.6rem 1.25rem; border: 1px solid var(--border);">
+                                    Cancel
+                                </button>
+                                <button type="submit" class="btn"
+                                        style="padding: 0.6rem 1.5rem; background: var(--primary); color: white; display: inline-flex; align-items: center; gap: 0.5rem;">
+                                    <span>⬆️</span>
+                                    <span>Upload Firmware</span>
+                                </button>
+                            </div>
+
+                            <div id="upload-status"
+                                 style="font-size: 0.85rem; padding: 0.75rem; border-radius: 6px; margin-top: 0.5rem; display: none;"></div>
+                        </form>
+                    </div>
+
+                    <div class="firmware-list-container"
+                         style="margin-top: 1.5rem; flex: 1; display: flex; flex-direction: column;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <h3 style="margin: 0; font-size: 1rem; font-weight: 600; color: var(--text-muted);">
+                                Available Images</h3>
+                            <div class="filters" style="display: flex; gap: 0.5rem;">
+                                <select class="form-control"
+                                        style="padding: 0.4rem 0.5rem; font-size: 0.85rem; border-radius: 6px; border: 1px solid var(--border);">
+                                    <option>All Vendors</option>
+                                    <option>Bitmain</option>
+                                    <option>MicroBT</option>
+                                    <option>Canaan</option>
+                                </select>
+                                <button class="btn" type="button"
+                                        style="padding: 0.4rem 0.75rem; font-size: 0.85rem; display: flex; align-items: center; gap: 0.35rem;"
+                                        onclick="loadFirmwareImages()">
+                                    <span>🔄</span>
+                                    <span>Refresh</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="firmware-list"
+                             style="display: grid; gap: 0.75rem; max-height: 400px; overflow-y: auto; padding-right: 0.5rem;">
+                            <!-- Dynamically populated -->
+                        </div>
+                    </div>
             </section>
 
-            <section class="card">
-                <h2>🛠️ Create Flash Job</h2>
-                <div style="margin-bottom: 1rem;">
-                    <label class="form-label">Select Firmware Image</label>
-                    <select id="firmware-select" class="form-control"></select>
-                </div>
-                <div style="margin-bottom: 1rem;">
-                    <label class="form-label">Choose Miners</label>
-                    <div id="miner-checkboxes"
-                         style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem;"></div>
-                </div>
-                <button class="btn" style="width: 100%; background: var(--primary);" onclick="createFlashJobs()">
-                    🚀 Stage Firmware Flash
-                </button>
-                <p style="color: var(--muted); font-size: 0.875rem; margin-top: 0.75rem;">
-                    The queued jobs are placeholders – backend flashing mechanics still need to be implemented.
-                </p>
+            <!-- Create Job Card -->
+            <section class="card"
+                     style="grid-area: jobs; background: var(--surface-1); border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); transition: transform 0.2s ease, box-shadow 0.2s ease; padding: 1.75rem;">
+                <div class="card-inner" style="height: 100%; display: flex; flex-direction: column;">
+                    <div class="card-header"
+                         style="margin-bottom: 1.25rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border);">
+                        <h2 style="margin: 0; font-size: 1.25rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+                            <span>🚀</span>
+                            <span>Create Flash Job</span>
+                        </h2>
+                        <p style="margin: 0.5rem 0 0; color: var(--muted); font-size: 0.9rem;">
+                            Select firmware and target miners to create a new flash job.
+                        </p>
+                    </div>
+
+                    <div style="display: grid; gap: 1.25rem;">
+                        <div>
+                            <label class="form-label"
+                                   style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-muted);">Firmware
+                                Image</label>
+                            <select id="firmware-select" class="form-control"
+                                    style="width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2);">
+                                <option value="" disabled selected>Select a firmware image</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <label class="form-label" style="font-weight: 500; color: var(--text-muted);">Target
+                                    Miners</label>
+                                <span id="selected-miners-count" style="font-size: 0.8rem; color: var(--muted);">0 selected</span>
+                            </div>
+
+                            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                <input type="text" id="miner-search" placeholder="Search miners..."
+                                       class="form-control"
+                                       style="flex: 1; padding: 0.6rem 0.75rem; border-radius: 6px;">
+                                <button class="btn" style="padding: 0 1rem; border: 1px solid var(--border);"
+                                        onclick="document.querySelectorAll('#miner-checkboxes input[type=checkbox]').forEach(cb => cb.checked = true); updateSelectedCount()">
+                                    All
+                                </button>
+                                <button class="btn" style="padding: 0 1rem; border: 1px solid var(--border);"
+                                        onclick="document.querySelectorAll('#miner-checkboxes input[type=checkbox]').forEach(cb => cb.checked = false); updateSelectedCount()">
+                                    None
+                                </button>
+                            </div>
+
+                            <div id="miner-checkboxes"
+                                 style="height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; background: var(--surface-2);">
+                                <!-- Dynamically populated -->
+                                <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted);">
+                                    Loading miners...
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 0.5rem;">
+                            <button id="create-job-btn" class="btn"
+                                    style="width: 100%; padding: 0.8rem; background: var(--primary); color: white; font-weight: 500; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 0.5rem;"
+                                    onclick="createFlashJobs()"
+                                    disabled>
+                                <span>🚀</span>
+                                <span>Create Flash Job</span>
+                            </button>
+                            <p style="color: var(--muted); font-size: 0.8rem; margin: 0.75rem 0 0; text-align: center; line-height: 1.5;">
+                                The firmware will be flashed to all selected miners. This action cannot be undone.
+                            </p>
+                        </div>
+                    </div>
             </section>
 
-            <section class="card" style="grid-column: 1 / -1;">
-                <h2>📋 Recent Flash Jobs</h2>
-                <div id="job-list"></div>
+            <!-- Recent Jobs Card -->
+            <section class="card"
+                     style="grid-area: recent; background: var(--surface-1); border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); transition: transform 0.2s ease, box-shadow 0.2s ease; padding: 1.75rem; margin-top: 0.5rem;">
+                <div class="card-inner" style="height: 100%; display: flex; flex-direction: column;">
+                    <div class="card-header"
+                         style="margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border);">
+                        <h2 style="margin: 0; font-size: 1.25rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+                            <span>📋</span>
+                            <span>Recent Flash Jobs</span>
+                        </h2>
+                        <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+                            <button class="btn"
+                                    style="padding: 0.3rem 0.75rem; font-size: 0.8rem; border: 1px solid var(--border);"
+                                    onclick="loadRecentJobs()">
+                                <span>🔄</span>
+                                <span>Refresh</span>
+                            </button>
+                            <div style="flex: 1;"></div>
+                            <div style="display: flex; gap: 0.75rem; font-size: 0.85rem;">
+                                <div style="display: flex; align-items: center; gap: 0.35rem;">
+                                    <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--success);"></span>
+                                    <span>Completed</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.35rem;">
+                                    <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--warning);"></span>
+                                    <span>In Progress</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.35rem;">
+                                    <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--danger);"></span>
+                                    <span>Failed</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="job-list" style="min-height: 200px;">
+                        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 200px; color: var(--muted);">
+                            <div style="width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; margin-bottom: 1rem; animation: spin 1s linear infinite;"></div>
+                            <p>Loading flash jobs...</p>
+                        </div>
+                    </div>
             </section>
         </div>
     </div>
 
     <style>
+        /* Base Styles */
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --surface: #1e293b;
+            --surface-2: #334155;
+            --surface-3: #475569;
+            --border: #334155;
+            --muted: #64748b;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(51, 65, 85, 0.5);
+            --card-hover: rgba(51, 65, 85, 0.3);
+        }
+
+        /* Card Styles */
         .card {
-            background: var(--surface);
-            border: 1px solid var(--border);
+            background: var(--surface-1);
             border-radius: 12px;
-            padding: 1.5rem;
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 0.5rem;
             border: 1px solid var(--border);
-            border-radius: 6px;
-            background: var(--surface);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.12), 0 8px 16px -4px rgba(0, 0, 0, 0.08);
+            border-color: var(--primary-soft);
+        }
+
+        /* Form Elements */
+        .form-control {
+            display: block;
+            width: 100%;
+            padding: 0.7rem 1rem;
+            font-size: 0.925rem;
+            line-height: 1.5;
             color: var(--text);
+            background-color: var(--surface-2);
+            background-clip: padding-box;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+            outline: none;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.65rem 1.25rem;
+            border-radius: 8px;
+            font-size: 0.925rem;
+            font-weight: 500;
+            line-height: 1.4;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            border: 1px solid transparent;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        /* Firmware Item */
+        .firmware-item {
+            padding: 1.25rem;
+            border-radius: 10px;
+            background-color: var(--surface-2);
+            margin-bottom: 0.875rem;
+            border: 1px solid var(--border);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        .firmware-item:hover {
+            transform: translateX(2px);
+            border-color: var(--primary-soft);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        }
+
+        /* Job List */
+        .job-item {
+            padding: 1rem;
+            border-radius: 10px;
+            background: var(--surface-2);
+            margin-bottom: 0.75rem;
+            border-left: 4px solid var(--muted);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .job-item:hover {
+            transform: translateX(4px);
+        }
+
+        .job-item.completed {
+            border-left-color: var(--success);
+        }
+
+        .job-item.in-progress {
+            border-left-color: var(--warning);
+        }
+
+        .job-item.failed {
+            border-left-color: var(--danger);
+        }
+
+        .job-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .job-title {
+            font-weight: 600;
+            margin: 0;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .job-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        .job-progress {
+            height: 6px;
+            background: var(--surface-3);
+            border-radius: 3px;
+            margin: 0.75rem 0;
+            overflow: hidden;
+        }
+
+        .job-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--primary-hover));
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            min-width: 2%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .job-progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                    90deg,
+                    rgba(255, 255, 255, 0) 0%,
+                    rgba(255, 255, 255, 0.2) 50%,
+                    rgba(255, 255, 255, 0) 100%
+            );
+            animation: progress-shimmer 1.5s infinite linear;
+        }
+
+        @keyframes progress-shimmer {
+            0% {
+                transform: translateX(-100%);
+            }
+            100% {
+                transform: translateX(100%);
+            }
+        }
+
+        .miner-checkbox {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+        }
+
+        .miner-checkbox:hover {
+            background: var(--surface-3);
+            transform: translateX(2px);
+        }
+
+        .job-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            background: var(--surface-3);
+        }
+
+        .job-status.completed {
+            color: var(--success);
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .job-status.in-progress {
+            color: var(--warning);
+            background: rgba(245, 158, 11, 0.1);
+        }
+
+        .job-status.failed {
+            color: var(--danger);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        /* Animations */
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                grid-template-areas: 'library' 'jobs' 'recent';
+            }
+
+            .card {
+                padding: 1.25rem;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .header-content {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .header-actions {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .header-actions .btn {
+                flex: 1;
+                justify-content: center;
+            }
         }
     </style>
 
@@ -149,6 +581,12 @@
                     </div>
                     <div class="bottom-row">
                         Uploaded ${formatDate(image.created_at)} by ${image.uploaded_by || 'N/A'}
+                    </div>
+                    ${image.notes ? `<div class="notes">${image.notes}</div>` : ''}
+                    <div class="actions">
+                        <a class="btn-link" href="/api/remote/firmware/images/${image.id}/download" download>
+                            ⬇️ Download
+                        </a>
                     </div>
                 </div>
             `;
@@ -260,6 +698,7 @@
                                 <strong>${job.miner_ip}</strong>
                                 <div style="color: var(--muted); font-size: 0.9rem;">${job.firmware?.file_name || 'Unknown firmware'}</div>
                                 <div style="color: var(--muted); font-size: 0.8rem;">Created ${formatDate(job.created_at)}</div>
+                                <div style="color: var(--muted); font-size: 0.8rem;">Progress details: ${job.metadata?.history?.slice(-1)[0]?.message || '—'}</div>
                             </div>
                             <span style="align-self: flex-start; padding: 0.35rem 0.8rem; border-radius: 999px; font-size: 0.85rem; background: ${job.status === 'success' ? '#10b981' : job.status === 'failed' ? '#ef4444' : '#f59e0b'}; color: white;">
                                 ${job.status.toUpperCase()}
@@ -286,10 +725,12 @@
 
             if (!formData.get('file') || !formData.get('file').name) {
                 statusEl.textContent = 'Please choose a file to upload.';
+                statusEl.style.color = '#ef4444';
                 return;
             }
 
             statusEl.textContent = 'Uploading...';
+            statusEl.style.color = 'var(--muted)';
             try {
                 const res = await fetch('/api/remote/firmware/upload', {
                     method: 'POST',
@@ -299,6 +740,7 @@
                 if (!data.ok) throw new Error(data.error || 'Upload failed');
 
                 statusEl.textContent = data.message;
+                statusEl.style.color = '#10b981';
                 event.target.reset();
                 await loadFirmwareImages();
             } catch (error) {

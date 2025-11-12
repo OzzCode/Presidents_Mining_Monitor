@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from typing import List
 
-from flask import Blueprint, request, jsonify, g, render_template
+from flask import Blueprint, request, jsonify, g, render_template, send_file
 from sqlalchemy import and_, func
 from werkzeug.utils import secure_filename
 
@@ -647,6 +647,30 @@ def list_firmware_images():
             "ok": True,
             "images": [_serialize_firmware_image(image) for image in images]
         })
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    finally:
+        session.close()
+
+
+@bp.route('/firmware/images/<int:image_id>/download', methods=['GET'])
+def download_firmware_image(image_id: int):
+    session = SessionLocal()
+    try:
+        image = FirmwareService.get_image(session, image_id)
+        if not image or not image.is_active:
+            return jsonify({"ok": False, "error": "Firmware image not found"}), 404
+
+        path = FirmwareService.resolve_image_path(image)
+        if not path:
+            return jsonify({"ok": False, "error": "Firmware file missing"}), 404
+
+        return send_file(
+            path,
+            as_attachment=True,
+            download_name=image.file_name,
+            mimetype='application/octet-stream',
+        )
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
     finally:

@@ -11,9 +11,6 @@ from werkzeug.exceptions import HTTPException
 from auth import auth_bp
 import os
 
-# Expose scheduler instance for readiness checks in tests/runtime
-SCHEDULER = None
-
 
 def create_app():
     app = Flask(__name__, static_url_path='/static', static_folder='static')
