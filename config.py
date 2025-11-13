@@ -71,6 +71,27 @@ FIRMWARE_ALLOWED_EXTENSIONS = {
     if ext.strip()
 }
 
+# Firmware flashing HTTP behavior and credentials
+# Whether to verify HTTPS certs to miners; can be False (self-signed) in dev,
+# or a path to a CA bundle in stricter environments.
+FIRMWARE_HTTP_VERIFY = os.getenv("FIRMWARE_HTTP_VERIFY", "false").lower() in ("1", "true", "yes")
+
+# Default per-vendor credentials (lowercase vendor keys). These act as fallbacks
+# when no per-miner credentials are stored. Adjust as needed for your fleet.
+FIRMWARE_DEFAULT_CREDENTIALS = {
+    "bitmain": {"auth": "digest", "user": os.getenv("BITMAIN_USER", "root"),
+                "password": os.getenv("BITMAIN_PASSWORD", "root")},
+    "antminer": {"auth": "digest", "user": os.getenv("BITMAIN_USER", "root"),
+                 "password": os.getenv("BITMAIN_PASSWORD", "root")},
+    "microbt": {"auth": "basic", "user": os.getenv("MICROBT_USER", "root"),
+                "password": os.getenv("MICROBT_PASSWORD", "root")},
+    "whatsminer": {"auth": "basic", "user": os.getenv("MICROBT_USER", "root"),
+                   "password": os.getenv("MICROBT_PASSWORD", "root")},
+    # Examples for other vendors (uncomment/tune as needed):
+    # "canaan": {"auth": "basic", "user": os.getenv("CANAAN_USER", "root"), "password": os.getenv("CANAAN_PASSWORD", "admin")},
+    # "innosilicon": {"auth": "basic", "user": os.getenv("INNO_USER", "admin"), "password": os.getenv("INNO_PASSWORD", "admin")},
+}
+
 
 def efficiency_for_model(model: str | None) -> float:
     if not model: return EFFICIENCY_J_PER_TH

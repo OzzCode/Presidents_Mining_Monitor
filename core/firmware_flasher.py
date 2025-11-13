@@ -58,14 +58,47 @@ def get_flasher_for_miner(model: str, ip: str) -> 'BaseFlasher':
         raise UnsupportedVendorError(f"Unsupported miner model: {model}")
 
 
+def _is_hashing(summary: Dict[str, Any]) -> bool:
+    """Heuristic to determine if a miner is actively hashing from a summary dict."""
+    if not isinstance(summary, dict):
+        return False
+    keys = ('ghs_5s', 'GHS 5s', 'hashrate_5s', 'ghs_1m', 'GH S 5s')
+    for k in keys:
+        v = summary.get(k)
+        try:
+            if v is None:
+                continue
+            if float(v) > 0:
+                return True
+        except Exception:
+            continue
+    return False
+
+
 class BaseFlasher:
     """Base class for all firmware flashers."""
 
-    def __init__(self, ip: str):
+    def __init__(self, ip: str, *, auth=None, verify: bool = False, timeout: int = 300):
         self.ip = ip
         self.client = MinerClient(ip)
         self.session = requests.Session()
-        self.session.verify = False  # Disable SSL verification for self-signed certs
+        # Accept runtime injection for TLS verify; default False for miner self-signed certs
+        self.session.verify = verify
+        # Requests auth object or (user, password) tuple
+        self.auth = auth
+        # Default request timeout in seconds
+        self.timeout = timeout
+
+    @staticmethod
+    def build_auth(auth_mode: Optional[str], user: Optional[str], password: Optional[str]):
+        """Construct a requests-compatible auth object from config values."""
+        if not user:
+            return None
+        mode = (auth_mode or '').lower()
+        if mode == 'digest':
+            return HTTPDigestAuth(user, password or '')
+        # default/basic
+        return (user, password or '')
 
     def check_prerequisites(self) -> Tuple[bool, str]:
         """Check if the miner is ready for flashing.
@@ -79,9 +112,20 @@ class BaseFlasher:
             if not stats:
                 return False, "Failed to communicate with miner"
 
-            # Check if miner is hashing
-            if stats.get('ghs_5s', 0) > 0:
-                return False, "Miner is currently hashing. Stop mining before flashing."
+            # Check if miner is hashing and try to auto-stop if supported
+            if _is_hashing(stats):
+                try:
+                    if hasattr(self.client, 'stop_mining'):
+                        self.client.stop_mining()
+                    elif hasattr(self.client, 'pause_mining'):
+                        self.client.pause_mining()
+                    # give the miner a moment to settle
+                    time.sleep(2)
+                    stats2 = self.client.get_summary()
+                    if _is_hashing(stats2):
+                        return False, "Unable to auto-stop mining; please stop mining manually and retry."
+                except Exception as e:
+                    return False, f"Error attempting to stop mining: {str(e)}"
 
             return True, "Ready to flash"
 
@@ -152,17 +196,17 @@ class AntminerFlasher(BaseFlasher):
 
             # Upload firmware
             url = f"http://{self.ip}/cgi-bin/upgrade.cgi"
-            files = {'firmware': (firmware_path.name, open(firmware_path, 'rb'), 'application/octet-stream')}
-
             if progress_callback:
                 progress_callback(40, "Uploading firmware...")
 
-            response = self.session.post(
-                url,
-                files=files,
-                auth=HTTPDigestAuth('root', 'root'),  # Default Antminer credentials
-                timeout=300  # 5 minute timeout
-            )
+            with open(firmware_path, 'rb') as fh:
+                files = {'firmware': (firmware_path.name, fh, 'application/octet-stream')}
+                response = self.session.post(
+                    url,
+                    files=files,
+                    auth=self.auth,
+                    timeout=self.timeout,
+                )
 
             if response.status_code != 200:
                 return False, f"Failed to upload firmware: {response.text}"
@@ -185,11 +229,6 @@ class AntminerFlasher(BaseFlasher):
 
         except Exception as e:
             return False, f"Firmware update failed: {str(e)}"
-
-        finally:
-            # Clean up
-            if 'files' in locals():
-                files['firmware'][1].close()
 
 
 class WhatsminerFlasher(BaseFlasher):
@@ -214,20 +253,28 @@ class WhatsminerFlasher(BaseFlasher):
 
             # Upload firmware
             url = f"http://{self.ip}/api/updateFirmware"
-            files = {'file': (firmware_path.name, open(firmware_path, 'rb'))}
-
             if progress_callback:
                 progress_callback(40, "Uploading firmware...")
 
-            response = self.session.post(
-                url,
-                files=files,
-                auth=('root', 'root'),  # Default Whatsminer credentials
-                timeout=300  # 5 minute timeout
-            )
+            with open(firmware_path, 'rb') as fh:
+                files = {'file': (firmware_path.name, fh)}
+                response = self.session.post(
+                    url,
+                    files=files,
+                    auth=self.auth,
+                    timeout=self.timeout,
+                )
 
-            if response.status_code != 200 or not response.json().get('success', False):
-                return False, f"Failed to upload firmware: {response.text}"
+            if response.status_code != 200:
+                return False, f"Failed to upload firmware (HTTP {response.status_code}): {response.text[:200]}"
+            ok = False
+            try:
+                if 'application/json' in (response.headers.get('Content-Type') or ''):
+                    ok = bool(response.json().get('success', False))
+            except Exception:
+                ok = False
+            if not ok:
+                return False, f"Unexpected response from miner: {response.text[:200]}"
 
             if progress_callback:
                 progress_callback(80, "Verifying firmware...")
@@ -249,9 +296,7 @@ class WhatsminerFlasher(BaseFlasher):
             return False, f"Firmware update failed: {str(e)}"
 
         finally:
-            # Clean up
-            if 'files' in locals():
-                files['file'][1].close()
+            pass
 
 
 class AvalonFlasher(BaseFlasher):

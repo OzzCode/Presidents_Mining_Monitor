@@ -20,7 +20,7 @@
                     </p>
                 </div>
                 <div class="header-actions" style="display: flex; gap: 0.75rem;">
-                    <button onclick="document.getElementById('firmware-file').click()" class="btn"
+                    <button onclick="showUploadPicker()" class="btn"
                             style="background: var(--primary); color: white; display: inline-flex; align-items: center; gap: 0.5rem;">
                         <span>📤 Upload Firmware</span>
                     </button>
@@ -36,7 +36,14 @@
              style="display: grid; gap: 2rem; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: 'library jobs' 'recent recent';">
             <!-- Firmware Library Card -->
             <section class="card"
-                     style="grid-area: library; background: var(--surface-1); border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); transition: transform 0.2s ease, box-shadow 0.2s ease; padding: 1.75rem;">
+                     style="grid-area: library; :root {
+  /* Design token for primary surface background */
+  --color-surface-primary: #f5f5f5;
+}
+
+/* ... existing code ... */
+
+background-color: var(--color-surface-primary);; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); transition: transform 0.2s ease, box-shadow 0.2s ease; padding: 1.75rem;">
                 <div class="card-inner" style="height: 100%; display: flex; flex-direction: column;">
                     <div class="card-header"
                          style="margin-bottom: 1.25rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border);">
@@ -132,6 +139,7 @@
                             <!-- Dynamically populated -->
                         </div>
                     </div>
+                </div>
             </section>
 
             <!-- Create Job Card -->
@@ -203,6 +211,7 @@
                             </p>
                         </div>
                     </div>
+                </div>
             </section>
 
             <!-- Recent Jobs Card -->
@@ -246,6 +255,7 @@
                             <p>Loading flash jobs...</p>
                         </div>
                     </div>
+                </div>
             </section>
         </div>
     </div>
@@ -254,6 +264,7 @@
         /* Base Styles */
         :root {
             --primary: #4f46e5;
+            --primary-soft: rgba(79, 70, 229, 0.2);
             --primary-hover: #4338ca;
             --success: #10b981;
             --warning: #f59e0b;
@@ -261,6 +272,7 @@
             --text: #e2e8f0;
             --text-muted: #94a3b8;
             --surface: #1e293b;
+            --surface-1: #27303f; /* Added missing surface-1 variable */
             --surface-2: #334155;
             --surface-3: #475569;
             --border: #334155;
@@ -539,6 +551,25 @@
 
             const form = document.getElementById('upload-form');
             form.addEventListener('submit', handleUpload);
+
+            const fileInput = document.getElementById('firmware-file');
+            fileInput.addEventListener('change', () => {
+                // Ensure the upload form is visible when a file is chosen
+                const container = document.getElementById('upload-form-container');
+                container.style.display = 'block';
+                const statusEl = document.getElementById('upload-status');
+                statusEl.style.display = 'block';
+                statusEl.style.color = 'var(--muted)';
+                statusEl.textContent = fileInput.files && fileInput.files[0]
+                    ? `${fileInput.files[0].name} selected`
+                    : '';
+            });
+
+            const firmwareSelect = document.getElementById('firmware-select');
+            firmwareSelect.addEventListener('change', updateActionState);
+
+            const searchInput = document.getElementById('miner-search');
+            searchInput.addEventListener('input', filterMiners);
         });
 
         async function loadFirmwareImages() {
@@ -598,12 +629,14 @@
             if (firmwareImages.length === 0) {
                 select.innerHTML = '<option value="">-- No firmware available --</option>';
                 select.disabled = true;
+                updateActionState();
                 return;
             }
             select.disabled = false;
             select.innerHTML = '<option value="">-- Choose firmware --</option>' + firmwareImages.map(image => (
                 `<option value="${image.id}">${image.file_name} (${image.version || 'version ?'})</option>`
             )).join('');
+            updateActionState();
         }
 
         async function loadMiners() {
@@ -621,14 +654,17 @@
             const container = document.getElementById('miner-checkboxes');
             if (miners.length === 0) {
                 container.innerHTML = '<p style="color: var(--muted);">No miners available.</p>';
+                updateSelectedCount();
                 return;
             }
             container.innerHTML = miners.map(miner => `
-            <label style="display: block; padding: 0.25rem 0;">
+            <label class="miner-item" style="display: block; padding: 0.25rem 0;">
                 <input type="checkbox" value="${miner.ip}"> ${miner.ip}
                 <span style="color: var(--muted); font-size: 0.85rem;">${miner.model || ''}</span>
             </label>
         `).join('');
+            attachMinerCheckboxListeners();
+            updateSelectedCount();
         }
 
         async function createFlashJobs() {
@@ -663,6 +699,9 @@
                 alert(data.message);
                 activeJobs.push(...data.jobs.map(job => job.job_id));
                 await loadRecentJobs(data.jobs.map(job => job.job_id));
+                // Reset selections for safety
+                document.querySelectorAll('#miner-checkboxes input[type=checkbox]').forEach(cb => cb.checked = false);
+                updateSelectedCount();
             } catch (error) {
                 alert(error.message);
             }
@@ -747,6 +786,49 @@
                 statusEl.textContent = error.message;
                 statusEl.style.color = '#ef4444';
             }
+        }
+
+        // --- UI helpers and interactions ---
+        function showUploadPicker() {
+            const container = document.getElementById('upload-form-container');
+            container.style.display = 'block';
+            const input = document.getElementById('firmware-file');
+            input.click();
+            setTimeout(() => container.scrollIntoView({behavior: 'smooth', block: 'start'}), 0);
+        }
+
+        function updateSelectedCount() {
+            const count = document.querySelectorAll('#miner-checkboxes input[type=checkbox]:checked').length;
+            const label = document.getElementById('selected-miners-count');
+            label.textContent = `${count} selected`;
+            updateActionState();
+        }
+
+        function updateActionState() {
+            const firmwareId = document.getElementById('firmware-select').value;
+            const selectedCount = document.querySelectorAll('#miner-checkboxes input[type=checkbox]:checked').length;
+            const btn = document.getElementById('create-job-btn');
+            const enable = Boolean(firmwareId) && selectedCount > 0;
+            btn.disabled = !enable;
+        }
+
+        function attachMinerCheckboxListeners() {
+            document.querySelectorAll('#miner-checkboxes input[type=checkbox]').forEach(cb => {
+                cb.addEventListener('change', updateSelectedCount);
+            });
+        }
+
+        function filterMiners() {
+            const q = (document.getElementById('miner-search').value || '').toLowerCase().trim();
+            const items = document.querySelectorAll('#miner-checkboxes .miner-item');
+            if (!q) {
+                items.forEach(el => el.style.display = 'block');
+                return;
+            }
+            items.forEach(el => {
+                const text = el.textContent.toLowerCase();
+                el.style.display = text.includes(q) ? 'block' : 'none';
+            });
         }
 
         async function pollJobs() {

@@ -10,6 +10,7 @@ Provides endpoints for:
 """
 
 import datetime as dt
+import os
 import hashlib
 import uuid
 from pathlib import Path
@@ -701,17 +702,51 @@ def upload_firmware_image():
         ):
             return jsonify({"ok": False, "error": "Unsupported file extension"}), 400
 
-        file_bytes = file_storage.read()
-        size_bytes = len(file_bytes)
-        if size_bytes == 0:
-            return jsonify({"ok": False, "error": "File is empty"}), 400
-        if size_bytes > MAX_FIRMWARE_SIZE_BYTES:
+        # Early size guard if available from headers
+        content_len = request.content_length or getattr(file_storage, 'content_length', None)
+        if content_len and content_len > MAX_FIRMWARE_SIZE_BYTES:
             return jsonify({"ok": False, "error": "File exceeds maximum allowed size"}), 400
 
-        checksum = hashlib.sha256(file_bytes).hexdigest()
+        # Stream to temp file and compute checksum incrementally
+        unique_name = f"{uuid.uuid4().hex}_{filename}"
+        final_path = Path(FIRMWARE_UPLOAD_DIR) / unique_name
+        tmp_path = final_path.with_suffix(final_path.suffix + '.part')
 
+        hasher = hashlib.sha256()
+        size_bytes = 0
+        with open(tmp_path, 'wb') as out:
+            while True:
+                chunk = file_storage.stream.read(4 * 1024 * 1024)  # 4MB
+                if not chunk:
+                    break
+                size_bytes += len(chunk)
+                if size_bytes > MAX_FIRMWARE_SIZE_BYTES:
+                    out.flush()
+                    out.close()
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+                    return jsonify({"ok": False, "error": "File exceeds maximum allowed size"}), 400
+                hasher.update(chunk)
+                out.write(chunk)
+
+        if size_bytes == 0:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+            return jsonify({"ok": False, "error": "File is empty"}), 400
+
+        checksum = hasher.hexdigest()
+
+        # Deduplicate by checksum
         existing = session.query(FirmwareImage).filter(FirmwareImage.checksum == checksum).first()
         if existing:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
             return jsonify({
                 "ok": True,
                 "message": "Firmware already uploaded",
@@ -719,17 +754,15 @@ def upload_firmware_image():
                 "image": _serialize_firmware_image(existing),
             }), 200
 
-        unique_name = f"{uuid.uuid4().hex}_{filename}"
-        storage_path = Path(FIRMWARE_UPLOAD_DIR) / unique_name
-        with open(storage_path, 'wb') as fh:
-            fh.write(file_bytes)
+        # Move temp file atomically to final location
+        os.replace(tmp_path, final_path)
 
         username = getattr(g, 'user', None)
         uploaded_by = username.username if username else 'anonymous'
 
         metadata = {
             'file_name': filename,
-            'storage_path': str(storage_path.resolve()),
+            'storage_path': str(final_path.resolve()),
             'checksum': checksum,
             'size_bytes': size_bytes,
             'vendor': request.form.get('vendor') or None,
