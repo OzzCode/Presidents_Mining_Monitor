@@ -1,0 +1,28 @@
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+exclude = [
+    "/migrations/",
+    "/db_files/",
+]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["api", "core", "auth", "dashboard", "helpers"]
+skip = ["migrations", "db_files"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["migrations", "db_files"]
+select = [
+  "E",  # pycodestyle errors
+  "F",  # pyflakes
+  "I",  # isort-like import sorting
+  "N",  # pep8-naming
+  "B",  # flake8-bugbear
+]
+ignore = [
+  "E203",  # allow whitespace before ':' for black compat
+]

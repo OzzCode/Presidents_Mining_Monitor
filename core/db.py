@@ -3,7 +3,7 @@ import datetime as _dt
 from pathlib import Path
 import sqlite3
 from sqlalchemy import (
-    create_engine, event, Column, Integer, Float, String, DateTime, Text, Boolean, ForeignKey
+    create_engine, event, Column, Integer, Float, String, DateTime, Text, Boolean, ForeignKey, Index
 )
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.dialects.sqlite import JSON as SQLITE_JSON
@@ -53,6 +53,10 @@ Base = declarative_base()
 # -----------------------------------------------------------------------------
 class Metric(Base):
     __tablename__ = "metrics"
+    __table_args__ = (
+        # Composite index to speed up latest-row-per-miner queries
+        Index("idx_metrics_miner_ip_timestamp", "miner_ip", "timestamp"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     timestamp = Column(DateTime, default=_dt.datetime.utcnow, index=True)

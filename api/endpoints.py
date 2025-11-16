@@ -444,6 +444,8 @@ def miners_current():
       - active_only: 'true'/'false' (default 'true')
       - fresh_within: minutes (int, default 30)
       - ips: optional CSV to restrict to a set of IPs
+      - enrich_model: 'true'/'false' (default 'false') to fetch live model via MinerClient.
+                       When false, this endpoint avoids network calls and reads model from DB if present.
     """
     # Parse params robustly
     active_only = request.args.get('active_only', 'true').lower() == 'true'
@@ -454,6 +456,7 @@ def miners_current():
 
     ips_param = request.args.get('ips')
     ip_list = [i.strip() for i in ips_param.split(',') if i.strip()] if ips_param else None
+    enrich_model = request.args.get('enrich_model', 'false').lower() == 'true'
 
     cutoff = _naive_utc_now() - timedelta(minutes=fresh_within)
 
@@ -481,25 +484,37 @@ def miners_current():
 
         rows = q.order_by(Metric.miner_ip.asc()).all()
 
-        # Attempt to enrich with model by fetching live model per IP (best-effort)
-        models = {}
+        # Prefer DB-sourced model if available to avoid live network calls.
+        models: dict[str, str] = {}
         try:
             ips = [m.miner_ip for m in rows]
             if ips:
-                def _fetch(ip):
-                    try:
-                        return ip, MinerClient(ip).fetch_normalized().get('model', '')
-                    except Exception:
-                        return ip, ''
-
-                with ThreadPoolExecutor(max_workers=min(_MAX_WORKERS, len(ips))) as ex:
-                    for fut in as_completed([ex.submit(_fetch, ip) for ip in ips]):
-                        ip, model = fut.result()
-                        models[ip] = model
+                from core.db import Miner  # local import to avoid circulars at module import
+                miner_rows = s.query(Miner).filter(Miner.miner_ip.in_(ips)).all()
+                models.update({mr.miner_ip: (mr.model or '') for mr in miner_rows})
         except Exception:
-            models = {}
+            pass
 
-        return jsonify([{
+        # Optional live enrichment if explicitly requested
+        if enrich_model:
+            try:
+                ips = [m.miner_ip for m in rows]
+                if ips:
+                    def _fetch(ip):
+                        try:
+                            return ip, MinerClient(ip).fetch_normalized().get('model', '')
+                        except Exception:
+                            return ip, models.get(ip, '')
+
+                    with ThreadPoolExecutor(max_workers=min(_MAX_WORKERS, max(len(ips), 1))) as ex:
+                        for fut in as_completed([ex.submit(_fetch, ip) for ip in ips]):
+                            ip, model = fut.result()
+                            if model:
+                                models[ip] = model
+            except Exception:
+                pass
+
+        payload = [{
             "ip": m.miner_ip,
             "last_seen": m.timestamp.isoformat() + "Z",
             "hashrate_ths": float(m.hashrate_ths or 0.0),
@@ -507,7 +522,14 @@ def miners_current():
             "avg_temp_c": float(m.avg_temp_c or 0.0),
             "avg_fan_rpm": float(m.avg_fan_rpm or 0.0),
             "model": models.get(m.miner_ip, ''),
-        } for m in rows])
+        } for m in rows]
+
+        resp = jsonify(payload)
+        try:
+            resp = api_cache_control(resp)
+        except Exception:
+            pass
+        return resp
     finally:
         s.close()
 
@@ -520,6 +542,7 @@ def metrics():
     limit = int(request.args.get("limit", 500))
     active_only = request.args.get("active_only", "false").lower() == "true"
     fresh_within = int(request.args.get("fresh_within", 30))
+    enrich_model = request.args.get('enrich_model', 'false').lower() == 'true'
 
     # enforce a hard upper bound for safety
     limit = max(1, min(limit, API_MAX_LIMIT))
@@ -580,14 +603,30 @@ def metrics():
 
         # For single-miner queries, best-effort include model once
         if ip_filter:
+            # Try DB first to avoid live calls
+            model = ''
             try:
-                model = MinerClient(ip_filter).fetch_normalized().get('model', '')
+                from core.db import Miner
+                mrow = s.query(Miner).filter(Miner.miner_ip == ip_filter).first()
+                if mrow and mrow.model:
+                    model = mrow.model
             except Exception:
                 model = ''
+            # Optional live enrichment
+            if enrich_model and not model:
+                try:
+                    model = MinerClient(ip_filter).fetch_normalized().get('model', '')
+                except Exception:
+                    model = ''
             if model:
                 for rec in out:
                     rec['model'] = model
-        return jsonify(out)
+        resp = jsonify(out)
+        try:
+            resp = api_cache_control(resp)
+        except Exception:
+            pass
+        return resp
     finally:
         s.close()
 

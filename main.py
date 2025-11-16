@@ -10,10 +10,12 @@ from dashboard.routes import dash_bp, get_miners
 from werkzeug.exceptions import HTTPException
 from auth import auth_bp
 import os
+from sqlalchemy import text
 
 
 def create_app():
     app = Flask(__name__, static_url_path='/static', static_folder='static')
+    # CORS (development-friendly; can be restricted in production configuration)
     CORS(app)
 
     # Secret key for sessions (auth). In production, set SECRET_KEY env var.
@@ -78,7 +80,7 @@ def create_app():
         try:
             from core.db import SessionLocal
             s = SessionLocal()
-            s.execute("SELECT 1")
+            s.execute(text("SELECT 1"))
             s.close()
             db_ok = True
         except Exception:
