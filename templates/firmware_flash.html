@@ -175,16 +175,24 @@ background-color: var(--color-surface-primary);; border-radius: 12px; box-shadow
                                 <span id="selected-miners-count" style="font-size: 0.8rem; color: var(--muted);">0 selected</span>
                             </div>
 
-                            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center; flex-wrap: wrap;">
                                 <input type="text" id="miner-search" placeholder="Search miners..."
                                        class="form-control"
-                                       style="flex: 1; padding: 0.6rem 0.75rem; border-radius: 6px;">
+                                       style="flex: 1; min-width: 220px; padding: 0.6rem 0.75rem; border-radius: 6px;">
+                                <label for="online-only-toggle" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; color: var(--text-muted); white-space: nowrap;">
+                                    <input type="checkbox" id="online-only-toggle" checked>
+                                    Online only
+                                </label>
+                                <button class="btn" style="padding: 0 1rem; border: 1px solid var(--border);" onclick="loadMiners()">
+                                    Refresh
+                                </button>
+                                <div style="flex: 1"></div>
                                 <button class="btn" style="padding: 0 1rem; border: 1px solid var(--border);"
-                                        onclick="document.querySelectorAll('#miner-checkboxes input[type=checkbox]').forEach(cb => cb.checked = true); updateSelectedCount()">
+                                        onclick="selectVisibleMiners(true)">
                                     All
                                 </button>
                                 <button class="btn" style="padding: 0 1rem; border: 1px solid var(--border);"
-                                        onclick="document.querySelectorAll('#miner-checkboxes input[type=checkbox]').forEach(cb => cb.checked = false); updateSelectedCount()">
+                                        onclick="selectVisibleMiners(false)">
                                     None
                                 </button>
                             </div>
@@ -543,6 +551,7 @@ background-color: var(--color-surface-primary);; border-radius: 12px; box-shadow
         let miners = [];
         let firmwareImages = [];
         let activeJobs = [];
+        let onlineOnly = true;
 
         document.addEventListener('DOMContentLoaded', () => {
             loadFirmwareImages();
@@ -570,6 +579,20 @@ background-color: var(--color-surface-primary);; border-radius: 12px; box-shadow
 
             const searchInput = document.getElementById('miner-search');
             searchInput.addEventListener('input', filterMiners);
+
+            const onlineToggle = document.getElementById('online-only-toggle');
+            try {
+                const saved = localStorage.getItem('firmware_online_only');
+                if (saved === 'true' || saved === 'false') {
+                    onlineOnly = (saved === 'true');
+                    onlineToggle.checked = onlineOnly;
+                }
+            } catch (e) {}
+            onlineToggle.addEventListener('change', () => {
+                onlineOnly = onlineToggle.checked;
+                try { localStorage.setItem('firmware_online_only', String(onlineOnly)); } catch (e) {}
+                renderMinerCheckboxes();
+            });
         });
 
         async function loadFirmwareImages() {
@@ -650,20 +673,62 @@ background-color: var(--color-surface-primary);; border-radius: 12px; box-shadow
             }
         }
 
+        function isMinerOnline(miner) {
+            try {
+                const status = (miner.status || '').toString().toLowerCase();
+                if (status && ['online','alive','ok','healthy'].includes(status)) return true;
+                if (typeof miner.is_stale === 'boolean') return !miner.is_stale;
+                const age = Number(miner.age_sec);
+                if (!Number.isNaN(age)) return age <= 120; // 2 minutes grace if provided
+            } catch (e) {}
+            return false;
+        }
+
+        function getVisibleMiners() {
+            const q = (document.getElementById('miner-search').value || '').toLowerCase().trim();
+            return (miners || []).filter(m => {
+                if (onlineOnly && !isMinerOnline(m)) return false;
+                if (!q) return true;
+                const hay = `${m.ip || ''} ${m.model || ''} ${m.vendor || ''} ${m.hostname || ''}`.toLowerCase();
+                return hay.includes(q);
+            });
+        }
+
         function renderMinerCheckboxes() {
             const container = document.getElementById('miner-checkboxes');
-            if (miners.length === 0) {
+            if (!miners || miners.length === 0) {
                 container.innerHTML = '<p style="color: var(--muted);">No miners available.</p>';
                 updateSelectedCount();
                 return;
             }
-            container.innerHTML = miners.map(miner => `
-            <label class="miner-item" style="display: block; padding: 0.25rem 0;">
-                <input type="checkbox" value="${miner.ip}"> ${miner.ip}
-                <span style="color: var(--muted); font-size: 0.85rem;">${miner.model || ''}</span>
-            </label>
-        `).join('');
+            const visible = getVisibleMiners();
+
+            // Preserve checked selections across re-renders
+            const previouslyChecked = new Set(Array.from(document.querySelectorAll('#miner-checkboxes input:checked')).map(cb => cb.value));
+
+            if (visible.length === 0) {
+                const msg = onlineOnly
+                    ? '<p style="color: var(--muted);">No online miners match your filters. <a href="#" onclick="document.getElementById(\'online-only-toggle\').checked=false; onlineOnly=false; renderMinerCheckboxes(); return false;">Show all miners</a>.</p>'
+                    : '<p style="color: var(--muted);">No miners match your filters.</p>';
+                container.innerHTML = msg;
+                updateSelectedCount();
+                return;
+            }
+
+            container.innerHTML = visible.map(miner => `
+                <label class="miner-item" style="display: block; padding: 0.25rem 0;">
+                    <input type="checkbox" value="${miner.ip}" ${previouslyChecked.has(String(miner.ip)) ? 'checked' : ''}> ${miner.ip}
+                    <span style="color: var(--muted); font-size: 0.85rem;">${miner.model || ''}</span>
+                    ${isMinerOnline(miner) ? '<span style="color:#10b981; font-size: 0.75rem; margin-left: .5rem;">● online</span>' : '<span style="color:#ef4444; font-size: 0.75rem; margin-left: .5rem;">● offline</span>'}
+                </label>
+            `).join('');
             attachMinerCheckboxListeners();
+            updateSelectedCount();
+        }
+
+        function selectVisibleMiners(checked) {
+            const container = document.getElementById('miner-checkboxes');
+            container.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = !!checked);
             updateSelectedCount();
         }
 
@@ -707,13 +772,49 @@ background-color: var(--color-surface-primary);; border-radius: 12px; box-shadow
             }
         }
 
+        function renderJobCard(job) {
+            return `
+                <div class="job-card" style="padding: 1rem; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.75rem;">
+                    <div style="display: flex; justify-content: space-between; gap: 1rem;">
+                        <div>
+                            <strong>${job.miner_ip}</strong>
+                            <div style="color: var(--muted); font-size: 0.9rem;">${job.firmware?.file_name || 'Unknown firmware'}</div>
+                            <div style="color: var(--muted); font-size: 0.8rem;">Created ${formatDate(job.created_at)}</div>
+                            <div style="color: var(--muted); font-size: 0.8rem;">Progress details: ${job.metadata?.history?.slice(-1)[0]?.message || '—'}</div>
+                        </div>
+                        <span style="align-self: flex-start; padding: 0.35rem 0.8rem; border-radius: 999px; font-size: 0.85rem; background: ${job.status === 'success' ? '#10b981' : job.status === 'failed' ? '#ef4444' : (job.status === 'in_progress' ? '#f59e0b' : '#64748b')}; color: white;">
+                            ${String(job.status || '').toUpperCase()}
+                        </span>
+                    </div>
+                    <div style="margin-top: 0.75rem; background: var(--border); height: 8px; border-radius: 999px; overflow: hidden;">
+                        <div style="width: ${job.progress || 0}%; height: 100%; background: var(--primary);"></div>
+                    </div>
+                    ${job.error_message ? `<div style=\"color: #ef4444; margin-top: 0.5rem;\">${job.error_message}</div>` : ''}
+                </div>
+            `;
+        }
+
         async function loadRecentJobs(jobIds = []) {
             const container = document.getElementById('job-list');
+
+            // Case 1: No explicit jobIds and no active jobs -> fetch the recent list endpoint
             if (jobIds.length === 0 && activeJobs.length === 0) {
-                container.innerHTML = '<p style="color: var(--muted);">Jobs will appear here once created.</p>';
+                container.innerHTML = '<p style="color: var(--muted);">Loading recent jobs...</p>';
+                try {
+                    const res = await fetch('/api/remote/firmware/jobs');
+                    const data = await res.json();
+                    if (!data.ok) throw new Error(data.error || 'Failed to load jobs');
+                    const jobs = data.jobs || [];
+                    container.innerHTML = jobs.length
+                        ? jobs.map(j => renderJobCard(j)).join('')
+                        : '<p style="color: var(--muted);">No jobs found.</p>';
+                } catch (error) {
+                    container.innerHTML = `<div class="alert">${error.message}</div>`;
+                }
                 return;
             }
 
+            // Case 2: We have specific job IDs (newly created or active) -> fetch each for live updates
             const idsToFetch = jobIds.length ? jobIds : activeJobs;
             container.innerHTML = 'Loading jobs...';
             try {
@@ -730,25 +831,7 @@ background-color: var(--color-surface-primary);; border-radius: 12px; box-shadow
                     if (job.status === 'success' || job.status === 'failed') {
                         activeJobs = activeJobs.filter(id => id !== job.job_id);
                     }
-                    return `
-                    <div class="job-card" style="padding: 1rem; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.75rem;">
-                        <div style="display: flex; justify-content: space-between; gap: 1rem;">
-                            <div>
-                                <strong>${job.miner_ip}</strong>
-                                <div style="color: var(--muted); font-size: 0.9rem;">${job.firmware?.file_name || 'Unknown firmware'}</div>
-                                <div style="color: var(--muted); font-size: 0.8rem;">Created ${formatDate(job.created_at)}</div>
-                                <div style="color: var(--muted); font-size: 0.8rem;">Progress details: ${job.metadata?.history?.slice(-1)[0]?.message || '—'}</div>
-                            </div>
-                            <span style="align-self: flex-start; padding: 0.35rem 0.8rem; border-radius: 999px; font-size: 0.85rem; background: ${job.status === 'success' ? '#10b981' : job.status === 'failed' ? '#ef4444' : '#f59e0b'}; color: white;">
-                                ${job.status.toUpperCase()}
-                            </span>
-                        </div>
-                        <div style="margin-top: 0.75rem; background: var(--border); height: 8px; border-radius: 999px; overflow: hidden;">
-                            <div style="width: ${job.progress || 0}%; height: 100%; background: var(--primary);"></div>
-                        </div>
-                        ${job.error_message ? `<div style="color: #ef4444; margin-top: 0.5rem;">${job.error_message}</div>` : ''}
-                    </div>
-                `;
+                    return renderJobCard(job);
                 }).join('');
 
                 container.innerHTML = cards || '<p style="color: var(--muted);">No jobs found.</p>';
@@ -819,16 +902,8 @@ background-color: var(--color-surface-primary);; border-radius: 12px; box-shadow
         }
 
         function filterMiners() {
-            const q = (document.getElementById('miner-search').value || '').toLowerCase().trim();
-            const items = document.querySelectorAll('#miner-checkboxes .miner-item');
-            if (!q) {
-                items.forEach(el => el.style.display = 'block');
-                return;
-            }
-            items.forEach(el => {
-                const text = el.textContent.toLowerCase();
-                el.style.display = text.includes(q) ? 'block' : 'none';
-            });
+            // Re-render the list according to the current search query and onlineOnly toggle
+            renderMinerCheckboxes();
         }
 
         async function pollJobs() {

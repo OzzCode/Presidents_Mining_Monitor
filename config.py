@@ -92,6 +92,18 @@ FIRMWARE_DEFAULT_CREDENTIALS = {
     # "innosilicon": {"auth": "basic", "user": os.getenv("INNO_USER", "admin"), "password": os.getenv("INNO_PASSWORD", "admin")},
 }
 
+# Canonical vendor alias normalization for firmware metadata.
+# Maps third-party firmware brands to the underlying hardware vendor used by the flasher.
+# This is intentionally minimal and can be extended via code changes if needed.
+FIRMWARE_VENDOR_ALIASES = {
+    # Bitmain/Antminer family
+    "vnish": "bitmain",
+    "braiins": "bitmain",
+    "braiins-os": "bitmain",
+    "bos": "bitmain",
+    "bosminer": "bitmain",
+}
+
 
 def efficiency_for_model(model: str | None) -> float:
     if not model: return EFFICIENCY_J_PER_TH

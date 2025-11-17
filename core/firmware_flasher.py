@@ -32,21 +32,16 @@ class UnsupportedVendorError(FlashError):
 
 
 def get_flasher_for_miner(model: str, ip: str) -> 'BaseFlasher':
-    """Factory function to get the appropriate flasher for a miner model.
-    
-    Args:
-        model: Miner model (e.g., 'Antminer S19', 'Whatsminer M30S')
-        ip: IP address of the miner
-        
-    Returns:
-        An instance of the appropriate flasher class
-        
-    Raises:
-        UnsupportedVendorError: If the vendor is not supported
-    """
-    model_lower = model.lower()
+    """Factory function to get the appropriate flasher for a miner model or vendor.
 
-    if 'antminer' in model_lower or 'bitmain' in model_lower:
+    The ``model`` parameter may actually be a vendor key (e.g. 'bitmain') or a
+    firmware brand string. We normalize common third‑party firmware brands to
+    their underlying hardware vendor here for robustness.
+    """
+    model_lower = (model or '').lower()
+
+    # Treat common third-party firmware brands as Bitmain/Antminer hardware
+    if any(alias in model_lower for alias in ('antminer', 'bitmain', 'vnish', 'braiins', 'braiins-os', 'bos', 'bosminer')):
         return AntminerFlasher(ip)
     elif 'whatsminer' in model_lower or 'microbt' in model_lower:
         return WhatsminerFlasher(ip)
