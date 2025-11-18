@@ -597,11 +597,38 @@
 
                     forecastDetails.innerHTML = html;
 
-                    // Update chart
-                    updateBTCForecastChart(data.data.forecasts);
+                    // Update small KPI card (7-day change) and chart
+                    const forecasts = data.data.forecasts;
+                    updateBTCForecastChart(forecasts);
+
+                    // Compute 7-day trend summary for the KPI card
+                    try {
+                        const first = forecasts[0];
+                        const last = forecasts[forecasts.length - 1];
+                        if (first && last) {
+                            const p0 = Number(first.predicted_price) || 0;
+                            const pN = Number(last.predicted_price) || 0;
+                            const delta = pN - p0;
+                            const pct = p0 ? (delta / p0) * 100 : 0;
+                            const arrow = delta > 0 ? '▲' : (delta < 0 ? '▼' : '→');
+                            const trendText = `${arrow} ${pct.toFixed(2)}% over 7d`;
+                            const lastText = `$${Math.round(pN).toLocaleString()} (last)`;
+                            const trendEl = document.getElementById('btcTrend');
+                            const forecastEl = document.getElementById('btcForecast');
+                            if (trendEl) trendEl.textContent = trendText;
+                            if (forecastEl) forecastEl.textContent = lastText;
+                        }
+                    } catch (e) {
+                        // Non-fatal; leave existing KPI values
+                    }
                 }
             } catch (error) {
                 console.error('Error loading BTC forecast:', error);
+                // Provide graceful fallback on KPI card
+                const trendEl = document.getElementById('btcTrend');
+                const forecastEl = document.getElementById('btcForecast');
+                if (trendEl) trendEl.textContent = '—';
+                if (forecastEl) forecastEl.textContent = '7-day forecast unavailable';
             }
         }
 
@@ -666,16 +693,24 @@
         }
 
         function updateBTCForecastChart(forecasts) {
-            const ctx = document.getElementById('btcForecastChart').getContext('2d');
-
-            if (btcForecastChart) {
-                btcForecastChart.destroy();
-            }
+            const canvas = document.getElementById('btcForecastChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
 
             const labels = forecasts.map(f => new Date(f.date).toLocaleDateString());
             const prices = forecasts.map(f => f.predicted_price);
             const upperBounds = forecasts.map(f => f.confidence_upper);
             const lowerBounds = forecasts.map(f => f.confidence_lower);
+
+            if (btcForecastChart) {
+                // In-place update to avoid flicker
+                btcForecastChart.data.labels = labels;
+                btcForecastChart.data.datasets[0].data = prices;
+                btcForecastChart.data.datasets[1].data = upperBounds;
+                btcForecastChart.data.datasets[2].data = lowerBounds;
+                btcForecastChart.update('none');
+                return;
+            }
 
             btcForecastChart = new Chart(ctx, {
                 type: 'line',
@@ -721,7 +756,7 @@
                         y: {
                             ticks: {
                                 callback: function (value) {
-                                    return '$' + value.toLocaleString();
+                                    return '$' + Number(value).toLocaleString();
                                 }
                             }
                         }

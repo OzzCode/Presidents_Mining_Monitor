@@ -351,149 +351,172 @@ async function fillCharts() {
 }
 
 // ------------- table -------------
+const enqueueTable = (window.DomUtils && DomUtils.createSerialExecutor) ? DomUtils.createSerialExecutor() : (fn => fn());
 async function fillTable() {
     const tbody = $('#stats-log');
     if (!tbody) return;
 
-    if (QS_IP) {
-        // single-miner: last ≤6h to keep the table readable
-        const hours = Math.min(uiChartHours(), 6);
-        const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-        const params = new URLSearchParams({since, limit: '500', ip: QS_IP});
+    return enqueueTable(async () => {
+        if (QS_IP) {
+            // single-miner: last ≤6h to keep the table readable
+            const hours = Math.min(uiChartHours(), 6);
+            const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+            const params = new URLSearchParams({since, limit: '500', ip: QS_IP});
 
-        let rows = [];
-        try {
-            const res = await fetch(`/api/metrics?${params.toString()}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            rows = await res.json();
-            if (!Array.isArray(rows)) rows = [];
-        } catch (e) {
-            console.warn('metrics(table) fetch failed', e);
-            rows = [];
-        }
+            let rows = [];
+            try {
+                const res = await fetch(`/api/metrics?${params.toString()}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                rows = await res.json();
+                if (!Array.isArray(rows)) rows = [];
+            } catch (e) {
+                console.warn('metrics(table) fetch failed', e);
+                rows = [];
+            }
 
-        tbody.textContent = '';
-        if (!rows.length) {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="6">No recent data for ${QS_IP}.</td>`;
-            tbody.appendChild(tr);
-            return;
-        }
+            const items = rows.slice(-200);
+            if (!items.length) {
+                // render a stable empty row
+                DomUtils.morphChildrenByKey(tbody, [{key: 'empty'}], x => x.key, (_, existing) => {
+                    const tr = existing || document.createElement('tr');
+                    tr.innerHTML = `<td colspan="7">No recent data for ${QS_IP}.</td>`;
+                    return tr;
+                });
+                return;
+            }
 
-        rows.slice(-200).forEach(r => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-        <td>${r.model}</td>
-        <td>${r.timestamp}</td>
-        <td>${r.ip || QS_IP}</td>
-        <td>${fmt(r.hashrate_ths, 3)}</td>
-        <td>${fmt0(r.power_w)}</td>
-        <td>${fmt(r.avg_temp_c, 1)}</td>
-        <td>${fmt0(r.avg_fan_rpm)}</td>
-      `;
-            tbody.appendChild(tr);
-        });
-    } else {
-        // farm: one latest row per miner (strictly follow UI window)
-        async function fetchCurrent(activeOnly, freshMinsVal) {
-            const min = Number.isFinite(Number(freshMinsVal)) ? Number(freshMinsVal) : 30;
-            const params = new URLSearchParams({
-                active_only: activeOnly ? 'true' : 'false',
-                fresh_within: String(min)
+            DomUtils.morphChildrenByKey(tbody, items, r => `${r.timestamp}-${r.ip || QS_IP}`, (r, existing) => {
+                let tr = existing || document.createElement('tr');
+                if (!existing) {
+                    // create cells once
+                    tr.innerHTML = '<td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
+                }
+                const cells = tr.children;
+                cells[0].textContent = r.model || '—';
+                cells[1].textContent = r.timestamp || '—';
+                cells[2].innerHTML = `${r.ip || QS_IP}`; // plain text for speed
+                cells[3].textContent = fmt(r.hashrate_ths, 3);
+                cells[4].textContent = fmt0(r.power_w);
+                cells[5].textContent = fmt(r.avg_temp_c, 1);
+                cells[6].textContent = fmt0(r.avg_fan_rpm);
+                return tr;
             });
-            const res = await fetch(`/api/miners/current?${params.toString()}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
-            return Array.isArray(data) ? data : [];
-        }
+        } else {
+            // farm: one latest row per miner (strictly follow UI window)
+            async function fetchCurrent(activeOnly, freshMinsVal) {
+                const min = Number.isFinite(Number(freshMinsVal)) ? Number(freshMinsVal) : 30;
+                const params = new URLSearchParams({
+                    active_only: activeOnly ? 'true' : 'false',
+                    fresh_within: String(min)
+                });
+                const res = await fetch(`/api/miners/current?${params.toString()}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                return Array.isArray(data) ? data : [];
+            }
 
-        let rows = [];
-        try {
-            rows = await fetchCurrent(uiActiveOnly(), uiFreshMins());
-        } catch (e) {
-            console.warn('miners/current fetch failed', e);
-            rows = [];
-        }
+            let rows = [];
+            try {
+                rows = await fetchCurrent(uiActiveOnly(), uiFreshMins());
+            } catch (e) {
+                console.warn('miners/current fetch failed', e);
+                rows = [];
+            }
 
-        tbody.textContent = '';
-        if (!rows.length) {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="7">No miners found in the selected window.</td>`;
-            tbody.appendChild(tr);
-            return;
-        }
+            if (!rows.length) {
+                DomUtils.morphChildrenByKey(tbody, [{key: 'empty'}], x => x.key, (_, existing) => {
+                    const tr = existing || document.createElement('tr');
+                    tr.innerHTML = `<td colspan="7">No miners found in the selected window.</td>`;
+                    return tr;
+                });
+                return;
+            }
 
-        rows.forEach(r => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-        <td>${r.model || '—'}</td>
-        <td>${r.last_seen || '—'}</td>
-        <td><a href="/dashboard/?ip=${encodeURIComponent(r.ip)}" class="link-ip">${r.ip}</a></td>
-        <td>${fmt(r.hashrate_ths, 3)}</td>
-        <td>${fmt0(r.power_w)}</td>
-        <td>${fmt(r.avg_temp_c, 1)}</td>
-        <td>${fmt0(r.avg_fan_rpm)}</td>
-      `;
-            tbody.appendChild(tr);
-        });
-    }
+            DomUtils.morphChildrenByKey(tbody, rows, r => r.ip, (r, existing) => {
+                let tr = existing || document.createElement('tr');
+                if (!existing) {
+                    tr.innerHTML = '<td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
+                }
+                const cells = tr.children;
+                cells[0].textContent = r.model || '—';
+                cells[1].textContent = r.last_seen || '—';
+                // link cell
+                const ip = r.ip;
+                cells[2].innerHTML = `<a href="/dashboard/?ip=${encodeURIComponent(ip)}" class="link-ip">${ip}</a>`;
+                cells[3].textContent = fmt(r.hashrate_ths, 3);
+                cells[4].textContent = fmt0(r.power_w);
+                cells[5].textContent = fmt(r.avg_temp_c, 1);
+                cells[6].textContent = fmt0(r.avg_fan_rpm);
+                return tr;
+            });
+        }
+    });
 }
 
 
 // ------------- pools (single-miner) -------------
+const enqueuePools = (window.DomUtils && DomUtils.createSerialExecutor) ? DomUtils.createSerialExecutor() : (fn => fn());
 async function loadPools() {
     if (!QS_IP) return;
     const tbody = document.getElementById('pools-tbody');
     const statusEl = document.getElementById('pools-status');
     if (!tbody) return;
-    try {
-        if (statusEl) statusEl.textContent = 'Loading…';
-        const res = await fetch(`/api/miners/${encodeURIComponent(QS_IP)}/pools`);
-        const data = await res.json().catch(() => ({}));
-        tbody.textContent = '';
-        if (!res.ok || !data || !Array.isArray(data.pools)) {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="10" style="color:#dc2626;">Failed to load pools.</td>`;
-            tbody.appendChild(tr);
-            if (statusEl) statusEl.textContent = 'Error';
-            return;
-        }
-        if (data.pools.length === 0) {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="10" style="color:#888;">No pools configured.</td>`;
-            tbody.appendChild(tr);
-        } else {
-            data.pools.forEach(p => {
-                const tr = document.createElement('tr');
-                const pr = (p.prio !== undefined && p.prio !== null) ? p.prio : '';
-                const sa = (p.stratum_active === true) ? 'Active' : (p.stratum_active === false ? '—' : '');
-                const acc = (typeof p.accepted === 'number') ? p.accepted : (p.accepted ? Number(p.accepted) : 0);
-                const rej = (typeof p.rejected === 'number') ? p.rejected : (p.rejected ? Number(p.rejected) : 0);
-                const stl = (typeof p.stale === 'number') ? p.stale : (p.stale ? Number(p.stale) : 0);
-                const rp = (typeof p.reject_percent === 'number') ? p.reject_percent : (p.reject_percent ? Number(p.reject_percent) : 0);
-                tr.innerHTML = `
-                    <td>${p.id ?? ''}</td>
-                    <td>${p.url ? `<code>${p.url}</code>` : ''}</td>
-                    <td>${p.user ? `<code>${p.user}</code>` : ''}</td>
-                    <td>${p.status || ''}</td>
-                    <td>${pr}</td>
-                    <td>${sa}</td>
-                    <td>${acc}</td>
-                    <td>${rej}</td>
-                    <td>${stl}</td>
-                    <td>${rp.toFixed ? rp.toFixed(2) : Number(rp).toFixed(2)}%</td>
-                `;
-                tbody.appendChild(tr);
+    return enqueuePools(async () => {
+        try {
+            if (statusEl) statusEl.textContent = 'Loading…';
+            const res = await fetch(`/api/miners/${encodeURIComponent(QS_IP)}/pools`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data || !Array.isArray(data.pools)) {
+                DomUtils.morphChildrenByKey(tbody, [{key: 'error', message: 'Failed to load pools.'}], x => x.key, (x, existing) => {
+                    const tr = existing || document.createElement('tr');
+                    tr.innerHTML = `<td colspan="10" style="color:#dc2626;">${x.message}</td>`;
+                    return tr;
+                });
+                if (statusEl) statusEl.textContent = 'Error';
+                return;
+            }
+            if (data.pools.length === 0) {
+                DomUtils.morphChildrenByKey(tbody, [{key: 'empty'}], x => x.key, (x, existing) => {
+                    const tr = existing || document.createElement('tr');
+                    tr.innerHTML = `<td colspan="10" style="color:#888;">No pools configured.</td>`;
+                    return tr;
+                });
+            } else {
+                DomUtils.morphChildrenByKey(tbody, data.pools, p => `${p.id ?? ''}-${p.url ?? ''}-${p.user ?? ''}`, (p, existing) => {
+                    let tr = existing || document.createElement('tr');
+                    if (!existing) {
+                        tr.innerHTML = '<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
+                    }
+                    const pr = (p.prio !== undefined && p.prio !== null) ? p.prio : '';
+                    const sa = (p.stratum_active === true) ? 'Active' : (p.stratum_active === false ? '—' : '');
+                    const acc = (typeof p.accepted === 'number') ? p.accepted : (p.accepted ? Number(p.accepted) : 0);
+                    const rej = (typeof p.rejected === 'number') ? p.rejected : (p.rejected ? Number(p.rejected) : 0);
+                    const stl = (typeof p.stale === 'number') ? p.stale : (p.stale ? Number(p.stale) : 0);
+                    const rp = (typeof p.reject_percent === 'number') ? p.reject_percent : (p.reject_percent ? Number(p.reject_percent) : 0);
+                    const cells = tr.children;
+                    cells[0].textContent = p.id ?? '';
+                    cells[1].innerHTML = p.url ? `<code>${p.url}</code>` : '';
+                    cells[2].innerHTML = p.user ? `<code>${p.user}</code>` : '';
+                    cells[3].textContent = p.status || '';
+                    cells[4].textContent = pr;
+                    cells[5].textContent = sa;
+                    cells[6].textContent = acc;
+                    cells[7].textContent = rej;
+                    cells[8].textContent = stl;
+                    cells[9].textContent = (rp.toFixed ? rp.toFixed(2) : Number(rp).toFixed(2)) + '%';
+                    return tr;
+                });
+            }
+            if (statusEl) statusEl.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        } catch (e) {
+            DomUtils.morphChildrenByKey(tbody, [{key: 'error', message: String(e)}], x => x.key, (x, existing) => {
+                const tr = existing || document.createElement('tr');
+                tr.innerHTML = `<td colspan="10" style="color:#dc2626;">${x.message}</td>`;
+                return tr;
             });
+            if (statusEl) statusEl.textContent = 'Error';
         }
-        if (statusEl) statusEl.textContent = `Updated ${new Date().toLocaleTimeString()}`;
-    } catch (e) {
-        tbody.textContent = '';
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="10" style="color:#dc2626;">${String(e)}</td>`;
-        tbody.appendChild(tr);
-        if (statusEl) statusEl.textContent = 'Error';
-    }
+    });
 }
 
 // ------------- live -------------
