@@ -68,6 +68,7 @@ class Metric(Base):
     avg_fan_rpm = Column(Float)
 
 
+# noinspection PyDeprecation
 class Miner(Base):
     """Static/durable metadata about a miner device (one row per device/IP)."""
     __tablename__ = "miners"
@@ -322,6 +323,7 @@ def init_db():
     Base.metadata.create_all(bind=engine)
 
 
+# noinspection PyDeprecation
 class User(Base):
     """Basic user auth + preferences for personalization."""
     __tablename__ = "users"
@@ -336,6 +338,7 @@ class User(Base):
     preferences = Column(SQLITE_JSON, nullable=True)
 
 
+# noinspection PyDeprecation
 class ElectricityRate(Base):
     """Time-of-use electricity rate configuration."""
     __tablename__ = "electricity_rates"
