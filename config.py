@@ -64,7 +64,7 @@ API_MAX_LIMIT = int(os.getenv('API_MAX_LIMIT', 10000))
 
 FIRMWARE_UPLOAD_DIR = Path(os.getenv("FIRMWARE_UPLOAD_DIR", "uploads/firmware"))
 FIRMWARE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-MAX_FIRMWARE_SIZE_BYTES = int(os.getenv("MAX_FIRMWARE_SIZE_BYTES", 100 * 1024 * 1024))
+MAX_FIRMWARE_SIZE_BYTES = int(os.getenv("MAX_FIRMWARE_SIZE_BYTES", 100 * 1024 * 2048))
 FIRMWARE_ALLOWED_EXTENSIONS = {
     ext.strip().lower()
     for ext in os.getenv("FIRMWARE_ALLOWED_EXTENSIONS", "bin,tar,tar.gz,zip,img").split(",")
