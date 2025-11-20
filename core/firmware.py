@@ -9,20 +9,22 @@ for each miner vendor/model.
 from __future__ import annotations
 
 import datetime as dt
+import logging
+import threading
+import time as _t
 import uuid
 from pathlib import Path
-from typing import Iterable, Optional, List, Any
-import logging
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from core.db import FirmwareImage, FirmwareFlashJob, SessionLocal
 from config import (
     FIRMWARE_UPLOAD_DIR,
     FIRMWARE_DEFAULT_CREDENTIALS,
     FIRMWARE_HTTP_VERIFY,
     FIRMWARE_VENDOR_ALIASES,
 )
+from core.db import FirmwareImage, FirmwareFlashJob, SessionLocal
 
 # Replace the circular import:
 # from scheduler import logger
@@ -190,20 +192,17 @@ class FirmwareFlashService:
     @staticmethod
     def process_jobs(session: Session, *, batch_size: int = 10) -> dict:
         """Process pending firmware flash jobs.
-        
+
         This method processes a batch of pending firmware flash jobs, handling the actual
         flashing process for each supported miner type.
-        
+
         Args:
             session: Database session
             batch_size: Maximum number of jobs to process in this batch
-            
+
         Returns:
             Dictionary with job processing statistics
         """
-        from core.firmware_flasher import get_flasher_for_miner, FlashError, UnsupportedVendorError, BaseFlasher
-        from core.miner import MinerClient
-
         jobs = FirmwareFlashService.list_active_jobs(session)[:batch_size]
         summary = {
             "checked": len(jobs),
@@ -214,248 +213,216 @@ class FirmwareFlashService:
         }
 
         for job in jobs:
-            try:
-                extra = job.extra_metadata or {}
-                history = extra.get("history", [])
-                firmware = FirmwareService.get_image(session, job.firmware_id)
-
-                if not firmware:
-                    raise ValueError(f"Firmware image {job.firmware_id} not found")
-
-                firmware_path = FirmwareService.resolve_image_path(firmware)
-                if not firmware_path:
-                    raise ValueError(f"Firmware file not found at {firmware.storage_path}")
-
-                if job.status == "pending":
-                    # Guard: avoid starting a second job for the same miner concurrently
-                    existing_active = (
-                        session.query(FirmwareFlashJob)
-                        .filter(
-                            FirmwareFlashJob.miner_ip == job.miner_ip,
-                            FirmwareFlashJob.status == 'in_progress',
-                            FirmwareFlashJob.id != job.id,
-                        )
-                        .first()
-                    )
-                    if existing_active:
-                        # leave as pending; next scheduler tick will try again
-                        continue
-
-                    # Start the flashing process
-                    FirmwareFlashService.mark_started(session, job)
-
-                    # Initialize miner client to get model info
-                    try:
-                        miner_client = MinerClient(job.miner_ip)
-                        summary_data = miner_client.get_summary()
-                        miner_model = summary_data.get('Type', 'Unknown')
-
-                        # Store miner info for reference
-                        extra['miner_info'] = {
-                            'model': miner_model,
-                            'ip': job.miner_ip,
-                            'original_firmware': summary_data.get('Firmware', 'Unknown'),
-                        }
-                    except Exception as e:
-                        logger.warning(f"Could not get miner info for {job.miner_ip}: {str(e)}")
-                        miner_model = 'Unknown'
-
-                    # Log start of flashing
-                    history.append({
-                        "timestamp": dt.datetime.utcnow().isoformat(),
-                        "message": f"Starting firmware update to {firmware.file_name}",
-                        "miner_model": miner_model,
-                    })
-                    job.extra_metadata = {**extra, "history": history}
-                    session.commit()
-                    summary["started"] += 1
-
-                    # Determine vendor for credential fallback (prefer firmware metadata)
-                    orig_vendor = (firmware.vendor or '').strip().lower()
-                    vendor = FIRMWARE_VENDOR_ALIASES.get(orig_vendor, orig_vendor)
-                    model_lower = (miner_model or '').lower()
-                    if not vendor:
-                        if 'antminer' in model_lower or 'bitmain' in model_lower:
-                            vendor = 'bitmain'
-                        elif 'whatsminer' in model_lower or 'microbt' in model_lower:
-                            vendor = 'microbt'
-                        elif 'avalon' in model_lower or 'canaan' in model_lower:
-                            vendor = 'canaan'
-                        elif 'innosilicon' in model_lower:
-                            vendor = 'innosilicon'
-
-                    creds_cfg = FIRMWARE_DEFAULT_CREDENTIALS.get(vendor, {})
-                    auth = BaseFlasher.build_auth(
-                        creds_cfg.get('auth'), creds_cfg.get('user'), creds_cfg.get('password')
-                    )
-                    verify = FIRMWARE_HTTP_VERIFY
-
-                    # Begin the actual flashing process
-                    try:
-                        # Route by canonical vendor if known, else fall back to miner-reported model
-                        route_key = vendor or miner_model
-                        flasher = get_flasher_for_miner(route_key or 'unknown', job.miner_ip)
-                        # Inject runtime parameters
-                        flasher.auth = auth
-                        try:
-                            # verify may be bool or CA bundle path; config gives bool now
-                            flasher.session.verify = verify
-                        except Exception:
-                            pass
-
-                        # Log routing decision for diagnostics
-                        logger.info(
-                            "firmware flash routing: job_id=%s miner_ip=%s vendor_original=%s vendor_canonical=%s miner_model=%s route_key=%s",
-                            job.job_id, job.miner_ip, orig_vendor or None, vendor or None, miner_model or None,
-                                                      route_key or None
-                        )
-
-                        # Use a thread-local throttle to reduce DB commits
-                        last_state = {'progress': -1, 'ts': 0.0}
-                        job_id = job.job_id
-
-                        def progress_callback(progress: int, message: str):
-                            """Update job progress and log message."""
-                            import time as _t
-                            now = _t.time()
-                            if progress < 100 and (progress - last_state['progress'] < 5) and (
-                                    now - last_state['ts'] < 1.0):
-                                return
-                            session2 = SessionLocal()
-                            try:
-                                j = FirmwareFlashService.get_job_by_public_id(session2, job_id)
-                                if not j:
-                                    return
-                                # Update progress and history
-                                FirmwareFlashService.mark_progress(session2, j, progress)
-                                h = (j.extra_metadata or {}).get("history", [])
-                                h.append({
-                                    "timestamp": dt.datetime.utcnow().isoformat(),
-                                    "message": message,
-                                    "progress": progress
-                                })
-                                j.extra_metadata = {**(j.extra_metadata or {}), "history": h}
-                                session2.commit()
-                                last_state['progress'] = progress
-                                last_state['ts'] = now
-                            finally:
-                                session2.close()
-
-                        # Start flashing in a separate thread to avoid blocking
-                        import threading
-
-                        def flash_worker():
-                            """Worker function to run the flashing process."""
-                            session2 = SessionLocal()
-                            try:
-                                j = FirmwareFlashService.get_job_by_public_id(session2, job_id)
-                                if not j:
-                                    return
-                                # Resolve firmware and path again inside thread
-                                f = FirmwareService.get_image(session2, j.firmware_id)
-                                p = FirmwareService.resolve_image_path(f)
-
-                                success, message = flasher.flash(p, progress_callback)
-
-                                if success:
-                                    FirmwareFlashService.mark_completed(session2, j)
-                                    progress_callback(
-                                        100,
-                                        f"Firmware update completed successfully: {message or ''}".strip()
-                                    )
-                                    logger.info(
-                                        "Firmware update for %s completed successfully (job_id=%s)",
-                                        j.miner_ip, j.job_id
-                                    )
-                                else:
-                                    # Treat any non-success as a handled failure, not an uncaught exception
-                                    msg = (message or "").strip()
-                                    if not msg or msg == "Failed to upload firmware:":
-                                        msg = "Firmware upload failed for miner " + j.miner_ip
-                                    raise FlashError(msg)
-
-                            except BaseException as e:
-                                # Don't swallow process-level termination
-                                if isinstance(e, (SystemExit, KeyboardInterrupt)):
-                                    raise
-
-                                    # Prefer the job loaded in this thread if available
-                                miner_ip = None
-                                try:
-                                    if 'j' in locals() and j is not None:
-                                        miner_ip = j.miner_ip
-                                except Exception:
-                                    miner_ip = None
-                                if miner_ip is None:
-                                    # Fallback to outer-scope job if still in scope
-                                    try:
-                                        miner_ip = job.miner_ip
-                                    except Exception:
-                                        miner_ip = "unknown"
-
-                                if isinstance(e, FlashError):
-                                    # Expected flashing failure (e.g., upload failed, not implemented, etc.)
-                                    error_msg = str(e)
-                                    logger.warning(
-                                        "Firmware flash failed for %s: %s",
-                                        miner_ip,
-                                        error_msg
-                                    )
-                                else:
-                                    # Unexpected internal error: keep traceback
-                                    error_msg = f"Firmware update failed: {str(e)}"
-                                    logger.error(
-                                        "Unexpected error flashing %s: %s",
-                                        miner_ip,
-                                        error_msg,
-                                        exc_info=True
-                                    )
-
-                                # Mark failed with a new session to avoid cross-thread session issues
-                                session3 = SessionLocal()
-                                try:
-                                    j2 = FirmwareFlashService.get_job_by_public_id(session3, job_id)
-                                    if j2:
-                                        FirmwareFlashService.mark_failed(session3, j2, error_msg)
-                                        # Append to history
-                                        h2 = (j2.extra_metadata or {}).get("history", [])
-                                        h2.append({
-                                            "timestamp": dt.datetime.utcnow().isoformat(),
-                                            "message": error_msg,
-                                            "error": True
-                                        })
-                                        j2.extra_metadata = {**(j2.extra_metadata or {}), "history": h2}
-                                        session3.commit()
-                                finally:
-                                    session3.close()
-                            finally:
-                                session2.close()
-
-                        # Start the flashing process in a separate thread
-                        thread = threading.Thread(target=flash_worker, daemon=True)
-                        thread.start()
-
-                        # Mark as in progress and update summary
-                        job.status = "in_progress"
-                        session.commit()
-
-                    except UnsupportedVendorError as e:
-                        raise FlashError(
-                            f"Unsupported miner model/vendor. model={miner_model!r} vendor={orig_vendor or vendor!r}"
-                        ) from e
-                    except Exception as e:
-                        raise FlashError(f"Failed to initialize flasher: {str(e)}") from e
-
-                # For in-progress jobs, just update the status
-                elif job.status == "in_progress":
-                    # Job is being processed by the worker thread, just update the timestamp
-                    job.updated_at = dt.datetime.utcnow()
-                    session.commit()
-                    summary["progressed"] += 1
-
-            except Exception as exc:
-                logger.error(f"Error processing firmware job {job.id}: {str(exc)}", exc_info=True)
-                FirmwareFlashService.mark_failed(session, job, str(exc))
-                summary["failed"] += 1
+            result = FirmwareFlashService._process_single_job(session, job)
+            if result in summary:
+                summary[result] += 1
 
         return summary
+
+    @staticmethod
+    def _process_single_job(session: Session, job: FirmwareFlashJob) -> Optional[str]:
+        """Helper to execute a single firmware flash job safely."""
+        from core.firmware_flasher import get_flasher_for_miner, FlashError, UnsupportedVendorError, BaseFlasher
+        from core.miner import MinerClient
+
+        try:
+            extra = job.extra_metadata or {}
+            history = extra.get("history", [])
+            firmware = FirmwareService.get_image(session, job.firmware_id)
+
+            if not firmware:
+                raise ValueError(f"Firmware image {job.firmware_id} not found")
+
+            firmware_path = FirmwareService.resolve_image_path(firmware)
+            if not firmware_path:
+                raise ValueError(f"Firmware file not found at {firmware.storage_path}")
+
+            if job.status == "pending":
+                # Guard: avoid starting a second job for the same miner concurrently
+                existing_active = (
+                    session.query(FirmwareFlashJob)
+                    .filter(
+                        FirmwareFlashJob.miner_ip == job.miner_ip,
+                        FirmwareFlashJob.status == 'in_progress',
+                        FirmwareFlashJob.id != job.id,
+                    )
+                    .first()
+                )
+                if existing_active:
+                    return None
+
+                # Start the flashing process
+                FirmwareFlashService.mark_started(session, job)
+
+                # Initialize miner client to get model info
+                try:
+                    miner_client = MinerClient(job.miner_ip)
+                    summary_data = miner_client.get_summary()
+                    miner_model = summary_data.get('Type', 'Unknown')
+                    extra['miner_info'] = {
+                        'model': miner_model,
+                        'ip': job.miner_ip,
+                        'original_firmware': summary_data.get('Firmware', 'Unknown'),
+                    }
+                except Exception as e:
+                    logger.warning(f"Could not get miner info for {job.miner_ip}: {str(e)}")
+                    miner_model = 'Unknown'
+
+                history.append({
+                    "timestamp": dt.datetime.utcnow().isoformat(),
+                    "message": f"Starting firmware update to {firmware.file_name}",
+                    "miner_model": miner_model,
+                })
+                job.extra_metadata = {**extra, "history": history}
+                session.commit()
+
+                # Prepare flasher configuration
+                orig_vendor = (firmware.vendor or '').strip().lower()
+                vendor = FIRMWARE_VENDOR_ALIASES.get(orig_vendor, orig_vendor)
+                model_lower = (miner_model or '').lower()
+
+                if not vendor:
+                    if 'antminer' in model_lower or 'bitmain' in model_lower:
+                        vendor = 'bitmain'
+                    elif 'whatsminer' in model_lower or 'microbt' in model_lower:
+                        vendor = 'microbt'
+                    elif 'avalon' in model_lower or 'canaan' in model_lower:
+                        vendor = 'canaan'
+                    elif 'innosilicon' in model_lower:
+                        vendor = 'innosilicon'
+
+                creds_cfg = FIRMWARE_DEFAULT_CREDENTIALS.get(vendor, {})
+                auth = BaseFlasher.build_auth(
+                    creds_cfg.get('auth'), creds_cfg.get('user'), creds_cfg.get('password')
+                )
+
+                try:
+                    route_key = vendor or miner_model
+                    flasher = get_flasher_for_miner(route_key or 'unknown', job.miner_ip)
+                    flasher.auth = auth
+                    try:
+                        flasher.session.verify = FIRMWARE_HTTP_VERIFY
+                    except Exception:
+                        pass
+
+                    logger.info(
+                        "firmware flash routing: job_id=%s miner_ip=%s vendor_original=%s route_key=%s",
+                        job.job_id, job.miner_ip, orig_vendor, route_key
+                    )
+
+                    # Launch thread
+                    FirmwareFlashService._launch_flash_thread(job.job_id, flasher)
+
+                    job.status = "in_progress"
+                    session.commit()
+                    return "started"
+
+                except UnsupportedVendorError as e:
+                    raise FlashError(f"Unsupported miner model/vendor: {miner_model}/{vendor}") from e
+                except Exception as e:
+                    raise FlashError(f"Failed to initialize flasher: {str(e)}") from e
+
+            elif job.status == "in_progress":
+                job.updated_at = dt.datetime.utcnow()
+                session.commit()
+                return "progressed"
+
+        except Exception as exc:
+            logger.error(f"Error processing firmware job {job.id}: {str(exc)}", exc_info=True)
+            FirmwareFlashService.mark_failed(session, job, str(exc))
+            return "failed"
+
+        return None
+
+    @staticmethod
+    def _launch_flash_thread(job_id: str, flasher):
+        """Starts the background thread for the flashing operation."""
+
+        # Thread-local state for throttling DB updates in callback
+        last_state = {'progress': -1, 'ts': 0.0}
+
+        def progress_callback(progress: int, message: str):
+            now = _t.time()
+            # Update only if significant progress or enough time passed (1s)
+            # Always update if finished (100%)
+            if progress < 100 and (progress - last_state['progress'] < 5) and (now - last_state['ts'] < 1.0):
+                return
+
+            session_cb = SessionLocal()
+            try:
+                j = FirmwareFlashService.get_job_by_public_id(session_cb, job_id)
+                if not j:
+                    return
+
+                FirmwareFlashService.mark_progress(session_cb, j, progress)
+
+                history = (j.extra_metadata or {}).get("history", [])
+                history.append({
+                    "timestamp": dt.datetime.utcnow().isoformat(),
+                    "message": message,
+                    "progress": progress
+                })
+                j.extra_metadata = {**(j.extra_metadata or {}), "history": history}
+                session_cb.commit()
+
+                last_state['progress'] = progress
+                last_state['ts'] = now
+            finally:
+                session_cb.close()
+
+        def flash_worker():
+            from core.firmware_flasher import FlashError
+            session_worker = SessionLocal()
+            try:
+                j = FirmwareFlashService.get_job_by_public_id(session_worker, job_id)
+                if not j:
+                    return
+
+                firmware = FirmwareService.get_image(session_worker, j.firmware_id)
+                path = FirmwareService.resolve_image_path(firmware)
+
+                success, message = flasher.flash(path, progress_callback)
+
+                if success:
+                    FirmwareFlashService.mark_completed(session_worker, j)
+                    progress_callback(100, f"Success: {message or 'Firmware updated'}")
+                    logger.info(f"Job {job_id}: Firmware update success for {j.miner_ip}")
+                else:
+                    msg = (message or "").strip() or f"Firmware upload failed for {j.miner_ip}"
+                    raise FlashError(msg)
+
+            except BaseException as e:
+                if isinstance(e, (SystemExit, KeyboardInterrupt)):
+                    raise
+
+                error_msg = str(e)
+                is_flash_error = isinstance(e, FlashError)
+
+                if not is_flash_error:
+                    logger.error(f"Job {job_id}: Unexpected error: {error_msg}", exc_info=True)
+                    error_msg = f"Firmware update failed: {error_msg}"
+                else:
+                    logger.warning(f"Job {job_id}: Flash failed: {error_msg}")
+
+                # New session for error recording to ensure clean state
+                session_err = SessionLocal()
+                try:
+                    j_err = FirmwareFlashService.get_job_by_public_id(session_err, job_id)
+                    if j_err:
+                        FirmwareFlashService.mark_failed(session_err, j_err, error_msg)
+
+                        hist = (j_err.extra_metadata or {}).get("history", [])
+                        hist.append({
+                            "timestamp": dt.datetime.utcnow().isoformat(),
+                            "message": error_msg,
+                            "error": True
+                        })
+                        j_err.extra_metadata = {**(j_err.extra_metadata or {}), "history": hist}
+                        session_err.commit()
+                finally:
+                    session_err.close()
+            finally:
+                session_worker.close()
+
+        thread = threading.Thread(target=flash_worker, daemon=True)
+        thread.start()

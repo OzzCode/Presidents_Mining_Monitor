@@ -239,6 +239,12 @@ background-color: var(--color-surface-primary);; border-radius: 12px; box-shadow
                                 <span>🔄</span>
                                 <span>Refresh</span>
                             </button>
+                            <button class="btn"
+                                    style="padding: 0.3rem 0.75rem; font-size: 0.8rem; border: 1px solid var(--border);"
+                                    onclick="clearFlashHistory()">
+                                <span>🧹</span>
+                                <span>Clear History</span>
+                            </button>
                             <div style="flex: 1;"></div>
                             <div style="display: flex; gap: 0.75rem; font-size: 0.85rem;">
                                 <div style="display: flex; align-items: center; gap: 0.35rem;">
@@ -641,6 +647,9 @@ background-color: var(--color-surface-primary);; border-radius: 12px; box-shadow
                         <a class="btn-link" href="/api/remote/firmware/images/${image.id}/download" download>
                             ⬇️ Download
                         </a>
+                        <a class="btn-link" href="#" onclick="return deleteFirmwareImage(${image.id})" style="color:#ef4444;">
+                            🗑️ Remove
+                        </a>
                     </div>
                 </div>
             `;
@@ -837,6 +846,48 @@ background-color: var(--color-surface-primary);; border-radius: 12px; box-shadow
                 container.innerHTML = cards || '<p style="color: var(--muted);">No jobs found.</p>';
             } catch (error) {
                 container.innerHTML = `<div class="alert">${error.message}</div>`;
+            }
+        }
+
+        async function clearFlashHistory() {
+            try {
+                if (!confirm('Clear all completed and failed firmware flash jobs from history?')) {
+                    return;
+                }
+                const res = await fetch('/api/remote/firmware/jobs?status=non_active', { method: 'DELETE' });
+                const data = await res.json();
+                if (!data.ok) throw new Error(data.error || 'Failed to clear');
+                alert(data.message || 'History cleared');
+                // Refresh jobs panel
+                activeJobs = [];
+                await loadRecentJobs();
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
+        async function deleteFirmwareImage(imageId) {
+            try {
+                if (!confirm('Remove this firmware image from the server? This cannot be undone.')) {
+                    return false;
+                }
+                let res = await fetch(`/api/remote/firmware/images/${imageId}`, { method: 'DELETE' });
+                if (res.status === 409) {
+                    const proceed = confirm('This firmware is referenced by active jobs. Deactivate it instead so it can no longer be selected?');
+                    if (!proceed) return false;
+                    res = await fetch(`/api/remote/firmware/images/${imageId}?deactivate=true`, { method: 'DELETE' });
+                }
+                const data = await res.json();
+                if (!data.ok) throw new Error(data.error || 'Failed to remove');
+                alert(data.message || 'Removed');
+                // Refresh lists and selection
+                await loadFirmwareImages();
+                // If currently selected firmware was removed/deactivated, ensure button state updates
+                updateActionState();
+                return false;
+            } catch (err) {
+                alert(err.message);
+                return false;
             }
         }
 

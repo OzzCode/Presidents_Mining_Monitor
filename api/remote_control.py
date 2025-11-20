@@ -32,6 +32,7 @@ from core.db import (
     MinerConfigBackup,
     Miner,
     FirmwareImage,
+    FirmwareFlashJob,
 )
 from core.remote_control import RemoteControlService, PowerScheduleService
 from core.firmware import FirmwareService, FirmwareFlashService
@@ -858,6 +859,72 @@ def list_firmware_flash_jobs():
         session.close()
 
 
+@bp.route('/firmware/jobs', methods=['DELETE'])
+def clear_firmware_flash_jobs():
+    """Clear past firmware flash jobs.
+
+    Query params (all optional):
+      - status: one of 'completed', 'failed', 'non_active', 'all' (default: 'non_active').
+                'non_active' = completed or failed only.
+      - older_than_days: integer; if provided, only delete jobs created earlier than now - N days.
+      - include_active: boolean; if true with status='all', allows deleting pending/in_progress too.
+    """
+    session = SessionLocal()
+    try:
+        status = (request.args.get('status') or 'non_active').lower()
+        older_than_days = request.args.get('older_than_days')
+        include_active = (request.args.get('include_active', 'false').lower() in ('1', 'true', 'yes'))
+
+        q = session.query(FirmwareFlashJob)
+
+        # Time filter
+        if older_than_days is not None:
+            try:
+                days = int(older_than_days)
+                cutoff = dt.datetime.utcnow() - dt.timedelta(days=days)
+                q = q.filter(FirmwareFlashJob.created_at < cutoff)
+            except Exception:
+                pass
+
+        if status == 'completed':
+            q = q.filter(FirmwareFlashJob.status == 'success')
+        elif status == 'failed':
+            q = q.filter(FirmwareFlashJob.status == 'failed')
+        elif status == 'all':
+            if not include_active:
+                # still skip active unless explicitly included
+                q = q.filter(FirmwareFlashJob.status.in_(['success', 'failed']))
+            # else, no additional status filter
+        else:  # default 'non_active'
+            q = q.filter(FirmwareFlashJob.status.in_(['success', 'failed']))
+
+        # Prevent deletion of truly active unless explicitly allowed
+        if status == 'all' and not include_active:
+            pass  # already handled above
+
+        # Collect to get delete count in a DB-agnostic way
+        jobs_to_delete = q.all()
+        deleted_count = 0
+        for j in jobs_to_delete:
+            # extra safety: skip active states unless allowed
+            if j.status in ('pending', 'in_progress') and not include_active:
+                continue
+            session.delete(j)
+            deleted_count += 1
+        session.commit()
+
+        return jsonify({
+            "ok": True,
+            "message": f"Deleted {deleted_count} job(s)",
+            "deleted": deleted_count
+        })
+    except Exception as exc:
+        session.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    finally:
+        session.close()
+
+
 @bp.route('/firmware/jobs/<job_id>', methods=['GET'])
 def get_firmware_flash_job(job_id: str):
     """Retrieve status for a firmware flash job."""
@@ -873,6 +940,75 @@ def get_firmware_flash_job(job_id: str):
             "job": _serialize_flash_job(job, firmware)
         })
     except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    finally:
+        session.close()
+
+
+@bp.route('/firmware/images/<int:image_id>', methods=['DELETE'])
+def delete_firmware_image(image_id: int):
+    """Remove or deactivate a previously uploaded firmware image.
+
+    Query params:
+      - deactivate=true|false (default false). If true, only mark inactive and keep file.
+    Behavior:
+      - If any job exists for this image in 'pending' or 'in_progress', return 409 unless deactivate=true.
+      - On hard delete, attempt to delete file from disk (best-effort), then remove DB record.
+    """
+    session = SessionLocal()
+    try:
+        deactivate_only = (request.args.get('deactivate', 'false').lower() in ('1', 'true', 'yes'))
+
+        image = FirmwareService.get_image(session, image_id)
+        if not image:
+            return jsonify({"ok": False, "error": "Firmware image not found"}), 404
+
+        # Guard against deleting while active jobs exist
+        active_job = (
+            session.query(FirmwareFlashJob)
+            .filter(
+                FirmwareFlashJob.firmware_id == image.id,
+                FirmwareFlashJob.status.in_(['pending', 'in_progress'])
+            )
+            .first()
+        )
+        if active_job and not deactivate_only:
+            return jsonify({
+                "ok": False,
+                "error": "Firmware image is referenced by active jobs; cannot delete now",
+                "hint": "Retry later or pass deactivate=true to only disable this image"
+            }), 409
+
+        if deactivate_only:
+            image.is_active = False
+            session.commit()
+            return jsonify({
+                "ok": True,
+                "message": "Firmware image deactivated"
+            })
+
+        # Hard delete: remove file (best-effort) then DB record
+        path = FirmwareService.resolve_image_path(image)
+        try:
+            if path and path.exists():
+                os.remove(path)
+        except Exception:
+            # If file removal fails, fall back to deactivation to avoid dangling reference
+            image.is_active = False
+            session.commit()
+            return jsonify({
+                "ok": False,
+                "error": "Failed to delete firmware file from disk; image deactivated instead"
+            }), 500
+
+        session.delete(image)
+        session.commit()
+        return jsonify({
+            "ok": True,
+            "message": "Firmware image deleted"
+        })
+    except Exception as exc:
+        session.rollback()
         return jsonify({"ok": False, "error": str(exc)}), 500
     finally:
         session.close()
