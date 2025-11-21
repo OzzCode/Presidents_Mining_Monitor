@@ -21,3 +21,7 @@ numpy
 pandas
 scikit-learn
 joblib
+tensorflow
+keras
+h5py
+protobuf
