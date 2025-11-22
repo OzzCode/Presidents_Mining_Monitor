@@ -7,6 +7,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.dialects.sqlite import JSON as SQLITE_JSON
+import os
+import json
+import base64
 
 # -----------------------------------------------------------------------------
 # Database location (single source of truth)
@@ -565,3 +568,22 @@ class MinerConfigBackup(Base):
     # User context
     created_by = Column(String(64), nullable=True)
     notes = Column(Text, nullable=True)
+
+
+def get_database_url():
+    # Check for Upsun/Platform.sh environment variable
+    if 'PLATFORM_RELATIONSHIPS' in os.environ:
+        try:
+            relationships = json.loads(base64.b64decode(os.environ['PLATFORM_RELATIONSHIPS']).decode())
+            # Assumes the service name in config.yaml is 'database'
+            db = relationships['database'][0]
+            return f"postgresql://{db['username']}:{db['password']}@{db['host']}:{db['port']}/{db['path']}"
+        except Exception:
+            pass
+
+    # Fallback to local .env or default
+    return os.getenv('DATABASE_URL', 'sqlite:///local.db')
+
+
+class Config:
+    SQLALCHEMY_DATABASE_URI = get_database_url()
