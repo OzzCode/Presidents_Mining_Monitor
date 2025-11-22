@@ -207,6 +207,125 @@
             color: #22c55e;
         }
 
+        /* Risk level indicators */
+        .risk-level {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            font-weight: 500;
+            font-size: 1.1rem;
+        }
+
+        .risk-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #9ca3af; /* Default gray */
+        }
+
+        .risk-low .risk-dot {
+            background-color: #10b981;
+        }
+
+        .risk-medium .risk-dot {
+            background-color: #f59e0b;
+        }
+
+        .risk-high .risk-dot {
+            background-color: #f97316;
+        }
+
+        .risk-critical .risk-dot {
+            background-color: #ef4444;
+        }
+
+        .risk-low {
+            color: #10b981;
+        }
+
+        .risk-medium {
+            color: #f59e0b;
+        }
+
+        .risk-high {
+            color: #f97316;
+        }
+
+        .risk-critical {
+            color: #ef4444;
+        }
+
+        /* Form inputs */
+        .form-input {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 0.375rem;
+            background-color: var(--surface);
+            color: var(--text);
+            font-size: 0.875rem;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover,
+        .btn-primary:focus {
+            background-color: var(--primary-dark);
+        }
+
+
+        .spinner {
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border-left-color: var(--primary);
+            animation: spin 1s linear infinite;
+            margin: 0 auto 0.5rem;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error-message {
+            color: #ef4444;
+            background-color: rgba(239, 68, 68, 0.1);
+            padding: 0.5rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+        }
+
         .trend-bearish {
             background: rgba(239, 68, 68, 0.1);
             color: #ef4444;
@@ -377,6 +496,31 @@
                 </div>
                 <div class="metric-medium" id="btcTrend">--</div>
                 <div class="metric-small" id="btcForecast">7-day forecast</div>
+            </div>
+
+            <div class="analytics-card">
+                <h3>Miner Failure Prediction</h3>
+                <div class="input-group" style="margin-bottom: 1rem;">
+                    <input type="text" id="miner-ip-input" placeholder="Enter Miner IP or ID" class="form-input"
+                           style="flex: 1;">
+                    <button onclick="loadMinerPrediction()" class="btn btn-primary">Predict</button>
+                </div>
+                <div id="miner-prediction-result" style="display: none;">
+                    <div class="metric-large" id="failure-risk-score">--</div>
+                    <div class="risk-level" id="failure-risk-level">
+                        <span class="risk-dot"></span>
+                        <span class="risk-text">Unknown</span>
+                    </div>
+                    <div class="prediction-details" id="prediction-details"
+                         style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-secondary);">
+                        Last updated: <span id="prediction-timestamp">--</span>
+                    </div>
+                </div>
+                <div id="miner-prediction-loading" style="display: none; text-align: center; padding: 1rem;">
+                    <div class="spinner"></div>
+                    <p>Analyzing miner data...</p>
+                </div>
+                <div id="miner-prediction-error" class="error-message" style="display: none; margin-top: 1rem;"></div>
             </div>
         </div>
 
@@ -805,11 +949,71 @@
             }
         }
 
+        // Load miner failure prediction
+        async function loadMinerPrediction() {
+            const minerId = document.getElementById('miner-ip-input').value.trim();
+            if (!minerId) {
+                showPredictionError('Please enter a miner IP or ID');
+                return;
+            }
+
+            const resultDiv = document.getElementById('miner-prediction-result');
+            const loadingDiv = document.getElementById('miner-prediction-loading');
+            const errorDiv = document.getElementById('miner-prediction-error');
+
+            // Show loading state
+            resultDiv.style.display = 'none';
+            errorDiv.style.display = 'none';
+            loadingDiv.style.display = 'block';
+
+            try {
+                const response = await fetch(`/api/advanced/predict/failure-risk/${encodeURIComponent(minerId)}`);
+                const data = await response.json();
+
+                if (!data.ok) {
+                    throw new Error(data.error || 'Failed to get prediction');
+                }
+
+                const prediction = data.prediction;
+                const riskScore = (prediction.risk_score * 100).toFixed(1);
+                const riskLevel = prediction.risk_level.toLowerCase();
+
+                // Update UI
+                document.getElementById('failure-risk-score').textContent = `${riskScore}%`;
+                const riskLevelEl = document.getElementById('failure-risk-level');
+                riskLevelEl.className = `risk-level risk-${riskLevel}`;
+                riskLevelEl.querySelector('.risk-text').textContent = riskLevel.toUpperCase();
+                document.getElementById('prediction-timestamp').textContent = new Date().toLocaleString();
+
+                // Show result
+                resultDiv.style.display = 'block';
+            } catch (error) {
+                showPredictionError(error.message || 'Failed to load prediction');
+            } finally {
+                loadingDiv.style.display = 'none';
+            }
+        }
+
+        function showPredictionError(message) {
+            const errorDiv = document.getElementById('miner-prediction-error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            document.getElementById('miner-prediction-result').style.display = 'none';
+            document.getElementById('miner-prediction-loading').style.display = 'none';
+        }
+
+        // Handle Enter key in input
+        document.getElementById('miner-ip-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                loadMinerPrediction();
+            }
+        });
+
         // Initial load
         document.addEventListener('DOMContentLoaded', function () {
             refreshAllData();
 
-            // Auto-refresh every 5 minutes
+            // Refresh data every 5 minutes
             setInterval(refreshAllData, 300000);
         });
     </script>
