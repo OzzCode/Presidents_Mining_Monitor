@@ -3,7 +3,7 @@ import os
 import logging
 
 from waitress import serve
-from main import create_app
+import main as app_main  # import module to access namespace (e.g., SCHEDULER)
 
 # Optional: initialize DB and scheduler if your app depends on them
 def _maybe_init_db():
@@ -19,12 +19,19 @@ def _maybe_start_scheduler():
         # Gate via env if you don’t want scheduler in all environments
         if os.getenv("ENABLE_SCHEDULER", "true").lower() == "true":
             from scheduler import start_scheduler
-            start_scheduler()
+            scheduler = start_scheduler()
+            # Expose the scheduler instance to main module so /readyz can report correctly
+            try:
+                app_main.SCHEDULER = scheduler
+            except Exception:
+                # Non-fatal: readyz will just report scheduler_ok=False
+                pass
     except Exception as e:
         logging.getLogger(__name__).warning("Scheduler failed to start: %s", e)
 
 def main():
-    app = create_app()
+    # Create the Flask app using the same factory as development entrypoint
+    app = app_main.create_app()
 
     # One-time setup
     _maybe_init_db()
