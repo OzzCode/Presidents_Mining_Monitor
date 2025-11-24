@@ -422,6 +422,11 @@
                     <option value="30d">Past 30 Days</option>
                 </select>
             </div>
+            <div class="filter-group">
+                <div class="filter-label">Electricity Rate ($/kWh)</div>
+                <input type="number" id="powerRate" class="filter-select" style="min-width: 120px;"
+                       step="0.001" min="0" placeholder="0.10">
+            </div>
             <div class="filter-indicator" id="filterIndicator">
                 Showing: All Miners • Past 7 Days
             </div>
@@ -624,15 +629,32 @@
 
         async function loadBTCPrice() {
             try {
-                const response = await fetch('/api/profitability/btc-price');
-                const data = await response.json();
-
-                if (data.ok) {
-                    document.getElementById('btc-price').textContent =
-                        '$' + data.btc_price_usd.toLocaleString('en-US', {
+                const priceEl = document.getElementById('btc-price');
+                const response = await fetch('/api/profitability/btc-price', {cache: 'no-store'});
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && (data.ok || typeof data.btc_price_usd === 'number')) {
+                        priceEl.textContent = '$' + Number(data.btc_price_usd).toLocaleString('en-US', {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2
                         });
+                        return;
+                    }
+                }
+                // Fallback: try CoinGecko directly if API failed or returned error
+                try {
+                    const cg = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd', {cache: 'no-store'});
+                    if (cg.ok) {
+                        const cgData = await cg.json();
+                        const price = cgData?.bitcoin?.usd;
+                        if (typeof price === 'number') {
+                            priceEl.textContent = '$' + Number(price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                            return;
+                        }
+                    }
+                    priceEl.textContent = 'N/A';
+                } catch (_) {
+                    priceEl.textContent = 'N/A';
                 }
             } catch (error) {
                 console.error('Failed to load BTC price:', error);
@@ -657,12 +679,29 @@
             }
         }
 
+        function getStoredPowerRate() {
+            try {
+                const v = localStorage.getItem('power_rate');
+                if (v != null && v !== '') return parseFloat(v);
+            } catch (_) {
+            }
+            return null;
+        }
+
+        function setStoredPowerRate(v) {
+            try { localStorage.setItem('power_rate', String(v)); } catch (_) {}
+        }
+
         async function loadCurrentProfitability() {
             try {
                 const minerFilter = document.getElementById('minerFilter').value;
                 const activeOnly = minerFilter === 'active' ? 'true' : 'false';
+                const rateInput = document.getElementById('powerRate');
+                const rateVal = parseFloat(rateInput.value || getStoredPowerRate() || '');
+                const params = new URLSearchParams({active_only: activeOnly});
+                if (isFinite(rateVal)) params.set('power_cost', String(rateVal));
 
-                const response = await fetch(`/api/profitability/current?active_only=${activeOnly}`);
+                const response = await fetch(`/api/profitability/current?${params.toString()}`);
                 const data = await response.json();
 
                 if (!data.ok || !data.profitability) {
@@ -729,7 +768,7 @@
                 document.getElementById('miner-count').textContent = p.miner_count || 0;
 
                 document.getElementById('power-rate').textContent =
-                    '$' + (p.power_cost_usd_per_kwh || 0).toFixed(4);
+                    '$' + (p.power_cost_usd_per_kwh || rateVal || 0).toFixed(4);
 
             } catch (error) {
                 console.error('Failed to load profitability:', error);
@@ -740,6 +779,8 @@
             try {
                 const minerFilter = document.getElementById('minerFilter').value;
                 const timeFilter = document.getElementById('timeFilter').value;
+                const rateInput = document.getElementById('powerRate');
+                const rateVal = parseFloat(rateInput.value || getStoredPowerRate() || '');
 
                 // Convert time filter to days
                 let days = 7; // default
@@ -757,7 +798,10 @@
 
                 const activeOnly = minerFilter === 'active' ? 'true' : 'false';
 
-                const response = await fetch(`/api/profitability/history?days=${days}&active_only=${activeOnly}`);
+                const params = new URLSearchParams({days: String(days), active_only: activeOnly});
+                if (isFinite(rateVal)) params.set('power_cost', String(rateVal));
+
+                const response = await fetch(`/api/profitability/history?${params.toString()}`);
                 const data = await response.json();
 
                 if (!data.ok || !data.history || data.history.length === 0) {
@@ -904,6 +948,20 @@
         }
 
         // Initial load
+        // Restore stored power rate if available
+        (function initPowerRate() {
+            const input = document.getElementById('powerRate');
+            const stored = getStoredPowerRate();
+            if (stored != null) input.value = String(stored);
+            else input.value = '0.10';
+            input.addEventListener('change', () => {
+                const v = parseFloat(input.value || '');
+                if (isFinite(v)) setStoredPowerRate(v);
+                loadCurrentProfitability();
+                loadHistory();
+            });
+        })();
+
         loadBTCPrice();
         loadNetworkDifficulty();
         loadCurrentProfitability();

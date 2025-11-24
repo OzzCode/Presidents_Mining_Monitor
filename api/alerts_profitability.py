@@ -411,6 +411,12 @@ def get_current_profitability():
     """
     miner_ip = request.args.get('miner_ip')
     active_only = request.args.get('active_only', 'false').lower() == 'true'
+    # Optional override for power cost ($/kWh) coming from the UI
+    power_cost_override = request.args.get('power_cost')
+    try:
+        power_cost_override = float(power_cost_override) if power_cost_override is not None else None
+    except ValueError:
+        power_cost_override = None
 
     try:
         with ProfitabilityEngine() as engine:
@@ -418,6 +424,19 @@ def get_current_profitability():
                 result = engine.calculate_miner_profitability(miner_ip)
                 if not result:
                     return jsonify({'error': 'Insufficient data for miner'}), 404
+                # If a power cost override is provided, recompute economics using same inputs
+                if power_cost_override is not None:
+                    recomputed = engine._calculate_profitability(
+                        hashrate_ths=result.get('hashrate_ths', 0) or 0,
+                        power_w=result.get('power_w', 0) or 0,
+                        btc_price=result.get('btc_price_usd', 0) or 0,
+                        power_cost=power_cost_override,
+                        network_difficulty=result.get('network_difficulty')
+                    )
+                    # Preserve metadata
+                    recomputed['miner_ip'] = result.get('miner_ip')
+                    recomputed['timestamp'] = result.get('timestamp')
+                    result = recomputed
             else:
                 if active_only:
                     # Calculate profitability only for active miners
@@ -484,6 +503,8 @@ def get_current_profitability():
 
                     # Calculate average power cost weighted by power consumption
                     avg_power_cost = weighted_power_cost / total_power
+                    if power_cost_override is not None:
+                        avg_power_cost = power_cost_override
 
                     # Calculate fleet profitability for active miners only
                     result = engine._calculate_profitability(
@@ -501,6 +522,18 @@ def get_current_profitability():
                     result = engine.calculate_fleet_profitability()
                     if not result:
                         return jsonify({'error': 'No fleet data available'}), 404
+                    # If override provided, recompute using aggregate inputs
+                    if power_cost_override is not None:
+                        recomputed = engine._calculate_profitability(
+                            hashrate_ths=result.get('hashrate_ths', 0) or 0,
+                            power_w=result.get('power_w', 0) or 0,
+                            btc_price=result.get('btc_price_usd', 0) or 0,
+                            power_cost=power_cost_override,
+                            network_difficulty=result.get('network_difficulty')
+                        )
+                        recomputed['miner_count'] = result.get('miner_count')
+                        recomputed['timestamp'] = result.get('timestamp')
+                        result = recomputed
 
         return jsonify({
             'ok': True,
@@ -524,6 +557,11 @@ def get_profitability_history():
     miner_ip = request.args.get('miner_ip')
     days = min(int(request.args.get('days', 7)), 90)
     active_only = request.args.get('active_only', 'false').lower() == 'true'
+    power_cost_override = request.args.get('power_cost')
+    try:
+        power_cost_override = float(power_cost_override) if power_cost_override is not None else None
+    except ValueError:
+        power_cost_override = None
 
     try:
         with ProfitabilityEngine() as engine:
@@ -581,18 +619,39 @@ def get_profitability_history():
                     # Convert to list and calculate aggregated values
                     aggregated_history = []
                     for entry in history_by_time.values():
-                        daily_profit = entry['total_revenue'] - entry['total_cost']
-                        aggregated_history.append({
-                            'timestamp': entry['timestamp'],
-                            'daily_profit_usd': daily_profit,
-                            'estimated_revenue_usd_per_day': entry['total_revenue'],
-                            'daily_power_cost_usd': entry['total_cost'],
-                            'hashrate_ths': entry['total_hashrate'],
-                            'power_w': entry['total_power'],
-                            'btc_price_usd': entry['btc_price_usd'],
-                            'network_difficulty': entry['network_difficulty'],
-                            'miner_count': entry['miner_count']
-                        })
+                        if power_cost_override is not None:
+                            # Recompute economics for this timeslice using override
+                            tmp = engine._calculate_profitability(
+                                hashrate_ths=entry['total_hashrate'],
+                                power_w=entry['total_power'],
+                                btc_price=entry['btc_price_usd'],
+                                power_cost=power_cost_override,
+                                network_difficulty=entry['network_difficulty']
+                            )
+                            aggregated_history.append({
+                                'timestamp': entry['timestamp'],
+                                'daily_profit_usd': tmp['daily_profit_usd'],
+                                'estimated_revenue_usd_per_day': tmp['estimated_revenue_usd_per_day'],
+                                'daily_power_cost_usd': tmp['daily_power_cost_usd'],
+                                'hashrate_ths': entry['total_hashrate'],
+                                'power_w': entry['total_power'],
+                                'btc_price_usd': entry['btc_price_usd'],
+                                'network_difficulty': entry['network_difficulty'],
+                                'miner_count': entry['miner_count']
+                            })
+                        else:
+                            daily_profit = entry['total_revenue'] - entry['total_cost']
+                            aggregated_history.append({
+                                'timestamp': entry['timestamp'],
+                                'daily_profit_usd': daily_profit,
+                                'estimated_revenue_usd_per_day': entry['total_revenue'],
+                                'daily_power_cost_usd': entry['total_cost'],
+                                'hashrate_ths': entry['total_hashrate'],
+                                'power_w': entry['total_power'],
+                                'btc_price_usd': entry['btc_price_usd'],
+                                'network_difficulty': entry['network_difficulty'],
+                                'miner_count': entry['miner_count']
+                            })
 
                     history = sorted(aggregated_history, key=lambda x: x['timestamp'])
                     aggregated_mode = True
@@ -610,8 +669,34 @@ def get_profitability_history():
                 item['timestamp'] = ts.isoformat() + 'Z' if ts else None
                 history_payload.append(item)
         else:
-            # ORM snapshots → serialize
-            history_payload = [_serialize_profitability_snapshot(s) for s in history]
+            # ORM snapshots → serialize; optionally recompute using override
+            if power_cost_override is not None:
+                for s in history:
+                    tmp = engine._calculate_profitability(
+                        hashrate_ths=s.hashrate_ths or 0,
+                        power_w=s.power_w or 0,
+                        btc_price=s.btc_price_usd or 0,
+                        power_cost=power_cost_override,
+                        network_difficulty=s.network_difficulty
+                    )
+                    history_payload.append({
+                        'id': s.id,
+                        'timestamp': s.timestamp.isoformat() + 'Z' if s.timestamp else None,
+                        'miner_ip': s.miner_ip,
+                        'btc_price_usd': round(tmp['btc_price_usd'], 2),
+                        'network_difficulty': tmp['network_difficulty'],
+                        'hashrate_ths': round(s.hashrate_ths, 2) if s.hashrate_ths else None,
+                        'power_w': round(s.power_w, 2) if s.power_w else None,
+                        'power_cost_usd_per_kwh': round(power_cost_override, 4),
+                        'daily_power_cost_usd': round(tmp['daily_power_cost_usd'], 2),
+                        'estimated_btc_per_day': tmp['estimated_btc_per_day'],
+                        'estimated_revenue_usd_per_day': round(tmp['estimated_revenue_usd_per_day'], 2),
+                        'daily_profit_usd': round(tmp['daily_profit_usd'], 2),
+                        'profit_margin_pct': round(tmp['profit_margin_pct'], 2),
+                        'break_even_btc_price': round(tmp['break_even_btc_price'], 2)
+                    })
+            else:
+                history_payload = [_serialize_profitability_snapshot(s) for s in history]
 
         return jsonify({
             'ok': True,
