@@ -500,10 +500,12 @@
 
             <div class="analytics-card">
                 <h3>Miner Failure Prediction</h3>
-                <div class="input-group" style="margin-bottom: 1rem;">
-                    <input type="text" id="miner-ip-input" placeholder="Enter Miner IP or ID" class="form-input"
-                           style="flex: 1;">
-                    <button onclick="loadMinerPrediction()" class="btn btn-primary">Predict</button>
+                <div class="search-container" style="margin-bottom: 20px;">
+                    <select id="miner-select" class="search-input">
+                        <option value="">Select a miner...</option>
+                        <!-- Options will be populated by JavaScript -->
+                    </select>
+                    <button onclick="loadMinerPrediction()" class="search-button">Analyze</button>
                 </div>
                 <div id="miner-prediction-result" style="display: none;">
                     <div class="metric-large" id="failure-risk-score">--</div>
@@ -951,9 +953,10 @@
 
         // Load miner failure prediction
         async function loadMinerPrediction() {
-            const minerId = document.getElementById('miner-ip-input').value.trim();
-            if (!minerId) {
-                showPredictionError('Please enter a miner IP or ID');
+            const select = document.getElementById('miner-select');
+            const minerIp = select.value;
+            if (!minerIp) {
+                showPredictionError('Please select a miner from the dropdown');
                 return;
             }
 
@@ -967,7 +970,7 @@
             loadingDiv.style.display = 'block';
 
             try {
-                const response = await fetch(`/api/advanced/predict/failure-risk/${encodeURIComponent(minerId)}`);
+                const response = await fetch(`/api/advanced/predict/failure-risk/${encodeURIComponent(minerIp)}`);
                 const data = await response.json();
 
                 if (!data.ok) {
@@ -1000,14 +1003,57 @@
             errorDiv.style.display = 'block';
             document.getElementById('miner-prediction-result').style.display = 'none';
             document.getElementById('miner-prediction-loading').style.display = 'none';
+
+            // Also show a toast notification
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            // Remove toast after animation
+            setTimeout(() => {
+                toast.classList.add('show');
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                    setTimeout(() => {
+                        document.body.removeChild(toast);
+                    }, 300);
+                }, 3000);
+            }, 100);
         }
 
-        // Handle Enter key in input
-        document.getElementById('miner-ip-input').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') {
-                loadMinerPrediction();
-            }
-        });
+        // Load active miners for the dropdown
+        function loadActiveMiners() {
+            fetch('/api/analytics/active-miners')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.ok) {
+                        const select = document.getElementById('miner-select');
+                        // Clear existing options except the first one
+                        while (select.options.length > 1) {
+                            select.remove(1);
+                        }
+                        // Add active miners
+                        data.data.forEach(miner => {
+                            const option = document.createElement('option');
+                            option.value = miner.ip;
+                            option.textContent = miner.label;
+                            select.appendChild(option);
+                        });
+                    } else {
+                        console.error('Failed to load active miners:', data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading active miners:', error);
+                });
+        }
+
+        // Load miners when page loads
+        document.addEventListener('DOMContentLoaded', loadActiveMiners);
+
+        // Refresh button click handler
+        document.getElementById('refreshBtn').addEventListener('click', loadActiveMiners);
 
         // Initial load
         document.addEventListener('DOMContentLoaded', function () {

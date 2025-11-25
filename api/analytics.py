@@ -6,7 +6,8 @@ from flask import Blueprint, jsonify, request, render_template
 from datetime import datetime, timedelta
 import logging
 from core.predictive_analytics import analytics_engine
-from core.db import Miner, SessionLocal
+from core.db import Miner, Metric, SessionLocal
+from sqlalchemy import func, and_
 
 logger = logging.getLogger(__name__)
 
