@@ -97,7 +97,8 @@
                 <table>
                     <thead>
                     <tr>
-                        <th>Model</th>
+                        <!-- The data rows currently do not include a Model cell, which caused a one-column shift.
+                             Removing the Model header aligns headers with the actual data cells rendered by JS. -->
                         <th>Last Seen</th>
                         <th>IP</th>
                         <th>Hash (TH/s)</th>
