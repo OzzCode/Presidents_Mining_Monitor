@@ -1,37 +1,81 @@
-from flask import Flask, render_template, jsonify
+import os
+from flask import Flask, render_template, jsonify, request
+from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
+from sqlalchemy import text
+from prometheus_flask_exporter import PrometheusMetrics
+
+# Configuration
+from config import get_config
+
+# Blueprints
 from api.endpoints import api_bp
 from api.alerts_profitability import alerts_bp, profitability_bp
 from api.analytics import analytics_bp
 from api.advanced_analytics import advanced_bp
 from api.electricity import bp as electricity_bp
 from api.remote_control import bp as remote_control_bp
-from scheduler import start_scheduler
-from flask_cors import CORS
+from api.health import health_bp
 from dashboard.routes import dash_bp, get_miners
-from werkzeug.exceptions import HTTPException
 from auth import auth_bp
-import os
-from sqlalchemy import text
+
+# Core components
+from core.logging_config import configure_logging
+from core.security import configure_security, configure_cors
+
+# Scheduler
+from scheduler import start_scheduler
 
 
-def create_app():
+def create_app(config_name=None):
+    """Application factory function."""
+    # Initialize Flask app
     app = Flask(__name__, static_url_path='/static', static_folder='static')
-    # CORS (development-friendly; can be restricted in production configuration)
-    CORS(app)
 
-    # Secret key for sessions (auth). In production, set SECRET_KEY env var.
-    app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key')
+    # Load configuration
+    config = get_config(config_name)
+    app.config.from_object(config)
+    config.init_app(app)
 
-    # Blueprints
-    app.register_blueprint(auth_bp, url_prefix="/auth")
-    app.register_blueprint(dash_bp, url_prefix="/dashboard")
-    app.register_blueprint(api_bp, url_prefix='/api')
-    app.register_blueprint(alerts_bp)
-    app.register_blueprint(profitability_bp)
-    app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
-    app.register_blueprint(advanced_bp, url_prefix='/api/advanced')
-    app.register_blueprint(electricity_bp)  # Already has /api/electricity prefix
-    app.register_blueprint(remote_control_bp)  # Already has /api/remote prefix
+    # Configure logging
+    configure_logging(app)
+    logger = app.logger
+
+    # Security configuration
+    configure_security(app)
+    configure_cors(app)
+
+    # Initialize database
+    from models import db
+    db.init_app(app)
+    with app.app_context():
+        db.create_all()  # Create tables if they don't exist
+
+    # Initialize Prometheus metrics
+    metrics = PrometheusMetrics(app)
+    metrics.info('app_info', 'Application info', version='1.0.0')
+
+    # Register blueprints with proper URL prefixes
+    api_prefix = f"/{app.config.get('API_PREFIX', 'api').strip('/')}/{app.config.get('API_VERSION', 'v1')}"
+
+    app.register_blueprint(health_bp, url_prefix=api_prefix)
+    app.register_blueprint(auth_bp, url_prefix=f"{api_prefix}/auth")
+    app.register_blueprint(dash_bp, url_prefix=f"{api_prefix}/dashboard")
+    app.register_blueprint(api_bp, url_prefix=api_prefix)
+    app.register_blueprint(alerts_bp, url_prefix=api_prefix)
+    app.register_blueprint(profitability_bp, url_prefix=api_prefix)
+    app.register_blueprint(analytics_bp, url_prefix=f"{api_prefix}/analytics")
+    app.register_blueprint(advanced_bp, url_prefix=f"{api_prefix}/advanced")
+    app.register_blueprint(electricity_bp, url_prefix=f"{api_prefix}/electricity")
+    app.register_blueprint(remote_control_bp, url_prefix=f"{api_prefix}/remote")
+
+    # Initialize database tables
+    with app.app_context():
+        db.create_all()
+
+    # Start background scheduler
+    if not app.config.get('TESTING'):
+        start_scheduler(app)
 
     @app.route("/")
     def home():
@@ -117,7 +161,22 @@ def create_app():
 
 
 if __name__ == '__main__':
+    # Create application instance
     app = create_app()
+
+    # Get port from environment variable or use default
+    port = int(os.getenv('PORT', 5000))
+
+    # Run the application
+    if app.config.get('DEBUG'):
+        app.run(host='0.0.0.0', port=port, debug=True)
+    else:
+        # In production, use Waitress
+        from waitress import serve
+
+        app.logger.info(f'Starting production server on port {port}...')
+        serve(app, host='0.0.0.0', port=port, threads=4)
+
     # Ensure DB is initialized with app context
     if __name__ == "__main__":
         # Ensure DB is initialized if your app relies on it.
@@ -136,6 +195,5 @@ if __name__ == '__main__':
         SCHEDULER = start_scheduler()
     except Exception:
         SCHEDULER = None
-
     # On Windows, disable the reloader to avoid socket close races causing WinError 10038
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

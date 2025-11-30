@@ -1,3 +1,5 @@
+flask-talisman
+prometheus-flask-exporter
 uliweb-alembic
 urllib3
 prometheus-client
