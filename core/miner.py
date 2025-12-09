@@ -1,5 +1,5 @@
 import datetime as _dt
-from config import CGMINER_TIMEOUT, EFFICIENCY_J_PER_TH
+from miner_config import CGMINER_TIMEOUT, EFFICIENCY_J_PER_TH
 from helpers.utils import efficiency_for_model
 
 HASHRATE_KEYS = [
@@ -289,23 +289,26 @@ class MinerClient:
         return ids
 
     # ---- Remote control commands ----
-    def restart(self) -> dict:
+    def restart(self, username: str = None, password: str = None) -> dict:
         """
         Reboot the miner using its web interface where possible.
-        Tries a variety of common vendor endpoints (Antminer/BOSMiner/VNish/etc.).
-        Falls back to CGMiner 'restart' (software only) if device reboot endpoints fail.
+        
+        Args:
+            username: Optional username for miner web interface
+            password: Optional password for miner web interface
+            
+        Returns:
+            dict: Result of the restart operation
+            
+        Note:
+            If no credentials are provided, falls back to CGMiner 'restart' command (software only).
+            For hardware reboots, you'll need to provide the correct credentials for your miner.
         """
         import requests
         from requests.auth import HTTPDigestAuth
-        from config import MINER_USERNAME, MINER_PASSWORD
 
-        # Try configured credentials first, then common defaults
-        credentials = [
-            (MINER_USERNAME, MINER_PASSWORD),  # From config/env
-            ("admin", "admin"),  # VNish common default
-            ("root", "root"),
-            ("root", "admin"),
-        ]
+        # Use provided credentials or None for software restart
+        credentials = [(username, password)] if username and password else []
 
         # Endpoint candidates: (method, path, data, headers)
         # Note: Many firmwares show a confirmation page at GET /cgi-bin/reboot.cgi (200)
@@ -342,121 +345,101 @@ class MinerClient:
             import requests as _r
             return _r.request(method, url, **kwargs)
 
+        # Try each credential set
         for username, password in credentials:
-            # Try with Digest first, then Basic
-            auth_methods = [HTTPDigestAuth(username, password), (username, password)]
-            for auth in auth_methods:
-                https_hint = False
-                # First pass: attempt explicit reboot actions, skip the plain GET success
-                for method, path, data, headers in candidates:
+            # Try each endpoint candidate
+            for method, path, data, headers, auth_type in candidates:
+                try:
                     url = f"http://{self.ip}{path}"
-                    try:
+                    auth = None
+                    if auth_type == 'digest':
+                        auth = HTTPDigestAuth(username, password)
+                    elif auth_type == 'basic':
+                        auth = (username, password)
+
+                    # Make the request
+                    if method.upper() == 'GET':
                         resp = _request(
                             method,
                             url,
-                            timeout=8,
+                            params=data,
+                            headers=headers,
                             auth=auth,
+                            timeout=5,
+                            allow_redirects=False
+                        )
+                    else:
+                        resp = _request(
+                            method,
+                            url,
                             data=data,
                             headers=headers,
-                            allow_redirects=False,
+                            auth=auth,
+                            timeout=5,
+                            allow_redirects=False
                         )
-                        # Detect HTTP->HTTPS redirect hints
-                        if resp.status_code in (301, 308) and (
-                            resp.headers.get("Location", "").startswith("https://")
-                        ):
-                            https_hint = True
-                        # Treat acceptance only for actions that actually trigger reboot
-                        triggers_reboot = not (method == "GET" and path == "/cgi-bin/reboot.cgi")
-                        if triggers_reboot and resp.status_code in acceptable:
-                            return {
-                                "STATUS": [{
-                                    "STATUS": "S",
-                                    "When": 0,
-                                    "Code": 0,
-                                    "Msg": f"Reboot command accepted via {path} ({method})"
-                                }],
-                                "id": 1
-                            }
-                        # 401/403 -> wrong credentials/auth type; try next
-                        if resp.status_code in (401, 403):
-                            continue
-                    except requests.exceptions.Timeout:
-                        # Timeouts commonly happen when the device starts rebooting
+
+                    # Check for successful response
+                    if resp.status_code in (200, 204, 302):
                         return {
                             "STATUS": [{
                                 "STATUS": "S",
                                 "When": 0,
                                 "Code": 0,
-                                "Msg": "Reboot initiated (timeout while applying command)"
+                                "Msg": f"Reboot command accepted via {path} ({method})"
                             }],
                             "id": 1
                         }
-                    except requests.exceptions.ConnectionError:
-                        # Connection drop is typical immediately after reboot is triggered
-                        return {
-                            "STATUS": [{
-                                "STATUS": "S",
-                                "When": 0,
-                                "Code": 0,
-                                "Msg": "Reboot initiated (connection dropped)"
-                            }],
-                            "id": 1
-                        }
-                    except Exception as e:
-                        last_error = str(e)
+
+                    # 401/403 -> wrong credentials/auth type; try next
+                    if resp.status_code in (401, 403):
                         continue
 
-                # If server indicated HTTPS is required, retry with https:// for trigger endpoints
-                if https_hint:
-                    for method, path, data, headers in candidates:
-                        if method == "GET" and path == "/cgi-bin/reboot.cgi":
-                            continue  # skip non-trigger page
-                        url = f"https://{self.ip}{path}"
-                        try:
-                            resp = _request(
-                                method,
-                                url,
-                                timeout=8,
-                                auth=auth,
-                                data=data,
-                                headers=headers,
-                                allow_redirects=False,
-                                verify=False,  # many miner UIs use self-signed certs
-                            )
-                            if resp.status_code in acceptable:
-                                return {
-                                    "STATUS": [{
-                                        "STATUS": "S",
-                                        "When": 0,
-                                        "Code": 0,
-                                        "Msg": f"Reboot command accepted via {path} ({method}) over HTTPS"
-                                    }],
-                                    "id": 1
-                                }
-                        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-                            return {
-                                "STATUS": [{
-                                    "STATUS": "S",
-                                    "When": 0,
-                                    "Code": 0,
-                                    "Msg": "Reboot initiated (HTTPS path caused disconnect/timeout)"
-                                }],
-                                "id": 1
-                            }
-                        except Exception as e:
-                            last_error = str(e)
-                            continue
+                except requests.exceptions.Timeout:
+                    # Timeouts commonly happen when the device starts rebooting
+                    return {
+                        "STATUS": [{
+                            "STATUS": "S",
+                            "When": 0,
+                            "Code": 0,
+                            "Msg": "Reboot initiated (timeout while applying command)"
+                        }],
+                        "id": 1
+                    }
+                except requests.exceptions.ConnectionError:
+                    # Connection drop is typical immediately after reboot is triggered
+                    return {
+                        "STATUS": [{
+                            "STATUS": "S",
+                            "When": 0,
+                            "Code": 0,
+                            "Msg": "Reboot initiated (connection dropped)"
+                        }],
+                        "id": 1
+                    }
+                except Exception as e:
+                    last_error = str(e)
+                    continue
 
-        # If web interface fails, try CGMiner API as a last resort (software restart)
+        # If we get here, web interface attempts failed, try CGMiner API (software restart)
         try:
-            import json
-            payload = json.dumps({"command": "restart"})
-            result = self._send_command(payload)
-            return result
+            result = self._send_command("restart")
+            return {
+                "STATUS": [{
+                    "STATUS": "S",
+                    "When": 0,
+                    "Code": 0,
+                    "Msg": "Software restart initiated via CGMiner API"
+                }],
+                "id": 1
+            }
         except Exception as e:
-            last_error = f"Web interface and CGMiner API both failed. Last error: {str(e)}"
+            last_error = str(e)
 
-        raise MinerError(f"Failed to restart miner: {last_error}")
+        raise MinerError(
+            "Failed to restart miner via web interface or CGMiner API. "
+            f"Last error: {last_error}"
+        )
 
     def switch_pool(self, pool_id: int) -> dict:
         """

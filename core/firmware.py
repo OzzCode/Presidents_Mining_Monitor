@@ -18,7 +18,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from config import (
+from miner_config import (
     FIRMWARE_UPLOAD_DIR,
     FIRMWARE_DEFAULT_CREDENTIALS,
     FIRMWARE_HTTP_VERIFY,

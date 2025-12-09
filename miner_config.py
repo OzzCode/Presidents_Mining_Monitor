@@ -14,6 +14,9 @@ if load_dotenv:
 MINER_IP_RANGE = os.getenv('MINER_IP_RANGE', get_auto_cidr())
 POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', 30))
 
+# Miner connection settings
+CGMINER_TIMEOUT = float(os.getenv('CGMINER_TIMEOUT', 5.0))  # seconds
+
 # Email notifications (for alerts feature)
 SMTP_SERVER = os.getenv('SMTP_SERVER')
 SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
@@ -46,12 +49,9 @@ HASHRATE_DROP_THRESHOLD = float(os.getenv('HASHRATE_DROP_THRESHOLD', 0.9))  # e.
 ALERT_COOLDOWN_MINUTES = int(os.getenv('ALERT_COOLDOWN_MINUTES', 30))
 ROLLING_WINDOW_SAMPLES = int(os.getenv('ROLLING_WINDOW_SAMPLES', 10))
 
-# CGMiner client behavior
-CGMINER_TIMEOUT = float(os.getenv('CGMINER_TIMEOUT', 1.0))  # seconds
-
 # Miner web interface credentials (for reboot and configuration)
-MINER_USERNAME = os.getenv('MINER_USERNAME', 'root')
-MINER_PASSWORD = os.getenv('MINER_PASSWORD', 'root')
+MINER_USERNAME = os.getenv('MINER_USERNAME', '')
+MINER_PASSWORD = os.getenv('MINER_PASSWORD', 'admin')
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_DIR = os.getenv("LOG_DIR", "logs")

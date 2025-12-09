@@ -6,7 +6,7 @@ from sqlalchemy import func, and_
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.db import SessionLocal, Metric, Event, ErrorEvent
 from core.miner import MinerClient, MinerError
-from config import MINER_IP_RANGE, API_MAX_LIMIT, POLL_INTERVAL
+from miner_config import MINER_IP_RANGE, API_MAX_LIMIT, POLL_INTERVAL
 from datetime import datetime, timezone, timedelta
 import logging
 

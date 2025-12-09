@@ -75,7 +75,7 @@ def create_app(config_name=None):
 
     # Start background scheduler
     if not app.config.get('TESTING'):
-        start_scheduler(app)
+        start_scheduler()
 
     @app.route("/")
     def home():

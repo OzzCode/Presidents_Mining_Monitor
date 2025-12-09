@@ -3,7 +3,7 @@ import logging
 import datetime as dt
 from apscheduler.schedulers.background import BackgroundScheduler
 from api.endpoints import discover_miners
-from config import POLL_INTERVAL
+from miner_config import POLL_INTERVAL
 from core.db import Base, engine, SessionLocal, Metric, Miner
 from core.miner import MinerClient, MinerError
 from core.alert_engine import AlertEngine, create_default_rules

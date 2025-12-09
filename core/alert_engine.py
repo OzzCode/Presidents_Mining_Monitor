@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List, Any
 from sqlalchemy import func, and_, or_
 from core.db import SessionLocal, Alert, AlertRule, Metric, Miner
-from config import TEMP_THRESHOLD, HASHRATE_DROP_THRESHOLD, ALERT_COOLDOWN_MINUTES
+from miner_config import TEMP_THRESHOLD, HASHRATE_DROP_THRESHOLD, ALERT_COOLDOWN_MINUTES
 
 logger = logging.getLogger(__name__)
 

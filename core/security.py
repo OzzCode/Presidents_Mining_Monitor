@@ -32,7 +32,7 @@ def configure_security(app: Flask):
         content_security_policy_nonce_in=['script-src'],
         x_content_type_options=True,
         x_xss_protection=True,
-        x_frame_options='DENY',
+        frame_options='DENY',
         referrer_policy='strict-origin-when-cross-origin'
     )
 

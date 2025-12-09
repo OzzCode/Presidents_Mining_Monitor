@@ -2,7 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 import csv
 from typing import Dict, Tuple
-from config import EFFICIENCY_J_PER_TH, EFFICIENCY_MAP
+from miner_config import EFFICIENCY_J_PER_TH, EFFICIENCY_MAP
 
 # Cached ASIC efficiency data loaded from static/ASIC_efficiency.csv
 # Map of normalized model name -> (nominal_ths, efficiency_j_per_th)

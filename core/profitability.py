@@ -6,7 +6,7 @@ from typing import Optional, Dict, List, Any
 from sqlalchemy import func, and_
 from core.db import SessionLocal, ProfitabilitySnapshot, Metric, Miner
 from helpers.utils import csv_efficiency_for_model
-from config import DEFAULT_POWER_COST
+from miner_config import DEFAULT_POWER_COST
 
 import requests
 from requests.adapters import HTTPAdapter
