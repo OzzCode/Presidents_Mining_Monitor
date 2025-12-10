@@ -4,9 +4,10 @@ import time
 from flask import Blueprint, jsonify, request, current_app
 from sqlalchemy import func, and_
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from core.db import SessionLocal, Metric, Event, ErrorEvent
+from core.db import SessionLocal, Metric, Miner, Event, ErrorEvent, DB_PATH
 from core.miner import MinerClient, MinerError
 from miner_config import MINER_IP_RANGE, API_MAX_LIMIT, POLL_INTERVAL
+from core.get_network_ip import resolve_miner_ip_range, detect_local_ipv4_networks
 from datetime import datetime, timezone, timedelta
 import logging
 
@@ -16,8 +17,9 @@ _MAX_WORKERS = 16  # threads for concurrent fetches
 
 logger = logging.getLogger(__name__)
 
-api_bp = Blueprint('api', __name__, url_prefix='/api')
-dash_bp = Blueprint('dashboard', __name__, url_prefix='/dashboard')
+# Define blueprints without URL prefixes; prefixes are applied when registering in main.py
+api_bp = Blueprint('api', __name__)
+dash_bp = Blueprint('dashboard', __name__)
 
 
 @api_bp.after_app_request
@@ -88,7 +90,28 @@ def debug_tail():
         s.close()
 
 
-@dash_bp.route("/dashboard/miners")
+@api_bp.route("/debug/db_info")
+def debug_db_info():
+    """Return info about the metrics database location and basic row counts."""
+    import os
+    s = SessionLocal()
+    try:
+        metrics_count = s.query(func.count(Metric.id)).scalar() or 0
+        miners_count = s.query(func.count(Miner.id)).scalar() or 0
+        path_str = str(DB_PATH)
+        exists = os.path.exists(path_str)
+        size_bytes = os.path.getsize(path_str) if exists else 0
+        return jsonify({
+            "db_path": path_str,
+            "exists": exists,
+            "size_bytes": size_bytes,
+            "metrics_count": int(metrics_count),
+            "miners_count": int(miners_count),
+        })
+    finally:
+        s.close()
+
+
 def discover_miners(timeout=1, workers=50, use_mdns=True, return_sources=False, cidrs=None):
     """
     Scan the configured CIDR for TCP/4028 and optionally browse mDNS _cgminer._tcp.
@@ -103,21 +126,41 @@ def discover_miners(timeout=1, workers=50, use_mdns=True, return_sources=False, 
         list[str] if return_sources is False
         dict[str, str] if return_sources is True
     """
+    # Try to detect local networks if no specific CIDRs are provided
+    if not cidrs:
+        try:
+            networks = detect_local_ipv4_networks()
+            if networks:
+                cidrs = [str(net) for net in networks]
+                logger.info(f"Auto-detected networks: {cidrs}")
+        except Exception as e:
+            logger.warning(f"Failed to detect local networks: {e}")
+
     # Determine networks to scan
     networks = []
     try:
         if cidrs:
-            items = cidrs if isinstance(cidrs, (list, tuple)) else [c.strip() for c in str(cidrs).split(',') if
-                                                                    c.strip()]
+            items = cidrs if isinstance(cidrs, (list, tuple)) else [c.strip() for c in str(cidrs).split(',') if c.strip()]
             for c in items:
                 try:
                     networks.append(ipaddress.ip_network(c))
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"Invalid CIDR {c}: {e}")
                     continue
         if not networks:
-            networks = [ipaddress.ip_network(MINER_IP_RANGE)]
-    except Exception:
-        networks = [ipaddress.ip_network(MINER_IP_RANGE)]
+            cidr = MINER_IP_RANGE or resolve_miner_ip_range()
+            if not cidr:
+                logger.warning("discover_miners_no_cidr_configured")
+                return {} if return_sources else []
+            try:
+                networks = [ipaddress.ip_network(cidr)]
+                logger.info(f"Using configured CIDR: {cidr}")
+            except Exception as e:
+                logger.warning(f"discover_miners_invalid_cidr cidr={cidr} err={e}")
+                return {} if return_sources else []
+    except Exception as e:
+        logger.exception("discover_miners_networks_build_failed", exc_info=e)
+        return {} if return_sources else []
 
     # noinspection PyBroadException
     def scan(ip):

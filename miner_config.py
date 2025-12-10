@@ -5,13 +5,14 @@ try:
     from dotenv import load_dotenv  # optional
 except Exception:
     load_dotenv = None
-from core.get_network_ip import get_auto_cidr
+from core.get_network_ip import get_auto_cidr, resolve_miner_ip_range
 
 if load_dotenv:
     load_dotenv()
 
 # Discovery & polling
-MINER_IP_RANGE = os.getenv('MINER_IP_RANGE', get_auto_cidr())
+# Prefer explicit MINER_IP_RANGE, otherwise use robust resolver with safe fallback
+MINER_IP_RANGE = os.getenv('MINER_IP_RANGE', resolve_miner_ip_range())
 POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', 30))
 
 # Miner connection settings

@@ -1,6 +1,7 @@
 import os
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify
 from flask_cors import CORS
+import os
 from werkzeug.exceptions import HTTPException
 from sqlalchemy import text
 from prometheus_flask_exporter import PrometheusMetrics
@@ -21,7 +22,7 @@ from auth import auth_bp
 
 # Core components
 from core.logging_config import configure_logging
-from core.security import configure_security, configure_cors
+from core.security import configure_security
 
 # Scheduler
 from scheduler import start_scheduler
@@ -43,8 +44,22 @@ def create_app(config_name=None):
 
     # Security configuration
     configure_security(app)
-    configure_cors(app)
+    # INCORRECT / RISKY WAY (Causes the crash if env var is missing):
+    # CORS(app, origins=[os.getenv("CORS_ORIGINS")])
 
+    # CORRECT WAY:
+    # 1. Get the env var, default to a safe value (like localhost) or empty string if missing
+    cors_env = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+
+    # 2. Split it into a list if it contains multiple comma-separated values
+    if cors_env:
+        origins_list = [origin.strip() for origin in cors_env.split(",")]
+    else:
+        origins_list = []
+
+    # Fallback to localhost if the variable is missing
+    allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+    CORS(app, origins=allowed_origins)
     # Initialize database
     from models import db
     db.init_app(app)
@@ -55,19 +70,29 @@ def create_app(config_name=None):
     metrics = PrometheusMetrics(app)
     metrics.info('app_info', 'Application info', version='1.0.0')
 
-    # Register blueprints with proper URL prefixes
-    api_prefix = f"/{app.config.get('API_PREFIX', 'api').strip('/')}/{app.config.get('API_VERSION', 'v1')}"
+    # Register blueprints with stable, non-versioned prefixes to match templates
+    api_prefix = "/api"
 
+    # Core API and health under /api
     app.register_blueprint(health_bp, url_prefix=api_prefix)
-    app.register_blueprint(auth_bp, url_prefix=f"{api_prefix}/auth")
-    app.register_blueprint(dash_bp, url_prefix=f"{api_prefix}/dashboard")
     app.register_blueprint(api_bp, url_prefix=api_prefix)
-    app.register_blueprint(alerts_bp, url_prefix=api_prefix)
-    app.register_blueprint(profitability_bp, url_prefix=api_prefix)
+
+    # Auth under /auth
+    app.register_blueprint(auth_bp, url_prefix="/auth")
+
+    # Dashboard UI under /dashboard
+    app.register_blueprint(dash_bp, url_prefix="/dashboard")
+
+    # Feature APIs that define their own /api/... prefixes should NOT be re-prefixed
+    # They already expose routes like /api/alerts, /api/profitability, /api/electricity, /api/remote
+    app.register_blueprint(alerts_bp)
+    app.register_blueprint(profitability_bp)
+    app.register_blueprint(electricity_bp)
+    app.register_blueprint(remote_control_bp)
+
+    # Analytics and advanced analytics under /api/analytics and /api/advanced
     app.register_blueprint(analytics_bp, url_prefix=f"{api_prefix}/analytics")
     app.register_blueprint(advanced_bp, url_prefix=f"{api_prefix}/advanced")
-    app.register_blueprint(electricity_bp, url_prefix=f"{api_prefix}/electricity")
-    app.register_blueprint(remote_control_bp, url_prefix=f"{api_prefix}/remote")
 
     # Initialize database tables
     with app.app_context():

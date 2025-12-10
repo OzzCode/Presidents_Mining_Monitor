@@ -32,11 +32,26 @@ def poll_metrics():
     """Poll metrics from all miners."""
     session = SessionLocal()
     try:
-        for ip in discover_miners():
+        inserted = 0
+        ips = []
+        try:
+            ips = discover_miners()
+        except Exception as e:
+            logger.exception("discover_miners_failed", exc_info=e)
+            ips = []
+
+        if not ips:
+            logger.warning("poll_metrics_no_miners_found")
+            return
+
+        logger.info(f"poll_metrics_discovered_miners count={len(ips)}")
+
+        for ip in ips:
             try:
                 # If you're using fetch_normalized():
                 payload = MinerClient(ip).fetch_normalized()
-            except MinerError:
+            except MinerError as me:
+                logger.warning(f"miner_fetch_failed ip={ip} error={me}")
                 continue
 
             session.add(Metric(
@@ -47,8 +62,10 @@ def poll_metrics():
                 avg_temp_c=float(payload.get("avg_temp_c", 0.0) or 0.0),
                 avg_fan_rpm=float(payload.get("avg_fan_rpm", 0.0) or 0.0),
             ))
+            inserted += 1
 
-            session.commit()
+        session.commit()
+        logger.info(f"poll_metrics_inserted_rows count={inserted}")
     finally:
         session.close()
 
