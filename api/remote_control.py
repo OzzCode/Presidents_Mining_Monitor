@@ -20,7 +20,7 @@ from flask import Blueprint, request, jsonify, g, render_template, send_file
 from sqlalchemy import and_, func
 from werkzeug.utils import secure_filename
 
-from config import (
+from miner_config import (
     FIRMWARE_UPLOAD_DIR,
     MAX_FIRMWARE_SIZE_BYTES,
     FIRMWARE_ALLOWED_EXTENSIONS,

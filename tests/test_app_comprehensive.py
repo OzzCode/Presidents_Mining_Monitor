@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from core.miner import MinerClient, MinerError
 from core.db import SessionLocal, Metric, Miner, Alert, AlertRule
-from config import MINER_IP_RANGE, POLL_INTERVAL
+from miner_config import MINER_IP_RANGE, POLL_INTERVAL
 
 # Test configuration
 LIVE_MINER_IP = "192.168.1.194"

@@ -7,7 +7,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from typing import Optional, List
 import requests
-from config import SMTP_SERVER, SMTP_PORT, ALERT_EMAIL
+from miner_config import SMTP_SERVER, SMTP_PORT, ALERT_EMAIL
 from core.db import Alert, AlertRule, SessionLocal
 
 logger = logging.getLogger(__name__)

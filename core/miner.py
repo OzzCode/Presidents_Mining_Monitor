@@ -1,5 +1,5 @@
 import datetime as _dt
-from config import CGMINER_TIMEOUT, EFFICIENCY_J_PER_TH
+from miner_config import CGMINER_TIMEOUT, EFFICIENCY_J_PER_TH
 from helpers.utils import efficiency_for_model
 
 HASHRATE_KEYS = [
@@ -297,7 +297,7 @@ class MinerClient:
         """
         import requests
         from requests.auth import HTTPDigestAuth
-        from config import MINER_USERNAME, MINER_PASSWORD
+        from miner_config import MINER_USERNAME, MINER_PASSWORD
 
         # Try configured credentials first, then common defaults
         credentials = [

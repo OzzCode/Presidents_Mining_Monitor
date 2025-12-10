@@ -1,7 +1,7 @@
 import re
 from flask import Blueprint, render_template, request, jsonify
 from auth import login_required
-from config import EFFICIENCY_J_PER_TH
+from miner_config import EFFICIENCY_J_PER_TH
 
 dash_bp = Blueprint('dashboard', __name__)
 

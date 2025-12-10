@@ -16,7 +16,7 @@ from requests.auth import HTTPDigestAuth
 
 from core.miner import MinerClient
 from core.db import FirmwareFlashJob, FirmwareImage
-from config import FIRMWARE_UPLOAD_DIR
+from miner_config import FIRMWARE_UPLOAD_DIR
 
 logger = logging.getLogger(__name__)
 
