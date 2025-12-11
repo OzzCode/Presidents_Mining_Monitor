@@ -156,41 +156,50 @@
 <script>
     // Header interactions: mobile menu & dropdown
     (function () {
-        const menuToggle = document.getElementById('menuToggle');
-        const primaryNav = document.getElementById('primaryNav');
-        const dropdown = document.querySelector('.dropdown');
-        const ddToggle = dropdown ? dropdown.querySelector('.dropdown-toggle') : null;
+        const initHeaderInteractions = () => {
+            const menuToggle = document.getElementById('menuToggle');
+            const primaryNav = document.getElementById('primaryNav');
+            const dropdown = document.querySelector('.dropdown');
+            const ddToggle = dropdown ? dropdown.querySelector('.dropdown-toggle') : null;
 
-        if (menuToggle && primaryNav) {
-            menuToggle.addEventListener('click', () => {
-                const isOpen = primaryNav.classList.toggle('open');
-                menuToggle.setAttribute('aria-expanded', String(isOpen));
-            });
-        }
+            if (menuToggle && primaryNav) {
+                menuToggle.addEventListener('click', () => {
+                    const isOpen = primaryNav.classList.toggle('open');
+                    menuToggle.setAttribute('aria-expanded', String(isOpen));
+                });
+            }
 
-        if (dropdown && ddToggle) {
-            ddToggle.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const open = dropdown.classList.toggle('open');
-                ddToggle.setAttribute('aria-expanded', String(open));
-            });
+            if (dropdown && ddToggle) {
+                ddToggle.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const open = dropdown.classList.toggle('open');
+                    ddToggle.setAttribute('aria-expanded', String(open));
+                });
 
-            document.addEventListener('click', (e) => {
-                if (!dropdown.contains(e.target)) {
-                    dropdown.classList.remove('open');
-                    ddToggle.setAttribute('aria-expanded', 'false');
-                }
-            });
-
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') {
-                    dropdown.classList.remove('open');
-                    ddToggle.setAttribute('aria-expanded', 'false');
-                    if (document.activeElement && dropdown.contains(document.activeElement)) {
-                        ddToggle.focus();
+                document.addEventListener('click', (e) => {
+                    if (!dropdown.contains(e.target)) {
+                        dropdown.classList.remove('open');
+                        ddToggle.setAttribute('aria-expanded', 'false');
                     }
-                }
-            });
+                });
+
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        dropdown.classList.remove('open');
+                        ddToggle.setAttribute('aria-expanded', 'false');
+                        if (document.activeElement && dropdown.contains(document.activeElement)) {
+                            ddToggle.focus();
+                        }
+                    }
+                });
+            }
+        };
+
+        // Run immediately if DOM is ready, otherwise wait
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initHeaderInteractions);
+        } else {
+            initHeaderInteractions();
         }
     })();
 </script>

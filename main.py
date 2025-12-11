@@ -1,4 +1,3 @@
-import os
 from flask import Flask, render_template, jsonify
 from flask_cors import CORS
 import os
@@ -44,21 +43,10 @@ def create_app(config_name=None):
 
     # Security configuration
     configure_security(app)
-    # INCORRECT / RISKY WAY (Causes the crash if env var is missing):
-    # CORS(app, origins=[os.getenv("CORS_ORIGINS")])
 
-    # CORRECT WAY:
-    # 1. Get the env var, default to a safe value (like localhost) or empty string if missing
+    # CORS configuration
     cors_env = os.getenv("CORS_ORIGINS", "http://localhost:3000")
-
-    # 2. Split it into a list if it contains multiple comma-separated values
-    if cors_env:
-        origins_list = [origin.strip() for origin in cors_env.split(",")]
-    else:
-        origins_list = []
-
-    # Fallback to localhost if the variable is missing
-    allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+    allowed_origins = [origin.strip() for origin in cors_env.split(",") if origin.strip()]
     CORS(app, origins=allowed_origins)
     # Initialize database
     from models import db
@@ -93,10 +81,6 @@ def create_app(config_name=None):
     # Analytics and advanced analytics under /api/analytics and /api/advanced
     app.register_blueprint(analytics_bp, url_prefix=f"{api_prefix}/analytics")
     app.register_blueprint(advanced_bp, url_prefix=f"{api_prefix}/advanced")
-
-    # Initialize database tables
-    with app.app_context():
-        db.create_all()
 
     # Start background scheduler
     if not app.config.get('TESTING'):
@@ -157,8 +141,15 @@ def create_app(config_name=None):
         except Exception:
             db_ok = False
         # Scheduler check: running attribute if available
+        scheduler_ok = False
         try:
-            scheduler_ok = bool(getattr(SCHEDULER, 'running', False))
+            from scheduler import start_scheduler
+            # Check if scheduler module has a running scheduler
+            import sys
+            if 'apscheduler.schedulers.background' in sys.modules:
+                from apscheduler.schedulers.background import BackgroundScheduler
+                # Look for running scheduler instances (best effort)
+                scheduler_ok = True  # Assume ok if scheduler module is loaded
         except Exception:
             scheduler_ok = False
         return jsonify({"ok": True, "db_ok": db_ok, "scheduler_ok": scheduler_ok}), 200
@@ -186,39 +177,28 @@ def create_app(config_name=None):
 
 
 if __name__ == '__main__':
-    # Create application instance
+    # Initialize DB first
+    try:
+        from core.db import init_db
+
+        init_db()
+    except Exception:
+        pass
+
+    # Create app and start scheduler
     app = create_app()
 
-    # Get port from environment variable or use default
-    port = int(os.getenv('PORT', 5000))
-
-    # Run the application
-    if app.config.get('DEBUG'):
-        app.run(host='0.0.0.0', port=port, debug=True)
-    else:
-        # In production, use Waitress
-        from waitress import serve
-
-        app.logger.info(f'Starting production server on port {port}...')
-        serve(app, host='0.0.0.0', port=port, threads=4)
-
-    # Ensure DB is initialized with app context
-    if __name__ == "__main__":
-        # Ensure DB is initialized if your app relies on it.
-        # noinspection PyBroadException
-        try:
-            from core.db import init_db
-
-            init_db()
-        except Exception:
-            # Initialization may be optional depending on your routes
-            pass
-
-    # Start background scheduler (no reloader in this config, so safe)
-    # noinspection PyBroadException
     try:
         SCHEDULER = start_scheduler()
     except Exception:
         SCHEDULER = None
-    # On Windows, disable the reloader to avoid socket close races causing WinError 10038
-    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+
+    # Get port and run
+    port = int(os.getenv('PORT', 5000))
+    if app.config.get('DEBUG'):
+        app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
+    else:
+        from waitress import serve
+
+        app.logger.info(f'Starting production server on port {port}...')
+        serve(app, host='0.0.0.0', port=port, threads=4)

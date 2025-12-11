@@ -283,19 +283,40 @@ def _to_naive_utc(dt):
 def summary():
     """Summarize current metrics and indicate a data source (live vs. DB fallback)."""
     ipf = request.args.get('ip')
-    mdns_flag = request.args.get('mdns', 'true').lower() == 'true'
+
+    # Parse fresh_within and active_only params (similar to miners_summary endpoint)
+    try:
+        fresh_within = int(request.args.get('fresh_within', 30))
+    except Exception:
+        fresh_within = 30
+    active_only = request.args.get('active_only', 'true').lower() == 'true'
 
     if ipf:
         miners = [ipf]
         discovery_sources = {ipf: "manual"}
     else:
-        discovery_sources = discover_miners(use_mdns=mdns_flag, return_sources=True)
-        # Be resilient to patched/mocked discover_miners that return a list
-        if isinstance(discovery_sources, list):
-            miners = list(discovery_sources)
-            discovery_sources = {ip: 'unknown' for ip in miners}
-        else:
-            miners = list(discovery_sources.keys())
+        # Use DB to get list of miners instead of network discovery (much faster!)
+        s_quick = SessionLocal()
+        try:
+            cutoff = _naive_utc_now() - timedelta(minutes=fresh_within)
+            latest_subq = (
+                s_quick.query(
+                    Metric.miner_ip.label('ip'),
+                    func.max(Metric.timestamp).label('last_ts')
+                )
+                .group_by(Metric.miner_ip)
+                .subquery()
+            )
+            q = s_quick.query(latest_subq.c.ip)
+            if active_only:
+                q = q.filter(latest_subq.c.last_ts >= cutoff)
+            miners = [row.ip for row in q.all()]
+            discovery_sources = {ip: 'db' for ip in miners}
+        except Exception:
+            miners = []
+            discovery_sources = {}
+        finally:
+            s_quick.close()
     totals = {'power': 0.0, 'hash': 0.0, 'uptime': 0, 'temps': [], 'fans': []}
     data = []
     overall_srcs = set()

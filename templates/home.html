@@ -317,7 +317,8 @@
                 }
             }
 
-            document.addEventListener('DOMContentLoaded', async () => {
+            // Use a function that works whether DOM is ready or not
+            const initializeUI = async () => {
                 const prefs = await getPrefs();
                 wireControls(prefs);
 
@@ -343,7 +344,14 @@
                         if (e.key === 'Escape') toggle(false);
                     });
                 }
-            });
+            };
+
+            // Run immediately if DOM is ready, otherwise wait for DOMContentLoaded
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initializeUI);
+            } else {
+                initializeUI();
+            }
         })();
     </script>
 {% endblock %}

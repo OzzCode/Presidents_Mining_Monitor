@@ -154,7 +154,10 @@ def record_electricity_costs():
                     continue
 
                 # Calculate average power
-                avg_power_w = sum(m.power_w for m in metrics if m.power_w) / len(metrics)
+                power_values = [m.power_w for m in metrics if m.power_w]
+                if not power_values:
+                    continue
+                avg_power_w = sum(power_values) / len(power_values)
 
                 if avg_power_w == 0:
                     continue

@@ -11,14 +11,23 @@ def configure_security(app: Flask):
         'script-src': [
             "'self'",
             "'unsafe-inline'",  # Required for some Flask features
-            "'unsafe-eval'"     # Required for some JS libraries
+            "'unsafe-eval'",    # Required for some JS libraries
+            'https://cdn.jsdelivr.net',  # Chart.js and other CDN libraries
+            'https://api.coinbase.com'   # BTC price widget
         ],
         'style-src': [
             "'self'",
             "'unsafe-inline'"
         ],
-        'img-src': ["'self'", 'data:'],
-        'font-src': ["'self'", 'data:']
+        'img-src': ["'self'", 'data:', 'https:'],
+        'font-src': ["'self'", 'data:'],
+        'connect-src': [
+            "'self'",
+            'https://cdn.jsdelivr.net',
+            'https://api.coinbase.com',
+            'https://api.coingecko.com',
+            'https://api.coincap.io'
+        ]
     }
     
     # Initialize Talisman with security headers
