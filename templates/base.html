@@ -31,7 +31,7 @@
                 <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
                 <li><a href="{{ url_for('dashboard.pools_page') }}">Pools</a></li>
                 <li class="dropdown">
-                    <button class="dropdown-toggle" aria-haspopup="true" aria-expanded="false">More ▾</button>
+                    <button class="dropdown-toggle" type="button" aria-haspopup="true" aria-expanded="false">More ▾</button>
                     <ul class="dropdown-menu" role="menu">
                         <li><a href="{{ url_for('dashboard.alerts_page') }}" role="menuitem">Alerts</a></li>
                         <li><a href="{{ url_for('dashboard.profitability_page') }}" role="menuitem">Profitability</a>
@@ -150,57 +150,6 @@
 
         fetchBTC();
         setInterval(fetchBTC, 60000);
-    })();
-</script>
-
-<script>
-    // Header interactions: mobile menu & dropdown
-    (function () {
-        const initHeaderInteractions = () => {
-            const menuToggle = document.getElementById('menuToggle');
-            const primaryNav = document.getElementById('primaryNav');
-            const dropdown = document.querySelector('.dropdown');
-            const ddToggle = dropdown ? dropdown.querySelector('.dropdown-toggle') : null;
-
-            if (menuToggle && primaryNav) {
-                menuToggle.addEventListener('click', () => {
-                    const isOpen = primaryNav.classList.toggle('open');
-                    menuToggle.setAttribute('aria-expanded', String(isOpen));
-                });
-            }
-
-            if (dropdown && ddToggle) {
-                ddToggle.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const open = dropdown.classList.toggle('open');
-                    ddToggle.setAttribute('aria-expanded', String(open));
-                });
-
-                document.addEventListener('click', (e) => {
-                    if (!dropdown.contains(e.target)) {
-                        dropdown.classList.remove('open');
-                        ddToggle.setAttribute('aria-expanded', 'false');
-                    }
-                });
-
-                document.addEventListener('keydown', (e) => {
-                    if (e.key === 'Escape') {
-                        dropdown.classList.remove('open');
-                        ddToggle.setAttribute('aria-expanded', 'false');
-                        if (document.activeElement && dropdown.contains(document.activeElement)) {
-                            ddToggle.focus();
-                        }
-                    }
-                });
-            }
-        };
-
-        // Run immediately if DOM is ready, otherwise wait
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initHeaderInteractions);
-        } else {
-            initHeaderInteractions();
-        }
     })();
 </script>
 

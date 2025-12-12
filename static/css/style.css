@@ -412,6 +412,70 @@ nav a:hover {
     padding: 0 1rem;
 }
 
+/* Dropdown Menu */
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-toggle {
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 1rem;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.dropdown-toggle:hover,
+.dropdown-toggle[aria-expanded="true"] {
+    background-color: var(--surface-2);
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 1000;
+    display: none;
+    min-width: 200px;
+    padding: 0.5rem 0;
+    margin: 0.25rem 0 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.dropdown-menu[role="menu"] {
+    padding: 0.25rem 0;
+}
+
+.dropdown-menu a {
+    display: block;
+    padding: 0.5rem 1.5rem;
+    color: var(--text);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background-color 0.2s ease;
+}
+
+.dropdown-menu a:hover {
+    background-color: var(--surface-2);
+}
+
+.dropdown-menu .menu-sep {
+    height: 1px;
+    margin: 0.5rem 0;
+    background-color: var(--border);
+    overflow: hidden;
+}
+
 /* Navigation List */
 .nav-list {
     list-style: none;
@@ -891,6 +955,7 @@ tr.stale {
 }
 
 .primary-nav {
+    display: block;
 }
 
 .nav-primary {
@@ -935,7 +1000,7 @@ tr.stale {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
     list-style: none;
     display: none;
-    z-index: 1000;
+    z-index: 2001; /* above sticky header (1000) */
 }
 
 .dropdown.open .dropdown-menu {

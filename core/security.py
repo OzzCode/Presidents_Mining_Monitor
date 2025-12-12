@@ -4,16 +4,31 @@ from functools import wraps
 import os
 
 def configure_security(app: Flask):
-    """Configure security headers and policies."""
-    # Security headers middleware
+    """Configure security headers and policies.
+
+    Goal: keep reasonable defaults while avoiding overly strict CSP that blocks
+    inline scripts used by the UI. In development/testing we relax policies to
+    ease iteration; in production we still allow inline scripts but do not
+    require nonces.
+    """
+
+    # Environment-aware HTTPS enforcement
+    is_dev = bool(app.debug or app.testing or os.getenv('FLASK_ENV') == 'development')
+    force_https = app.config.get('FORCE_HTTPS', not is_dev)
+
+    # Content Security Policy
+    # Allow common safe sources plus inline scripts/styles used by templates.
     csp = {
-        'default-src': ["'self'"],
+        'default-src': ["'self'", 'https:'],
         'script-src': [
             "'self'",
-            "'unsafe-inline'",  # Required for some Flask features
-            "'unsafe-eval'",    # Required for some JS libraries
-            'https://cdn.jsdelivr.net',  # Chart.js and other CDN libraries
-            'https://api.coinbase.com'   # BTC price widget
+            "'unsafe-inline'",  # Inline widgets in templates
+            "'unsafe-eval'",    # Some libraries may rely on eval (e.g., Chart.js tooltips)
+            'data:', 'blob:',    # Allow data/blob URLs if used by charts/workers
+            'https://cdn.jsdelivr.net',  # CDN libraries (Chart.js, etc.)
+            'https://cdnjs.cloudflare.com',
+            'https://unpkg.com',
+            'https://api.coinbase.com'   # BTC price widget fetch script context
         ],
         'style-src': [
             "'self'",
@@ -24,21 +39,25 @@ def configure_security(app: Flask):
         'connect-src': [
             "'self'",
             'https://cdn.jsdelivr.net',
+            'https://cdnjs.cloudflare.com',
+            'https://unpkg.com',
             'https://api.coinbase.com',
             'https://api.coingecko.com',
             'https://api.coincap.io'
         ]
     }
-    
+
     # Initialize Talisman with security headers
+    # Note: We intentionally do NOT use CSP nonces because templates include
+    # inline scripts and adding nonces everywhere would be intrusive. Keeping
+    # 'unsafe-inline' avoids widespread breakage while preserving other controls.
     Talisman(
         app,
-        force_https=app.config.get('FORCE_HTTPS', True),
+        force_https=force_https,
         strict_transport_security=True,
         session_cookie_secure=True,
         session_cookie_http_only=True,
         content_security_policy=csp,
-        content_security_policy_nonce_in=['script-src'],
         x_content_type_options=True,
         x_xss_protection=True,
         frame_options='DENY',
