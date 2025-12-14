@@ -24,7 +24,7 @@ numpy
 pandas
 scikit-learn
 joblib
-tensorflow
+intel-tensorflow
 keras
 h5py
 protobuf
