@@ -10,6 +10,7 @@
         const canvas = document.getElementById('btc-chart');
         if (!priceEl || !canvas) return; // widget not present
         const ctx = canvas.getContext('2d');
+        /** @type {Chart} */
         let chart;
         const nf = new Intl.NumberFormat(undefined,
             {style: 'currency', currency: 'USD', maximumFractionDigits: 0});
@@ -113,9 +114,13 @@
             }
         }
 
-        load();
-        // refresh every 5 minutes
-        setInterval(load, 300000);
+        // Initial load with error handling
+        load().catch(err => console.error('Failed to load initial BTC data:', err));
+
+        // Refresh every 5 minutes with error handling
+        setInterval(() => {
+            load().catch(err => console.error('Failed to refresh BTC data:', err));
+        }, 300000);
 
         // Try to refresh on theme changes if a custom event is dispatched by theme.js
         window.addEventListener('themechange', () => {
@@ -123,7 +128,7 @@
                 chart.destroy();
                 chart = null;
             }
-            load();
+            load().catch(err => console.error('Failed to reload chart after theme change:', err));
         });
     });
 })();
