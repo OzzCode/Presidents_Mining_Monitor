@@ -616,3 +616,4 @@ uploads/firmware/6f55e939b7684e4b917bd854f3a3ef30_braiins-os_am2-s17_sd.img
 !/logs/
 !/logs/
 !/package-lock.json
+/package-lock.json
