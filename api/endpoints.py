@@ -290,6 +290,7 @@ def summary():
     except Exception:
         fresh_within = 30
     active_only = request.args.get('active_only', 'true').lower() == 'true'
+    prefer_live = request.args.get('live', 'true').lower() != 'false'
 
     if ipf:
         miners = [ipf]
@@ -351,13 +352,14 @@ def summary():
     # worker that returns (ip, payload, src) or (ip, None, None)
     def _fetch_one(ip: str):
         # 1) try live
-        try:
-            payload = MinerClient(ip).fetch_normalized()
-            return ip, payload, 'live'
-        except MinerError:
-            pass
-        except Exception:
-            pass
+        if prefer_live:
+            try:
+                payload = MinerClient(ip).fetch_normalized()
+                return ip, payload, 'live'
+            except MinerError:
+                pass
+            except Exception:
+                pass
         # 2) fallback: last prefetched DB metric
         last = prefetch.get(ip)
         if last:

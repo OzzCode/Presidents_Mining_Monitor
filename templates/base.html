@@ -27,8 +27,7 @@
 
         <nav class="primary-nav" id="primaryNav">
             <ul class="nav-primary">
-                <li><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
-                <li><a href="{{ url_for('dashboard.show_miners') }}">Miners</a></li>
+                <li><a href="{{ url_for('dashboard.metrics_page') }}">Metrics</a></li>
                 <li><a href="{{ url_for('dashboard.pools_page') }}">Pools</a></li>
                 <li class="dropdown">
                     <button class="dropdown-toggle" type="button" aria-haspopup="true" aria-expanded="false">More ▾</button>
@@ -38,7 +37,7 @@
                         </li>
                         <li><a href="{{ url_for('dashboard.analytics_page') }}" role="menuitem">Analytics</a></li>
                         <li><a href="{{ url_for('dashboard.electricity_page') }}" role="menuitem">⚡ Electricity</a></li>
-                        <li><a href="{{ url_for('dashboard.remote_control_page') }}" role="menuitem">🎮 Remote</a></li>
+                        <li><a href="{{ url_for('dashboard.remote_control_page') }}" role="menuitem">🎮 Remote Ops</a></li>
                         <li><a href="{{ url_for('dashboard.firmware_flash_page') }}" role="menuitem">🧰 Firmware</a></li>
                         <li><a href="{{ url_for('dashboard.logs_page') }}" role="menuitem">Logs</a></li>
                         <li class="menu-sep" role="separator"></li>

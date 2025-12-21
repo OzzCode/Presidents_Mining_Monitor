@@ -1,5 +1,5 @@
 import re
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for
 from auth import login_required
 from miner_config import EFFICIENCY_J_PER_TH
 
@@ -206,6 +206,9 @@ def get_miners():
                 'ip': m.miner_ip,
                 'last_seen': ts.isoformat().replace('+00:00', 'Z'),
                 'est_power_w': est_power,
+                'hashrate_ths': float(m.hashrate_ths) if m.hashrate_ths is not None else None,
+                'avg_temp_c': float(m.avg_temp_c) if m.avg_temp_c is not None else None,
+                'avg_fan_rpm': float(m.avg_fan_rpm) if m.avg_fan_rpm is not None else None,
                 # Metadata enrichment (present when available)
                 'vendor': getattr(miner_meta, 'vendor', None) if miner_meta else None,
                 'hostname': getattr(miner_meta, 'hostname', None) if miner_meta else None,
@@ -237,13 +240,20 @@ def miners():
 @login_required
 def index():
     ip = request.args.get('ip')
-    return render_template('dashboard.html', ip=ip)
+    return redirect(url_for('dashboard.metrics_page', ip=ip) if ip else url_for('dashboard.metrics_page'))
+
+
+@dash_bp.route('/metrics')
+@login_required
+def metrics_page():
+    ip = request.args.get('ip')
+    return render_template('metrics.html', ip=ip)
 
 
 @dash_bp.route('/miners')
 @login_required
 def show_miners():
-    return render_template('miners.html')
+    return redirect(url_for('dashboard.metrics_page'))
 
 
 @dash_bp.route('/pools')

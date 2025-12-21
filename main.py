@@ -196,7 +196,7 @@ if __name__ == '__main__':
     # Get port and run
     port = int(os.getenv('PORT', 5000))
     if app.config.get('DEBUG'):
-        app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
+        app.run(host='0.0.0.0', port=port, debug=True, use_reloader=True)
     else:
         from waitress import serve
 

@@ -612,3 +612,7 @@ uploads/firmware/6f55e939b7684e4b917bd854f3a3ef30_braiins-os_am2-s17_sd.img
 /node_modules/moment/src/locale/zh-mo.js
 /node_modules/moment/locale/zh-tw.js
 /node_modules/moment/src/locale/zh-tw.js
+!/node_modules/
+!/logs/
+!/logs/
+!/package-lock.json
