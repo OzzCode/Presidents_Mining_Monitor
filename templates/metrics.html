@@ -32,14 +32,45 @@
                 </select>
             </div>
         </div>
-        <div id="miner-focus" class="card-grid">
-            <div class="card"><h3>Hashrate</h3><p id="focus-hashrate">-- TH/s</p></div>
-            <div class="card"><h3>Power</h3><p id="focus-power">-- W</p></div>
-            <div class="card"><h3>Temperature</h3><p id="focus-temp">-- °C</p></div>
-            <div class="card"><h3>Fan Speed</h3><p id="focus-fan">-- RPM</p></div>
-            <div class="card"><h3>Status</h3><p id="focus-status">--</p></div>
-            <div class="card"><h3>Last Seen</h3><p id="focus-last-seen">--</p></div>
+
+        <div class="miner-details-grid">
+            <div class="detail-section">
+                <h3 class="section-title">Performance</h3>
+                <div class="detail-cards">
+                    <div class="card"><h4>Hashrate</h4><p id="focus-hashrate">-- TH/s</p></div>
+                    <div class="card"><h4>Power Draw</h4><p id="focus-power">-- W</p></div>
+                    <div class="card"><h4>Efficiency</h4><p id="focus-efficiency">-- J/TH</p></div>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <h3 class="section-title">Hardware</h3>
+                <div class="detail-cards">
+                    <div class="card"><h4>Temperature</h4><p id="focus-temp">-- °C</p></div>
+                    <div class="card"><h4>Fan Speed</h4><p id="focus-fan">-- RPM</p></div>
+                    <div class="card"><h4>Uptime</h4><p id="focus-uptime">--</p></div>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <h3 class="section-title">Device Info</h3>
+                <div class="detail-cards">
+                    <div class="card"><h4>Model</h4><p id="focus-model">--</p></div>
+                    <div class="card"><h4>Vendor</h4><p id="focus-vendor">--</p></div>
+                    <div class="card"><h4>Status</h4><p id="focus-status">--</p></div>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <h3 class="section-title">Network</h3>
+                <div class="detail-cards">
+                    <div class="card"><h4>IP Address</h4><p id="focus-ip">--</p></div>
+                    <div class="card"><h4>Hostname</h4><p id="focus-hostname">--</p></div>
+                    <div class="card"><h4>Last Seen</h4><p id="focus-last-seen">--</p></div>
+                </div>
+            </div>
         </div>
+
         <div class="focus-actions">
             <a id="focus-open-ui" class="btn" href="#" target="_blank" rel="noopener">Open Miner UI</a>
         </div>
@@ -60,15 +91,18 @@
                 <thead>
                 <tr>
                     <th>Status</th>
+                    <th>Vendor</th>
                     <th>Model</th>
                     <th>IP</th>
+                    <th>Hashrate</th>
+                    <th>Temp</th>
+                    <th>Power</th>
                     <th>Last Seen</th>
-                    <th>Est. Power (W)</th>
                     <th>Actions</th>
                 </tr>
                 </thead>
                 <tbody id="active-miner-body">
-                <tr><td colspan="6" class="muted">Loading miners…</td></tr>
+                <tr><td colspan="9" class="muted">Loading miners…</td></tr>
                 </tbody>
             </table>
         </div>
@@ -78,15 +112,18 @@
                 <thead>
                 <tr>
                     <th>Status</th>
+                    <th>Vendor</th>
                     <th>Model</th>
                     <th>IP</th>
+                    <th>Hashrate</th>
+                    <th>Temp</th>
+                    <th>Power</th>
                     <th>Last Seen</th>
-                    <th>Est. Power (W)</th>
                     <th>Actions</th>
                 </tr>
                 </thead>
                 <tbody id="stale-miner-body">
-                <tr><td colspan="6" class="muted">No stale miners detected.</td></tr>
+                <tr><td colspan="9" class="muted">No stale miners detected.</td></tr>
                 </tbody>
             </table>
         </div>

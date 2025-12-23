@@ -69,7 +69,7 @@
         setText('fleet-total-uptime', humanDuration(summary.total_uptime));
         setWithUnit('fleet-avg-temp', summary.avg_temp, '°C', { maximumFractionDigits: 1 });
         setWithUnit('fleet-avg-fan', summary.avg_fan_speed, 'RPM', { maximumFractionDigits: 0 });
-        setText('fleet-active-count', Array.isArray(activeMiners) ? activeMiners.length : '--');
+        setText('fleet-active-count', summary.total_workers || 0);
         const last = summary.last_updated ? new Date(summary.last_updated) : null;
         setText('fleet-last-update', last ? `Last updated: ${last.toLocaleString()}` : 'Last updated: —');
     }
@@ -81,18 +81,30 @@
 
         const makeRow = (miner) => {
             const tr = document.createElement('tr');
-            const model = miner.model || '—';
+            const vendor = (miner.vendor && miner.vendor !== 'null') ? miner.vendor : '—';
+            const model = (miner.model && miner.model !== 'null') ? miner.model : '—';
             const status = miner.status || freshnessBadge(miner);
+            const statusClass = status === 'Active' ? 'status-active' :
+                                status === 'Lagging' ? 'status-lagging' : 'status-stale';
             const lastSeen = miner.last_seen ? new Date(miner.last_seen).toLocaleString() : '—';
+            const hashrate = (typeof miner.hashrate_ths === 'number' && Number.isFinite(miner.hashrate_ths))
+                ? formatNumber(miner.hashrate_ths, { maximumFractionDigits: 2 }) + ' TH/s'
+                : '—';
+            const temp = (typeof miner.avg_temp_c === 'number' && Number.isFinite(miner.avg_temp_c))
+                ? formatNumber(miner.avg_temp_c, { maximumFractionDigits: 1 }) + '°C'
+                : '—';
             const power = (typeof miner.est_power_w === 'number' && Number.isFinite(miner.est_power_w))
-                ? formatNumber(miner.est_power_w, { maximumFractionDigits: 0 })
+                ? formatNumber(miner.est_power_w, { maximumFractionDigits: 0 }) + ' W'
                 : '—';
             tr.innerHTML = `
-                <td>${status}</td>
+                <td><span class="status-badge ${statusClass}">${status}</span></td>
+                <td>${vendor}</td>
                 <td>${model}</td>
-                <td><a href="/dashboard/?ip=${encodeURIComponent(miner.ip)}">${miner.ip}</a></td>
-                <td>${lastSeen}</td>
+                <td><a href="/dashboard/?ip=${encodeURIComponent(miner.ip)}" class="link-ip">${miner.ip}</a></td>
+                <td>${hashrate}</td>
+                <td>${temp}</td>
                 <td>${power}</td>
+                <td>${lastSeen}</td>
                 <td class="actions">
                     <a class="btn small" href="http://${miner.ip}/" target="_blank" rel="noopener">Firmware UI</a>
                 </td>
@@ -104,7 +116,7 @@
             target.replaceChildren();
             if (!minersList.length) {
                 const emptyRow = document.createElement('tr');
-                emptyRow.innerHTML = `<td colspan="6" class="muted">${emptyMessage}</td>`;
+                emptyRow.innerHTML = `<td colspan="9" class="muted">${emptyMessage}</td>`;
                 target.appendChild(emptyRow);
             } else {
                 minersList.forEach(miner => target.appendChild(makeRow(miner)));
@@ -120,21 +132,47 @@
         if (!miner) {
             setText('focus-hashrate', '-- TH/s');
             setText('focus-power', '-- W');
+            setText('focus-efficiency', '-- J/TH');
             setText('focus-temp', '-- °C');
             setText('focus-fan', '-- RPM');
+            setText('focus-uptime', '--');
+            setText('focus-model', '--');
+            setText('focus-vendor', '--');
             setText('focus-status', '--');
+            setText('focus-ip', '--');
+            setText('focus-hostname', '--');
             setText('focus-last-seen', '--');
             const link = $('#focus-open-ui');
             if (link) link.setAttribute('href', '#');
             return;
         }
-        setText('focus-hashrate', formatNumber(miner.hashrate_ths, { maximumFractionDigits: 2 }));
-        setText('focus-power', formatNumber(miner.est_power_w, { maximumFractionDigits: 0 }));
-        setText('focus-temp', formatNumber(miner.avg_temp_c, { maximumFractionDigits: 1 }));
-        setText('focus-fan', formatNumber(miner.avg_fan_rpm, { maximumFractionDigits: 0 }));
+
+        // Performance
+        setText('focus-hashrate', formatNumber(miner.hashrate_ths, { maximumFractionDigits: 2 }) + ' TH/s');
+        setText('focus-power', formatNumber(miner.est_power_w, { maximumFractionDigits: 0 }) + ' W');
+
+        // Calculate efficiency
+        const efficiency = (miner.hashrate_ths && miner.est_power_w && miner.hashrate_ths > 0)
+            ? (miner.est_power_w / miner.hashrate_ths)
+            : (miner.nominal_efficiency_j_per_th || null);
+        setText('focus-efficiency', efficiency ? formatNumber(efficiency, { maximumFractionDigits: 1 }) + ' J/TH' : '-- J/TH');
+
+        // Hardware
+        setText('focus-temp', formatNumber(miner.avg_temp_c, { maximumFractionDigits: 1 }) + ' °C');
+        setText('focus-fan', formatNumber(miner.avg_fan_rpm, { maximumFractionDigits: 0 }) + ' RPM');
+        setText('focus-uptime', miner.uptime ? humanDuration(miner.uptime) : '--');
+
+        // Device Info
+        setText('focus-model', (miner.model && miner.model !== 'null') ? miner.model : '--');
+        setText('focus-vendor', (miner.vendor && miner.vendor !== 'null') ? miner.vendor : '--');
         setText('focus-status', miner.status || freshnessBadge(miner));
+
+        // Network
+        setText('focus-ip', miner.ip || '--');
+        setText('focus-hostname', (miner.hostname && miner.hostname !== 'null') ? miner.hostname : '--');
         const lastSeen = miner.last_seen ? new Date(miner.last_seen).toLocaleString() : '—';
         setText('focus-last-seen', lastSeen);
+
         const link = $('#focus-open-ui');
         if (link) link.setAttribute('href', `http://${miner.ip}/`);
     }
@@ -153,7 +191,8 @@
         activeMiners.forEach(miner => {
             const option = document.createElement('option');
             option.value = miner.ip;
-            option.textContent = `${miner.ip} · ${miner.model || 'Unknown model'}`;
+            const model = miner.model && miner.model !== 'null' ? miner.model : 'Unknown model';
+            option.textContent = `${miner.ip} · ${model}`;
             select.appendChild(option);
         });
 
@@ -189,6 +228,8 @@
             minerCache = miners.map(m => ({
                 ip: m.ip,
                 model: m.model,
+                vendor: m.vendor,
+                hostname: m.hostname,
                 status: m.status,
                 last_seen: m.last_seen,
                 est_power_w: m.est_power_w,
@@ -196,9 +237,22 @@
                 avg_temp_c: m.avg_temp_c,
                 avg_fan_rpm: m.avg_fan_rpm,
                 age_sec: m.age_sec,
+                uptime: m.uptime,
+                nominal_efficiency_j_per_th: m.nominal_efficiency_j_per_th,
+                nominal_ths: m.nominal_ths,
             }));
-            activeMiners = minerCache.filter(m => (m.status || freshnessBadge(m)) === 'Active');
-            staleMiners = minerCache.filter(m => (m.status || freshnessBadge(m)) !== 'Active');
+            activeMiners = minerCache.filter(m => {
+                const status = m.status || freshnessBadge(m);
+                return status === 'Active' || status === 'Lagging';
+            });
+            staleMiners = minerCache.filter(m => {
+                const status = m.status || freshnessBadge(m);
+                return status === 'Stale';
+            });
+            console.log('Miners fetched:', minerCache.length, 'Active:', activeMiners.length, 'Stale:', staleMiners.length);
+            if (minerCache.length > 0) {
+                console.log('Sample miner:', minerCache[0]);
+            }
             populateMinerSelect();
             populateMinerTables();
         } catch (err) {

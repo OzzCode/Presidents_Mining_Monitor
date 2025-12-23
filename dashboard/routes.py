@@ -209,6 +209,7 @@ def get_miners():
                 'hashrate_ths': float(m.hashrate_ths) if m.hashrate_ths is not None else None,
                 'avg_temp_c': float(m.avg_temp_c) if m.avg_temp_c is not None else None,
                 'avg_fan_rpm': float(m.avg_fan_rpm) if m.avg_fan_rpm is not None else None,
+                'uptime': int(m.elapsed_s) if m.elapsed_s is not None else None,
                 # Metadata enrichment (present when available)
                 'vendor': getattr(miner_meta, 'vendor', None) if miner_meta else None,
                 'hostname': getattr(miner_meta, 'hostname', None) if miner_meta else None,

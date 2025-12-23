@@ -1121,3 +1121,261 @@ tr.stale {
         border-radius: 10px;
     }
 }
+
+/* Miner Details Grid */
+.miner-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.detail-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--muted-2);
+    margin: 0 0 1rem 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.detail-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1rem;
+}
+
+.detail-cards .card {
+    padding: 1rem;
+    text-align: center;
+    min-height: auto;
+}
+
+.detail-cards .card h4 {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--muted);
+    margin: 0 0 0.5rem 0;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.detail-cards .card p {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.section-header h2 {
+    margin: 0;
+}
+
+.miner-select {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.miner-select label {
+    font-size: 0.9rem;
+    color: var(--muted-2);
+    font-weight: 500;
+}
+
+.miner-select select {
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.9rem;
+    min-width: 250px;
+}
+
+.toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.toggle input[type="checkbox"] {
+    cursor: pointer;
+}
+
+.toggle span {
+    font-size: 0.9rem;
+    color: var(--muted-2);
+}
+
+.focus-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.page-header {
+    margin-bottom: 2rem;
+}
+
+.page-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+}
+
+.page-header .muted {
+    font-size: 1rem;
+    color: var(--muted);
+}
+
+.fleet-summary,
+.focused-miner,
+.live-miners,
+.quick-links {
+    margin-bottom: 3rem;
+}
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+}
+
+.link-card {
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s ease;
+}
+
+.link-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.link-card h3 {
+    color: var(--primary);
+    margin-bottom: 0.5rem;
+}
+
+.link-card p {
+    font-size: 0.9rem;
+    color: var(--muted);
+    margin: 0;
+}
+
+.table-wrapper {
+    overflow-x: auto;
+    margin-bottom: 1.5rem;
+}
+
+.miners-table {
+    width: 100%;
+    min-width: 800px;
+}
+
+.miners-table th {
+    white-space: nowrap;
+}
+
+.miners-table td {
+    white-space: nowrap;
+}
+
+.miners-table .actions {
+    white-space: nowrap;
+}
+
+.btn.small {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.status-active {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #86efac;
+}
+
+.status-lagging {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde047;
+}
+
+.status-stale {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+}
+
+:root[data-theme="dark"] .status-active {
+    background: #065f46;
+    color: #86efac;
+    border-color: #059669;
+}
+
+:root[data-theme="dark"] .status-lagging {
+    background: #78350f;
+    color: #fde047;
+    border-color: #a16207;
+}
+
+:root[data-theme="dark"] .status-stale {
+    background: #7f1d1d;
+    color: #fca5a5;
+    border-color: #991b1b;
+}
+
+@media (max-width: 768px) {
+    .miner-details-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .section-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .miner-select {
+        width: 100%;
+    }
+
+    .miner-select select {
+        flex: 1;
+        min-width: 0;
+    }
+}

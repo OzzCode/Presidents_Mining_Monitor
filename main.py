@@ -185,20 +185,26 @@ if __name__ == '__main__':
     except Exception:
         pass
 
-    # Create app and start scheduler
+    # Create app
     app = create_app()
-
-    try:
-        SCHEDULER = start_scheduler()
-    except Exception:
-        SCHEDULER = None
 
     # Get port and run
     port = int(os.getenv('PORT', 5000))
+    
     if app.config.get('DEBUG'):
-        app.run(host='0.0.0.0', port=port, debug=True, use_reloader=True)
+        # On Windows, use_reloader=True often causes [WinError 10038] 
+        # because of how child processes handle socket inheritance.
+        # Setting use_reloader=False provides a stable development experience.
+        app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
     else:
         from waitress import serve
+        
+        # Ensure scheduler is definitely started in production if not already
+        try:
+            from scheduler import start_scheduler
+            start_scheduler()
+        except Exception:
+            pass
 
         app.logger.info(f'Starting production server on port {port}...')
         serve(app, host='0.0.0.0', port=port, threads=4)
